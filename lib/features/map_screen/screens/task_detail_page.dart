@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
 import '../models/floating_sheet_type.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -17,9 +16,12 @@ class TaskDetailPage extends StatefulWidget {
   const TaskDetailPage({
     super.key,
     required this.task,
-    required this.onChanged,
-    required this.onDelete,
-  });
+    VoidCallback? onChanged,
+    VoidCallback? onDelete,
+  })  : onChanged = onChanged ?? _defaultCallback,
+        onDelete = onDelete ?? _defaultCallback;
+
+  static void _defaultCallback() {}
 
   @override
   State<TaskDetailPage> createState() => _TaskDetailPageState();
