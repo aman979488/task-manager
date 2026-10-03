@@ -1,13 +1,18 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 🚀 NAYA: For SystemChannels keyboard show/hide
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/task.dart';
 import '../models/floating_sheet_type.dart';
+
 import 'package:go_router/go_router.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
+
 import '../../../widgets/app_drawer.dart';
 import '../../../viewmodels/auth_viewmodel.dart';
 import '../../../utils/role_permissions.dart';
@@ -30,11 +35,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   OverlayEntry? _floatingSheetOverlay;
 
   final List<Task> tasks = [];
+  Timer? _reminderTimer;
 
   // selected tasks for multi-select
   final Set<Task> _selected = {};
-
-  bool _wasKeyboardVisible = false;
 
   // temp selections while creating a new task
   String? _newTaskPriority;
@@ -64,8 +68,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final CollectionReference tasksCollection = FirebaseFirestore.instance
       .collection('map');
 
-  bool _isAddTaskSheetOpen = false;
-  bool _completedCollapsed = false;
   bool _isAddingTask = false; // 🚀 NAYA: To prevent double submission
 
   List<String>? _assigneesCache;
@@ -82,8 +84,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     super.initState();
     _tabController = TabController(length: 6, vsync: this);
     _loadButtonOrder();
+    _startReminderChecker();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadTasksFromFirebase();
+      _checkDueReminders();
     });
   }
 
@@ -115,9 +119,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildBottomSheetButtonWithState(
-      FloatingSheetType type,
-      StateSetter setModalState,
-      ) {
+    FloatingSheetType type,
+    StateSetter setModalState,
+  ) {
     IconData icon = Icons.help_outline;
     String label = "";
     String? selectedValue;
@@ -144,7 +148,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       case FloatingSheetType.remind:
         icon = Icons.notifications_active;
         label = "Remind Me";
-        selectedValue = _newTaskReminder != null ? _formatDateTime(_newTaskReminder!) : null;
+        selectedValue = _newTaskReminder != null
+            ? _formatDateTime(_newTaskReminder!)
+            : null;
         onSelected = (v) {
           setState(() {
             _newTaskReminder = v;
@@ -184,7 +190,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       case FloatingSheetType.deadline:
         icon = Icons.alarm;
         label = "Deadline";
-        selectedValue = _newTaskDeadline != null ? _formatDateTime(_newTaskDeadline!) : null;
+        selectedValue = _newTaskDeadline != null
+            ? _formatDateTime(_newTaskDeadline!)
+            : null;
         onSelected = (v) {
           setState(() {
             _newTaskDeadline = v;
@@ -272,7 +280,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
           decoration: BoxDecoration(
-            color: isSelected ? primaryColor.withValues(alpha: 0.2) : Colors.transparent,
+            color: isSelected
+                ? primaryColor.withValues(alpha: 0.2)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isSelected ? secondaryColor : Colors.grey.shade300,
@@ -284,22 +294,28 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             child: InkWell(
               borderRadius: BorderRadius.circular(20),
               onTap: () {
-              final isMulti = type == FloatingSheetType.assign;
-              List<String> currentSelections = [];
-              if (isMulti && _newTaskAssignee != null) {
-                currentSelections = _newTaskAssignee!.split(',').map((e) => e.trim()).toList();
-              }
+                final isMulti = type == FloatingSheetType.assign;
+                List<String> currentSelections = [];
+                if (isMulti && _newTaskAssignee != null) {
+                  currentSelections = _newTaskAssignee!
+                      .split(',')
+                      .map((e) => e.trim())
+                      .toList();
+                }
 
-              _showFloatingSheet(
-                buttonContext, 
-                type, 
-                onSelected: onSelected,
-                multiSelect: isMulti,
-                selectedValues: currentSelections,
-              );
-            },
+                _showFloatingSheet(
+                  buttonContext,
+                  type,
+                  onSelected: onSelected,
+                  multiSelect: isMulti,
+                  selectedValues: currentSelections,
+                );
+              },
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 17),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 17,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -309,14 +325,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       transitionBuilder: (child, animation) {
                         return ScaleTransition(
                           scale: animation,
-                          child: FadeTransition(opacity: animation, child: child),
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
                         );
                       },
                       child: Icon(
                         icon,
                         key: ValueKey('icon_$isSelected'),
                         size: 18,
-                        color: isSelected ? secondaryColor : Colors.grey.shade700,
+                        color: isSelected
+                            ? secondaryColor
+                            : Colors.grey.shade700,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -327,14 +348,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           sizeFactor: animation,
                           axis: Axis.horizontal,
                           axisAlignment: -1,
-                          child: FadeTransition(opacity: animation, child: child),
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
                         );
                       },
                       child: Text(
                         displayText,
                         key: ValueKey('text_$displayText'),
                         style: TextStyle(
-                          color: isSelected ? secondaryColor : Colors.grey.shade700,
+                          color: isSelected
+                              ? secondaryColor
+                              : Colors.grey.shade700,
                           fontWeight: isSelected
                               ? FontWeight.w600
                               : FontWeight.normal,
@@ -350,18 +376,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         opacity: isSelected ? 1.0 : 0.0,
                         child: isSelected
                             ? GestureDetector(
-                          onTap: () {
-                            onClear();
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.only(left: 8),
-                            child: Icon(
-                              Icons.close,
-                              size: 16,
-                              color: secondaryColor,
-                            ),
-                          ),
-                        )
+                                onTap: () {
+                                  onClear();
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.only(left: 8),
+                                  child: Icon(
+                                    Icons.close,
+                                    size: 16,
+                                    color: secondaryColor,
+                                  ),
+                                ),
+                              )
                             : const SizedBox.shrink(),
                       ),
                     ),
@@ -377,6 +403,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _reminderTimer?.cancel();
     _tabController.dispose();
     _hideFloatingSheet();
     _focusNode.dispose();
@@ -401,17 +428,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           .map(
             (e) => FloatingSheetType.values.firstWhere(
               (v) => v.name == e,
-          orElse: () => _defaultOrder.first,
-        ),
-      )
+              orElse: () => _defaultOrder.first,
+            ),
+          )
           .toList();
     });
   }
 
   Future<DateTime?> pickDateTimeWithTabs(
-      BuildContext context, {
-        DateTime? initial,
-      }) async {
+    BuildContext context, {
+    DateTime? initial,
+  }) async {
     DateTime selectedDate = initial ?? DateTime.now();
     TimeOfDay selectedTime = TimeOfDay.fromDateTime(initial ?? DateTime.now());
 
@@ -456,22 +483,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     Expanded(
                       child: tabIndex == 0
                           ? CalendarDatePicker(
-                        initialDate: selectedDate,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                        onDateChanged: (date) {
-                          selectedDate = date;
-                        },
-                      )
+                              initialDate: selectedDate,
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                              onDateChanged: (date) {
+                                selectedDate = date;
+                              },
+                            )
                           : Center(
-                        child: Text(
-                          selectedTime.format(context),
-                          style: const TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
+                              child: Text(
+                                selectedTime.format(context),
+                                style: const TextStyle(
+                                  fontSize: 40,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(
@@ -487,7 +514,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           ),
                           const SizedBox(width: 8),
                           ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                            ),
                             onPressed: () {
                               final result = DateTime(
                                 selectedDate.year,
@@ -498,7 +527,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               );
                               Navigator.pop(context, result);
                             },
-                            child: const Text("SAVE", style: TextStyle(color: secondaryColor)),
+                            child: const Text(
+                              "SAVE",
+                              style: TextStyle(color: secondaryColor),
+                            ),
                           ),
                         ],
                       ),
@@ -546,8 +578,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   bool _isTaskVisibleToUser(Task task, AuthViewModel authVM) {
-    if (authVM.appRole == AppRole.superAdmin || 
-        authVM.appRole == AppRole.admin || 
+    if (authVM.appRole == AppRole.superAdmin ||
+        authVM.appRole == AppRole.admin ||
         authVM.appRole == AppRole.officeStaff) {
       return true;
     }
@@ -561,8 +593,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       final cbEmail = (cb['email'] ?? '').toString().trim().toLowerCase();
       final cbName = (cb['name'] ?? '').toString().trim().toLowerCase();
       if ((cbUid.isNotEmpty && (cbUid == myUid || myUid.contains(cbUid))) ||
-          (cbEmail.isNotEmpty && (cbEmail == myEmail || myEmail.contains(cbEmail))) ||
-          (cbName.isNotEmpty && (cbName == myName || myName.contains(cbName)))) {
+          (cbEmail.isNotEmpty &&
+              (cbEmail == myEmail || myEmail.contains(cbEmail))) ||
+          (cbName.isNotEmpty &&
+              (cbName == myName || myName.contains(cbName)))) {
         return true;
       }
     }
@@ -583,10 +617,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final authVM = Provider.of<AuthViewModel>(context, listen: false);
     final snapshot = await tasksCollection.get();
 
-    final loaded = snapshot.docs.map((doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      return Task.fromMap(doc.id, data);
-    }).where((task) => _isTaskVisibleToUser(task, authVM)).toList();
+    final loaded = snapshot.docs
+        .map((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return Task.fromMap(doc.id, data);
+        })
+        .where((task) => _isTaskVisibleToUser(task, authVM))
+        .toList();
 
     loaded.sort(_taskComparator);
 
@@ -595,6 +632,36 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         ..clear()
         ..addAll(loaded);
     });
+
+    await _checkDueReminders();
+  }
+
+  void _startReminderChecker() {
+    _reminderTimer?.cancel();
+    _reminderTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      _checkDueReminders();
+    });
+  }
+
+  Future<void> _checkDueReminders() async {
+    try {
+      final snapshot = await tasksCollection.get();
+      final now = DateTime.now();
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final task = Task.fromMap(doc.id, data);
+
+        if (!task.isReminderDueAt(now)) continue;
+
+        await _sendReminderNotification(task);
+        await tasksCollection.doc(doc.id).update({'reminderSent': true});
+        task.reminderSent = true;
+      }
+    } catch (e) {
+      debugPrint('Error checking reminder notifications: $e');
+    }
   }
 
   Future<void> _addTaskToFirebase(Task task) async {
@@ -652,6 +719,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       text,
       priority: priority,
       reminder: reminder,
+      reminderSent: false,
       assignee: assignee,
       deadline: deadline,
       workType: workType,
@@ -687,25 +755,52 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _sendTaskAssignmentNotification(String? assignee, String taskTitle, AuthViewModel authVM) async {
-    if (assignee == null || assignee.trim().isEmpty || !authVM.allowNotifications) return;
+  Future<void> _sendReminderNotification(Task task) async {
+    final assignee = task.assignee;
+    if (assignee == null || assignee.trim().isEmpty) return;
+
+    try {
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'recipientName': assignee.trim(),
+        'title': 'Reminder',
+        'body': 'Reminder for task: "${task.title}"',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'type': 'task_reminder',
+      });
+    } catch (e) {
+      debugPrint('Error sending reminder notification: $e');
+    }
+  }
+
+  Future<void> _sendTaskAssignmentNotification(
+    String? assignee,
+    String taskTitle,
+    AuthViewModel authVM,
+  ) async {
+    if (assignee == null ||
+        assignee.trim().isEmpty ||
+        !authVM.allowNotifications)
+      return;
     final String cleanAssignee = assignee.trim().toLowerCase();
     final String myName = authVM.userName.trim().toLowerCase();
 
-    if (cleanAssignee == myName || cleanAssignee == authVM.userUid.toLowerCase() || cleanAssignee == authVM.userEmail.toLowerCase()) {
+    if (cleanAssignee == myName ||
+        cleanAssignee == authVM.userUid.toLowerCase() ||
+        cleanAssignee == authVM.userEmail.toLowerCase()) {
       return;
     }
 
     try {
       String? targetFcmToken;
-      
+
       // Look up FCM token in 'users' collection first
       final userQuery = await FirebaseFirestore.instance
           .collection('users')
           .where('name', isEqualTo: assignee.trim())
           .limit(1)
           .get();
-      
+
       if (userQuery.docs.isNotEmpty) {
         targetFcmToken = userQuery.docs.first.data()['fcmToken']?.toString();
       } else {
@@ -722,7 +817,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
       await FirebaseFirestore.instance.collection('notifications').add({
         'recipientName': assignee.trim(),
-        'recipientFcmToken': targetFcmToken, // 🚀 NAYA: FCM Token for background push
+        'recipientFcmToken':
+            targetFcmToken, // 🚀 NAYA: FCM Token for background push
         'title': 'New Task Assigned',
         'body': '${authVM.userName} assigned you a task: "$taskTitle"',
         'timestamp': FieldValue.serverTimestamp(),
@@ -736,19 +832,32 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   int _priorityOrder(String? p) {
     switch (p) {
-      case 'U1': return 1;
-      case 'U2': return 2;
-      case 'U3': return 3;
-      case 'Urgent': return 4;
-      case 'IMP': return 5;
-      case 'Today': return 6;
-      case 'Tomorrow': return 7;
-      case 'Day Later': return 8;
-      case 'Later': return 9;
-      case 'Process': return 10;
-      case 'Hold': return 11;
-      case 'Free': return 12;
-      default: return 100;
+      case 'U1':
+        return 1;
+      case 'U2':
+        return 2;
+      case 'U3':
+        return 3;
+      case 'Urgent':
+        return 4;
+      case 'IMP':
+        return 5;
+      case 'Today':
+        return 6;
+      case 'Tomorrow':
+        return 7;
+      case 'Day Later':
+        return 8;
+      case 'Later':
+        return 9;
+      case 'Process':
+        return 10;
+      case 'Hold':
+        return 11;
+      case 'Free':
+        return 12;
+      default:
+        return 100;
     }
   }
 
@@ -795,10 +904,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final snap = await FirebaseFirestore.instance.collection('users').get();
     final values = snap.docs
         .map((d) {
-      final data = d.data();
-      final name = (data['name'] ?? data['fullName'] ?? data['email'] ?? '').toString().trim();
-      return name;
-    })
+          final data = d.data();
+          final name = (data['name'] ?? data['fullName'] ?? data['email'] ?? '')
+              .toString()
+              .trim();
+          return name;
+        })
         .where((e) => e.isNotEmpty)
         .toList();
     _assigneesCache = values;
@@ -813,61 +924,109 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _showFloatingSheet(
-      BuildContext buttonContext,
-      FloatingSheetType type, {
-        void Function(String)? onSelected,
-        bool multiSelect = false,
-        List<String>? selectedValues,
-      }) async {
+    BuildContext buttonContext,
+    FloatingSheetType type, {
+    void Function(String)? onSelected,
+    bool multiSelect = false,
+    List<String>? selectedValues,
+  }) async {
     if (_floatingSheetOverlay != null && !multiSelect) {
       _hideFloatingSheet();
     }
-    
+
     // ... logic for fetching types ...
     List<String>? workTypes;
     if (type == FloatingSheetType.workType) {
-      final snap = await FirebaseFirestore.instance.collection('WorkType').get();
-      workTypes = snap.docs.map((d) => d['workType']?.toString() ?? '').where((e) => e.isNotEmpty).toList();
+      final snap = await FirebaseFirestore.instance
+          .collection('WorkType')
+          .get();
+      workTypes = snap.docs
+          .map((d) => d['workType']?.toString() ?? '')
+          .where((e) => e.isNotEmpty)
+          .toList();
     }
     List<String>? clients;
-    if (type == FloatingSheetType.clientName) clients = await _loadClientsFromFirestore();
+    if (type == FloatingSheetType.clientName)
+      clients = await _loadClientsFromFirestore();
 
     List<String>? projects;
     if (type == FloatingSheetType.refProject) {
       if (_projectsCache != null) {
         projects = _projectsCache;
       } else {
-        final snap = await FirebaseFirestore.instance.collection('projects').get();
-        _projectsCache = snap.docs.map((d) => d['projectName']?.toString() ?? '').where((e) => e.isNotEmpty).toList();
+        final snap = await FirebaseFirestore.instance
+            .collection('projects')
+            .get();
+        _projectsCache = snap.docs
+            .map((d) => d['projectName']?.toString() ?? '')
+            .where((e) => e.isNotEmpty)
+            .toList();
         projects = _projectsCache;
       }
     }
 
-    final BuildContext rootContext = Navigator.of(buttonContext, rootNavigator: true).context;
+    final BuildContext rootContext = Navigator.of(
+      buttonContext,
+      rootNavigator: true,
+    ).context;
 
     List<String>? assignees;
-    if (type == FloatingSheetType.assign) assignees = await _loadAssigneesFromFirestore();
+    if (type == FloatingSheetType.assign)
+      assignees = await _loadAssigneesFromFirestore();
 
     final RenderBox button = buttonContext.findRenderObject() as RenderBox;
-    final RenderBox overlay = Overlay.of(buttonContext).context.findRenderObject() as RenderBox;
-    final Offset buttonPosition = button.localToGlobal(Offset.zero, ancestor: overlay);
+    final RenderBox overlay =
+        Overlay.of(buttonContext).context.findRenderObject() as RenderBox;
+    final Offset buttonPosition = button.localToGlobal(
+      Offset.zero,
+      ancestor: overlay,
+    );
     final Size overlaySize = overlay.size;
 
     List<Widget> buildOptions(StateSetter? setOverlayState) {
       List<String> options = [];
       switch (type) {
         case FloatingSheetType.priority:
-          options = ["U1", "U2", "U3", "Urgent", "IMP", "Today", "Tomorrow", "Day Later", "Later", "Process", "Hold", "Free"];
+          options = [
+            "U1",
+            "U2",
+            "U3",
+            "Urgent",
+            "IMP",
+            "Today",
+            "Tomorrow",
+            "Day Later",
+            "Later",
+            "Process",
+            "Hold",
+            "Free",
+          ];
           break;
         case FloatingSheetType.remind:
         case FloatingSheetType.deadline:
-          options = ["Today (1 hour)", "Today (3 hour)", "Today (6 hour)", "Tomorrow (12 pm)", "Custom"];
+          options = [
+            "Today (1 hour)",
+            "Today (3 hour)",
+            "Today (6 hour)",
+            "Tomorrow (12 pm)",
+            "Custom",
+          ];
           break;
         case FloatingSheetType.assign:
           options = assignees ?? [];
           break;
         case FloatingSheetType.workType:
-          options = workTypes ?? ["Call", "Message", "WhatsApp", "1st Visit", "Revisit", "Follow Up Call", "Others"];
+          options =
+              workTypes ??
+              [
+                "Call",
+                "Message",
+                "WhatsApp",
+                "1st Visit",
+                "Revisit",
+                "Follow Up Call",
+                "Others",
+              ];
           break;
         case FloatingSheetType.folder:
           options = ["Personal", "Office", "Freelance", "Custom"];
@@ -884,34 +1043,60 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         final bool isSelected = selectedValues?.contains(opt) ?? false;
         return ListTile(
           dense: true,
-          leading: type == FloatingSheetType.priority || type == FloatingSheetType.remind || type == FloatingSheetType.deadline 
-              ? Icon(type == FloatingSheetType.priority ? Icons.flag : Icons.access_time, size: 18) 
+          leading:
+              type == FloatingSheetType.priority ||
+                  type == FloatingSheetType.remind ||
+                  type == FloatingSheetType.deadline
+              ? Icon(
+                  type == FloatingSheetType.priority
+                      ? Icons.flag
+                      : Icons.access_time,
+                  size: 18,
+                )
               : null,
-          title: Text(opt, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, color: isSelected ? secondaryColor : Colors.black87)),
-          trailing: isSelected ? const Icon(Icons.check, size: 16, color: secondaryColor) : null,
+          title: Text(
+            opt,
+            style: TextStyle(
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: isSelected ? secondaryColor : Colors.black87,
+            ),
+          ),
+          trailing: isSelected
+              ? const Icon(Icons.check, size: 16, color: secondaryColor)
+              : null,
           onTap: () async {
             final now = DateTime.now();
             final lower = opt.toLowerCase();
             String finalVal = opt;
 
-            if (type == FloatingSheetType.remind || type == FloatingSheetType.deadline) {
+            if (type == FloatingSheetType.remind ||
+                type == FloatingSheetType.deadline) {
               DateTime? computed;
               if (lower.contains('custom')) {
                 if (!multiSelect) _hideFloatingSheet();
                 computed = await pickDateTimeWithTabs(rootContext);
-              } else if (lower.contains('1 hour')) computed = now.add(const Duration(hours: 1));
-              else if (lower.contains('3 hour')) computed = now.add(const Duration(hours: 3));
-              else if (lower.contains('6 hour')) computed = now.add(const Duration(hours: 6));
+              } else if (lower.contains('1 hour'))
+                computed = now.add(const Duration(hours: 1));
+              else if (lower.contains('3 hour'))
+                computed = now.add(const Duration(hours: 3));
+              else if (lower.contains('6 hour'))
+                computed = now.add(const Duration(hours: 6));
               else if (lower.contains('tomorrow')) {
-                final t = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+                final t = DateTime(
+                  now.year,
+                  now.month,
+                  now.day,
+                ).add(const Duration(days: 1));
                 computed = DateTime(t.year, t.month, t.day, 12, 0);
               }
-              if (computed != null) finalVal = computed.toIso8601String();
-              else if (lower.contains('custom')) return; // Cancelled
+              if (computed != null)
+                finalVal = computed.toIso8601String();
+              else if (lower.contains('custom'))
+                return; // Cancelled
             }
 
             if (onSelected != null) onSelected(finalVal);
-            
+
             if (!multiSelect) {
               _searchController.clear();
               _searchQuery = '';
@@ -929,7 +1114,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     const double menuHeightEstimate = 320;
 
     double left = buttonPosition.dx;
-    if (left + menuWidth > overlaySize.width - padding) left = overlaySize.width - menuWidth - padding;
+    if (left + menuWidth > overlaySize.width - padding)
+      left = overlaySize.width - menuWidth - padding;
     if (left < padding) left = padding;
 
     double top = buttonPosition.dy - menuHeightEstimate;
@@ -938,7 +1124,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _floatingSheetOverlay = OverlayEntry(
       builder: (_) => Stack(
         children: [
-          Positioned.fill(child: GestureDetector(onTap: _hideFloatingSheet, behavior: HitTestBehavior.translucent)),
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: _hideFloatingSheet,
+              behavior: HitTestBehavior.translucent,
+            ),
+          ),
           Positioned(
             left: left,
             top: top,
@@ -950,10 +1141,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 width: menuWidth,
                 child: StatefulBuilder(
                   builder: (context, setOverlayState) {
-                    final bool showSearch = type == FloatingSheetType.assign || type == FloatingSheetType.workType || type == FloatingSheetType.clientName || type == FloatingSheetType.refProject;
+                    final bool showSearch =
+                        type == FloatingSheetType.assign ||
+                        type == FloatingSheetType.workType ||
+                        type == FloatingSheetType.clientName ||
+                        type == FloatingSheetType.refProject;
                     final allOptions = buildOptions(setOverlayState);
-                    final filteredOptions = showSearch && _searchQuery.isNotEmpty
-                        ? allOptions.where((tile) => ((tile as ListTile).title as Text).data!.toLowerCase().contains(_searchQuery.toLowerCase())).toList()
+                    final filteredOptions =
+                        showSearch && _searchQuery.isNotEmpty
+                        ? allOptions
+                              .where(
+                                (tile) => ((tile as ListTile).title as Text)
+                                    .data!
+                                    .toLowerCase()
+                                    .contains(_searchQuery.toLowerCase()),
+                              )
+                              .toList()
                         : allOptions;
 
                     return Column(
@@ -967,20 +1170,51 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               autofocus: true,
                               decoration: InputDecoration(
                                 hintText: 'Search...',
-                                hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade400),
-                                prefixIcon: Icon(Icons.search, size: 18, color: Colors.grey.shade50),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                isDense: true, filled: true, fillColor: Colors.grey.shade100,
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                hintStyle: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade400,
+                                ),
+                                prefixIcon: Icon(
+                                  Icons.search,
+                                  size: 18,
+                                  color: Colors.grey.shade50,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                isDense: true,
+                                filled: true,
+                                fillColor: Colors.grey.shade100,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide.none,
+                                ),
                               ),
-                              onChanged: (val) { _searchQuery = val; setOverlayState(() {}); },
+                              onChanged: (val) {
+                                _searchQuery = val;
+                                setOverlayState(() {});
+                              },
                             ),
                           ),
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxHeight: 250),
                           child: filteredOptions.isEmpty
-                              ? const Padding(padding: EdgeInsets.all(16), child: Text('No results', style: TextStyle(fontSize: 13, color: Colors.grey)))
-                              : ListView(padding: EdgeInsets.zero, shrinkWrap: true, children: filteredOptions),
+                              ? const Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Text(
+                                    'No results',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                )
+                              : ListView(
+                                  padding: EdgeInsets.zero,
+                                  shrinkWrap: true,
+                                  children: filteredOptions,
+                                ),
                         ),
                         if (multiSelect)
                           Padding(
@@ -988,9 +1222,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             child: SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(backgroundColor: secondaryColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: secondaryColor,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
                                 onPressed: _hideFloatingSheet,
-                                child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
+                                child: const Text(
+                                  'Done',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
                               ),
                             ),
                           ),
@@ -1022,9 +1265,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   void _openAddTaskSheet() {
-    _isAddTaskSheetOpen = true;
-    _wasKeyboardVisible = false;
-
     // 🚀 NAYA: Automatically request focus and show keyboard when sheet opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_focusNode.canRequestFocus) {
@@ -1044,53 +1284,51 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       showDragHandle: true, // 🚀 NAYA: Shows the handle for better UX
       backgroundColor: Colors.white,
       constraints: kIsWeb
-          ? BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.85,
-      )
+          ? BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85)
           : null,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (sheetContext) => StatefulBuilder(
-          builder: (context, setModalState) {
-            final viewInsets = MediaQuery.of(sheetContext).viewInsets;
-            final screenWidth = MediaQuery.of(sheetContext).size.width;
-            final isMobileWeb = kIsWeb && screenWidth < 600;
+        builder: (context, setModalState) {
+          final viewInsets = MediaQuery.of(sheetContext).viewInsets;
+          final screenWidth = MediaQuery.of(sheetContext).size.width;
+          final isMobileWeb = kIsWeb && screenWidth < 600;
 
-            final systemNavBar = MediaQuery.of(sheetContext).padding.bottom;
-            final bottomPadding = isMobileWeb
-                ? 350.0
-                : (kIsWeb ? 16.0 : (16.0 + viewInsets.bottom + systemNavBar));
+          final systemNavBar = MediaQuery.of(sheetContext).padding.bottom;
+          final bottomPadding = isMobileWeb
+              ? 350.0
+              : (kIsWeb ? 16.0 : (16.0 + viewInsets.bottom + systemNavBar));
 
-            return PopScope<Object?>(
-              canPop: true,
-              onPopInvokedWithResult: (didPop, result) {
-                _focusNode.unfocus();
-                FocusScope.of(context).unfocus();
-                if (!kIsWeb) {
-                  SystemChannels.textInput.invokeMethod('textInput.hide');
-                }
-              },
-              child: SingleChildScrollView(
-                physics: const ClampingScrollPhysics(), // 🚀 NAYA: Better for bottom sheets
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    top: 16,
-                    bottom: bottomPadding,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Builder(
-                              builder: (textFieldCtx) => TextField(
-                                controller: taskName,
-                                focusNode: _focusNode,
-                                autofocus: true, // 🚀 NAYA: Always autofocus when sheet opens
+          return PopScope<Object?>(
+            canPop: true,
+            onPopInvokedWithResult: (didPop, result) {
+              _focusNode.unfocus();
+              FocusScope.of(context).unfocus();
+              if (!kIsWeb) {
+                SystemChannels.textInput.invokeMethod('textInput.hide');
+              }
+            },
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(), // 🚀 NAYA: Better for bottom sheets
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 16,
+                  bottom: bottomPadding,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Builder(
+                            builder: (textFieldCtx) => TextField(
+                              controller: taskName,
+                              focusNode: _focusNode,
+                              autofocus: true, // 🚀 NAYA: Always autofocus when sheet opens
                               decoration: const InputDecoration(
                                 hintText: "Add a task",
                                 border: InputBorder.none,
@@ -1098,20 +1336,36 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               onChanged: (val) {
                                 if (val.isEmpty) return;
                                 final lastChar = val.substring(val.length - 1);
-                                
+
                                 FloatingSheetType? triggerType;
                                 String symbol = '';
-                                if (lastChar == '@') { triggerType = FloatingSheetType.assign; symbol = '@'; }
-                                else if (lastChar == '#') { triggerType = FloatingSheetType.clientName; symbol = '#'; }
-                                else if (lastChar == '-') { triggerType = FloatingSheetType.priority; symbol = '-'; }
-                                else if (lastChar == '!') { triggerType = FloatingSheetType.deadline; symbol = '!'; }
-                                else if (lastChar == '+') { triggerType = FloatingSheetType.workType; symbol = '+'; }
-                                else if (lastChar == '*') { triggerType = FloatingSheetType.remind; symbol = '*'; }
-                                else if (lastChar == '^') { triggerType = FloatingSheetType.refProject; symbol = '^'; }
+                                if (lastChar == '@') {
+                                  triggerType = FloatingSheetType.assign;
+                                  symbol = '@';
+                                } else if (lastChar == '#') {
+                                  triggerType = FloatingSheetType.clientName;
+                                  symbol = '#';
+                                } else if (lastChar == '-') {
+                                  triggerType = FloatingSheetType.priority;
+                                  symbol = '-';
+                                } else if (lastChar == '!') {
+                                  triggerType = FloatingSheetType.deadline;
+                                  symbol = '!';
+                                } else if (lastChar == '+') {
+                                  triggerType = FloatingSheetType.workType;
+                                  symbol = '+';
+                                } else if (lastChar == '*') {
+                                  triggerType = FloatingSheetType.remind;
+                                  symbol = '*';
+                                } else if (lastChar == '^') {
+                                  triggerType = FloatingSheetType.refProject;
+                                  symbol = '^';
+                                }
 
                                 if (triggerType != null) {
-                                  final bool isMulti = triggerType == FloatingSheetType.assign;
-                                  
+                                  final bool isMulti =
+                                      triggerType == FloatingSheetType.assign;
+
                                   // Get currently selected values from the text to show checks in menu
                                   List<String> currentSelections = [];
                                   if (isMulti) {
@@ -1124,69 +1378,102 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   }
 
                                   _showFloatingSheet(
-                                    textFieldCtx, 
-                                    triggerType, 
+                                    textFieldCtx,
+                                    triggerType,
                                     multiSelect: isMulti,
                                     selectedValues: currentSelections,
                                     onSelected: (sel) {
                                       setState(() {
                                         String insertVal = sel;
-                                        if (triggerType == FloatingSheetType.deadline || triggerType == FloatingSheetType.remind) {
+                                        if (triggerType ==
+                                                FloatingSheetType.deadline ||
+                                            triggerType ==
+                                                FloatingSheetType.remind) {
                                           insertVal = _formatDateTime(sel);
                                         }
 
                                         final currentText = taskName.text;
-                                        
+
                                         if (isMulti) {
                                           final fullToken = '$symbol$insertVal';
-                                          if (!currentText.contains(fullToken)) {
+                                          if (!currentText.contains(
+                                            fullToken,
+                                          )) {
                                             if (currentText.endsWith(symbol)) {
-                                              taskName.text = '$currentText$insertVal ';
+                                              taskName.text =
+                                                  '$currentText$insertVal ';
                                             } else {
-                                              taskName.text = '$currentText $fullToken ';
+                                              taskName.text =
+                                                  '$currentText $fullToken ';
                                             }
                                           } else {
-                                            taskName.text = currentText.replaceFirst('$fullToken ', '').replaceFirst(fullToken, '').trim() + ' ';
+                                            taskName.text =
+                                                currentText
+                                                    .replaceFirst(
+                                                      '$fullToken ',
+                                                      '',
+                                                    )
+                                                    .replaceFirst(fullToken, '')
+                                                    .trim() +
+                                                ' ';
                                           }
                                         } else {
-                                          taskName.text = '$currentText$insertVal ';
+                                          taskName.text =
+                                              '$currentText$insertVal ';
                                         }
 
-                                        taskName.selection = TextSelection.collapsed(offset: taskName.text.length);
+                                        taskName.selection =
+                                            TextSelection.collapsed(
+                                              offset: taskName.text.length,
+                                            );
 
                                         // Sync bottom buttons state
-                                        if (triggerType == FloatingSheetType.priority) {
+                                        if (triggerType ==
+                                            FloatingSheetType.priority) {
                                           _newTaskPriority = sel;
-                                        } else if (triggerType == FloatingSheetType.remind) {
+                                        } else if (triggerType ==
+                                            FloatingSheetType.remind) {
                                           _newTaskReminder = sel;
-                                        } else if (triggerType == FloatingSheetType.assign) {
-                                          if (_newTaskAssignee == null || _newTaskAssignee!.isEmpty) _newTaskAssignee = sel;
-                                          else if (!_newTaskAssignee!.contains(sel)) _newTaskAssignee = '$_newTaskAssignee, $sel';
-                                        } else if (triggerType == FloatingSheetType.deadline) {
+                                        } else if (triggerType ==
+                                            FloatingSheetType.assign) {
+                                          if (_newTaskAssignee == null ||
+                                              _newTaskAssignee!.isEmpty)
+                                            _newTaskAssignee = sel;
+                                          else if (!_newTaskAssignee!.contains(
+                                            sel,
+                                          ))
+                                            _newTaskAssignee =
+                                                '$_newTaskAssignee, $sel';
+                                        } else if (triggerType ==
+                                            FloatingSheetType.deadline) {
                                           _newTaskDeadline = sel;
-                                        } else if (triggerType == FloatingSheetType.workType) {
+                                        } else if (triggerType ==
+                                            FloatingSheetType.workType) {
                                           _newTaskWorkType = sel;
-                                        } else if (triggerType == FloatingSheetType.folder) {
+                                        } else if (triggerType ==
+                                            FloatingSheetType.folder) {
                                           _newTaskFolder = sel;
-                                        } else if (triggerType == FloatingSheetType.clientName) {
+                                        } else if (triggerType ==
+                                            FloatingSheetType.clientName) {
                                           _newTaskClientName = sel;
-                                        } else if (triggerType == FloatingSheetType.refProject) {
+                                        } else if (triggerType ==
+                                            FloatingSheetType.refProject) {
                                           _newTaskRefProject = sel;
                                         }
                                       });
                                       setModalState(() {});
-                                    }
+                                    },
                                   );
-                              }
-                            },
-                            onSubmitted: (_) async {
-                              await _handleAddTaskFromSheet();
-                              setModalState(() {});
-                            },
+                                }
+                              },
+                              onSubmitted: (_) async {
+                                await _handleAddTaskFromSheet();
+                                setModalState(() {});
+                              },
+                            ),
                           ),
                         ),
-                      ),
-                      IconButton(
+                        IconButton(
                           onPressed: () async {
                             await _handleAddTaskFromSheet();
                             setModalState(() {});
@@ -1200,57 +1487,59 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       height: 56,
                       child: (kIsWeb && screenWidth >= 600)
                           ? Center(
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          alignment: WrapAlignment.center,
-                          children: _buttonOrder.map((type) {
-                            return _buildBottomSheetButtonWithState(
-                              type,
-                              setModalState,
-                            );
-                          }).toList(),
-                        ),
-                      )
-                          : ScrollConfiguration(
-                        behavior: ScrollConfiguration.of(sheetContext)
-                            .copyWith(
-                          dragDevices: {
-                            PointerDeviceKind.touch,
-                            PointerDeviceKind.mouse,
-                            PointerDeviceKind.trackpad,
-                          },
-                        ),
-                        child: ReorderableListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          physics: const ClampingScrollPhysics(),
-                          buildDefaultDragHandles: false,
-                          itemCount: _buttonOrder.length,
-                          onReorder: (oldIndex, newIndex) {
-                            setState(() {
-                              if (newIndex > oldIndex) newIndex -= 1;
-                              final item = _buttonOrder.removeAt(oldIndex);
-                              _buttonOrder.insert(newIndex, item);
-                            });
-                            _saveButtonOrder();
-                            setModalState(() {});
-                          },
-                          itemBuilder: (context, index) {
-                            final type = _buttonOrder[index];
-                            return Padding(
-                              key: ValueKey(type),
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ReorderableDelayedDragStartListener(
-                                index: index,
-                                child: _buildBottomSheetButtonWithState(
-                                  type,
-                                  setModalState,
-                                ),
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                alignment: WrapAlignment.center,
+                                children: _buttonOrder.map((type) {
+                                  return _buildBottomSheetButtonWithState(
+                                    type,
+                                    setModalState,
+                                  );
+                                }).toList(),
                               ),
-                            );
-                          },
-                        ),
-                      ),
+                            )
+                          : ScrollConfiguration(
+                              behavior: ScrollConfiguration.of(sheetContext)
+                                  .copyWith(
+                                    dragDevices: {
+                                      PointerDeviceKind.touch,
+                                      PointerDeviceKind.mouse,
+                                      PointerDeviceKind.trackpad,
+                                    },
+                                  ),
+                              child: ReorderableListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                physics: const ClampingScrollPhysics(),
+                                buildDefaultDragHandles: false,
+                                itemCount: _buttonOrder.length,
+                                onReorder: (oldIndex, newIndex) {
+                                  setState(() {
+                                    if (newIndex > oldIndex) newIndex -= 1;
+                                    final item = _buttonOrder.removeAt(
+                                      oldIndex,
+                                    );
+                                    _buttonOrder.insert(newIndex, item);
+                                  });
+                                  _saveButtonOrder();
+                                  setModalState(() {});
+                                },
+                                itemBuilder: (context, index) {
+                                  final type = _buttonOrder[index];
+                                  return Padding(
+                                    key: ValueKey(type),
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: ReorderableDelayedDragStartListener(
+                                      index: index,
+                                      child: _buildBottomSheetButtonWithState(
+                                        type,
+                                        setModalState,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
                     ),
                   ],
                 ),
@@ -1260,8 +1549,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         },
       ),
     ).whenComplete(() {
-      _isAddTaskSheetOpen = false;
-      _wasKeyboardVisible = false;
       _focusNode.unfocus();
       FocusScope.of(context).unfocus();
       if (!kIsWeb) {
@@ -1271,10 +1558,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   void _openTaskDetail(Task task) {
-    context.push(
-      '/task',
-      extra: task,
-    );
+    context.push('/task', extra: task);
   }
 
   Future<void> _confirmDeleteSelected() async {
@@ -1389,7 +1673,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         },
         child: Container(
           decoration: BoxDecoration(
-            color: isSelected ? primaryColor.withValues(alpha: 0.1) : Colors.white,
+            color: isSelected
+                ? primaryColor.withValues(alpha: 0.1)
+                : Colors.white,
             borderRadius: BorderRadius.circular(8),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -1410,17 +1696,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   padding: const EdgeInsets.only(right: 14.0),
                   child: isSelected
                       ? const Icon(
-                    Icons.check_circle,
-                    size: 28,
-                    color: secondaryColor,
-                  )
+                          Icons.check_circle,
+                          size: 28,
+                          color: secondaryColor,
+                        )
                       : Icon(
-                    task.isDone
-                        ? Icons.check_circle
-                        : Icons.radio_button_unchecked,
-                    size: 28,
-                    color: task.isDone ? Colors.green : Colors.black54,
-                  ),
+                          task.isDone
+                              ? Icons.check_circle
+                              : Icons.radio_button_unchecked,
+                          size: 28,
+                          color: task.isDone ? Colors.green : Colors.black54,
+                        ),
                 ),
               ),
               Expanded(
@@ -1579,7 +1865,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   List<Task> _getOverdueTasks() => tasks.where((t) => _isOverdue(t)).toList();
-  List<Task> _getPendingTasks() => tasks.where((t) => !t.isDone && !_isOverdue(t)).toList();
+  List<Task> _getPendingTasks() =>
+      tasks.where((t) => !t.isDone && !_isOverdue(t)).toList();
   List<Task> _getDoneTasks() => tasks.where((t) => t.isDone).toList();
 
   List<Task> _getMyTasks() {
@@ -1596,16 +1883,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         final cbEmail = (cb['email'] ?? '').toString().trim().toLowerCase();
         final cbName = (cb['name'] ?? '').toString().trim().toLowerCase();
         if ((cbUid.isNotEmpty && (cbUid == myUid || myUid.contains(cbUid))) ||
-            (cbEmail.isNotEmpty && (cbEmail == myEmail || myEmail.contains(cbEmail))) ||
-            (cbName.isNotEmpty && (cbName == myName || myName.contains(cbName)))) {
+            (cbEmail.isNotEmpty &&
+                (cbEmail == myEmail || myEmail.contains(cbEmail))) ||
+            (cbName.isNotEmpty &&
+                (cbName == myName || myName.contains(cbName)))) {
           isCreator = true;
         }
       }
       final assignee = (task.assignee ?? '').toString().trim().toLowerCase();
-      bool isAssignee = assignee.isNotEmpty && 
+      bool isAssignee =
+          assignee.isNotEmpty &&
           ((myName.isNotEmpty && assignee.contains(myName)) ||
-           (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
-           (myUid.isNotEmpty && assignee.contains(myUid)));
+              (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
+              (myUid.isNotEmpty && assignee.contains(myUid)));
 
       return isCreator || isAssignee;
     }).toList();
@@ -1616,7 +1906,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24.0),
-          child: Text("No tasks found in this category.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+          child: Text(
+            "No tasks found in this category.",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey),
+          ),
         ),
       );
     }
@@ -1637,12 +1931,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Widget _buildGroupByAssignView() {
     final Map<String, List<Task>> grouped = {};
     for (var t in tasks) {
-      final assignee = (t.assignee == null || t.assignee!.trim().isEmpty) ? 'Unassigned' : t.assignee!.trim();
+      final assignee = (t.assignee == null || t.assignee!.trim().isEmpty)
+          ? 'Unassigned'
+          : t.assignee!.trim();
       grouped.putIfAbsent(assignee, () => []).add(t);
     }
 
     if (grouped.isEmpty) {
-      return const Center(child: Text('No assignee data available.', style: TextStyle(color: Colors.grey)));
+      return const Center(
+        child: Text(
+          'No assignee data available.',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
     }
 
     final assignees = grouped.keys.toList()..sort();
@@ -1671,15 +1972,28 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ],
           ),
           child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 10,
+            ),
             leading: CircleAvatar(
               backgroundColor: primaryColor.withOpacity(0.3),
               child: Text(
                 assigneeName.isNotEmpty ? assigneeName[0].toUpperCase() : '?',
-                style: const TextStyle(fontWeight: FontWeight.bold, color: secondaryColor),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: secondaryColor,
+                ),
               ),
             ),
-            title: Text(assigneeName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87)),
+            title: Text(
+              assigneeName,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                color: Colors.black87,
+              ),
+            ),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
@@ -1687,7 +2001,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
             ),
-            trailing: const Icon(Icons.chevron_right_rounded, color: secondaryColor),
+            trailing: const Icon(
+              Icons.chevron_right_rounded,
+              color: secondaryColor,
+            ),
             onTap: () => _showAssigneeTasksModal(assigneeName, assigneeTasks),
           ),
         );
@@ -1696,10 +2013,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   void _showAssigneeTasksModal(String assigneeName, List<Task> assigneeTasks) {
-    context.push('/assignee-tasks', extra: {
-      'assigneeName': assigneeName,
-      'tasks': assigneeTasks,
-    });
+    context.push(
+      '/assignee-tasks',
+      extra: {'assigneeName': assigneeName, 'tasks': assigneeTasks},
+    );
   }
 
   @override
@@ -1710,66 +2027,66 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       backgroundColor: Colors.white,
       appBar: selectionActive
           ? AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: false,
-        automaticallyImplyLeading: false,
-        iconTheme: const IconThemeData(color: secondaryColor),
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: secondaryColor),
-          onPressed: () {
-            setState(() {
-              _selected.clear();
-            });
-          },
-        ),
-        title: Text(
-          '${_selected.length} selected',
-          style: const TextStyle(
-            color: secondaryColor,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(
-              Icons.delete_outline,
-              color: Colors.redAccent,
-            ),
-            onPressed: _confirmDeleteSelected,
-          ),
-          const SizedBox(width: 8),
-        ],
-      )
+              backgroundColor: Colors.white,
+              elevation: 0,
+              centerTitle: false,
+              automaticallyImplyLeading: false,
+              iconTheme: const IconThemeData(color: secondaryColor),
+              leading: IconButton(
+                icon: const Icon(Icons.close, color: secondaryColor),
+                onPressed: () {
+                  setState(() {
+                    _selected.clear();
+                  });
+                },
+              ),
+              title: Text(
+                '${_selected.length} selected',
+                style: const TextStyle(
+                  color: secondaryColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.redAccent,
+                  ),
+                  onPressed: _confirmDeleteSelected,
+                ),
+                const SizedBox(width: 8),
+              ],
+            )
           : AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu, color: Colors.black),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
-        ),
-        title: Text(
-          widget.title,
-          style: const TextStyle(
-            color: secondaryColor,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
+              backgroundColor: Colors.white,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              leading: Builder(
+                builder: (context) => IconButton(
+                  icon: const Icon(Icons.menu, color: Colors.black),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                ),
+              ),
+              title: Text(
+                widget.title,
+                style: const TextStyle(
+                  color: secondaryColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
       drawer: selectionActive ? null : const AppDrawer(),
       body: tasks.isEmpty && !selectionActive
           ? const Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 24.0),
-          child: Text(
-            "Tasks show up here if they aren't part of any lists you've created.",
-            textAlign: TextAlign.center,
-          ),
-        ),
-      )
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24.0),
+                child: Text(
+                  "Tasks show up here if they aren't part of any lists you've created.",
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
           : Column(
               children: [
                 Container(
@@ -1783,9 +2100,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     indicatorWeight: 3.0,
                     dividerColor: Colors.transparent,
                     labelColor: Colors.black,
-                    labelStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+                    labelStyle: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                    ),
                     unselectedLabelColor: Colors.grey.shade500,
-                    unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    unselectedLabelStyle: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
                     labelPadding: const EdgeInsets.symmetric(horizontal: 16),
                     tabs: [
                       Tab(text: 'My Work (${_getMyTasks().length})'),

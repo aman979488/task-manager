@@ -2,16 +2,10 @@ class TaskStep {
   String title;
   bool isDone;
 
-  TaskStep({
-    required this.title,
-    this.isDone = false,
-  });
+  TaskStep({required this.title, this.isDone = false});
 
   Map<String, dynamic> toMap() {
-    return {
-      'title': title,
-      'isDone': isDone,
-    };
+    return {'title': title, 'isDone': isDone};
   }
 
   factory TaskStep.fromMap(Map<String, dynamic> data) {
@@ -27,18 +21,10 @@ class TaskFile {
   int size;
   String? path;
 
-  TaskFile({
-    required this.name,
-    required this.size,
-    this.path,
-  });
+  TaskFile({required this.name, required this.size, this.path});
 
   Map<String, dynamic> toMap() {
-    return {
-      'name': name,
-      'size': size,
-      'path': path,
-    };
+    return {'name': name, 'size': size, 'path': path};
   }
 
   factory TaskFile.fromMap(Map<String, dynamic> data) {
@@ -60,6 +46,7 @@ class Task {
   // button selections
   String? priority;
   String? reminder;
+  bool reminderSent;
   String? assignee;
   String? deadline;
   String? workType;
@@ -82,33 +69,34 @@ class Task {
   List<TaskFile> files;
 
   Task(
-      this.title, {
-        this.id,
-        this.isDone = false,
-        this.note = '',
-        String? createdDate,
-        this.priority,
-        this.reminder,
-        this.assignee,
-        this.deadline,
-        this.workType,
-        this.folder,
-        this.clientName,
-        this.refProject,
-        this.startTime,
-        this.endTime,
-        this.accompaniedBy,
-        this.monitor,
-        this.remark,
-        this.createdBy,
-        this.editedBy,
-        this.assigneeUid,
-        this.priorityUpdatedAt,
-        List<TaskStep>? steps,
-        List<TaskFile>? files,
-      })  : createdDate = createdDate ?? _getCurrentDateTime(),
-        steps = steps ?? <TaskStep>[],
-        files = files ?? <TaskFile>[];
+    this.title, {
+    this.id,
+    this.isDone = false,
+    this.note = '',
+    String? createdDate,
+    this.priority,
+    this.reminder,
+    this.reminderSent = false,
+    this.assignee,
+    this.deadline,
+    this.workType,
+    this.folder,
+    this.clientName,
+    this.refProject,
+    this.startTime,
+    this.endTime,
+    this.accompaniedBy,
+    this.monitor,
+    this.remark,
+    this.createdBy,
+    this.editedBy,
+    this.assigneeUid,
+    this.priorityUpdatedAt,
+    List<TaskStep>? steps,
+    List<TaskFile>? files,
+  }) : createdDate = createdDate ?? _getCurrentDateTime(),
+       steps = steps ?? <TaskStep>[],
+       files = files ?? <TaskFile>[];
 
   Map<String, dynamic> toMap() {
     return {
@@ -118,6 +106,7 @@ class Task {
       'createdDate': createdDate,
       'priority': priority,
       'reminder': reminder,
+      'reminderSent': reminderSent,
       'assignee': assignee,
       'deadline': deadline,
       'workType': workType,
@@ -150,6 +139,7 @@ class Task {
       createdDate: data['createdDate'],
       priority: data['priority'],
       reminder: data['reminder'],
+      reminderSent: data['reminderSent'] ?? false,
       assignee: data['assignee'],
       deadline: data['deadline'],
       workType: data['workType'],
@@ -161,19 +151,34 @@ class Task {
       accompaniedBy: data['accompaniedBy'],
       monitor: data['monitor'],
       remark: data['remark'],
-      createdBy: data['createdBy'] is Map ? Map<String, dynamic>.from(data['createdBy']) : null,
-      editedBy: data['editedBy'] is Map ? Map<String, dynamic>.from(data['editedBy']) : null,
+      createdBy: data['createdBy'] is Map
+          ? Map<String, dynamic>.from(data['createdBy'])
+          : null,
+      editedBy: data['editedBy'] is Map
+          ? Map<String, dynamic>.from(data['editedBy'])
+          : null,
       assigneeUid: data['assigneeUid'],
       priorityUpdatedAt: data['priorityUpdatedAt'] as int?,
-      steps: rawSteps
-          ?.map((e) => TaskStep.fromMap(e as Map<String, dynamic>))
-          .toList() ??
+      steps:
+          rawSteps
+              ?.map((e) => TaskStep.fromMap(e as Map<String, dynamic>))
+              .toList() ??
           <TaskStep>[],
-      files: rawFiles
-          ?.map((e) => TaskFile.fromMap(e as Map<String, dynamic>))
-          .toList() ??
+      files:
+          rawFiles
+              ?.map((e) => TaskFile.fromMap(e as Map<String, dynamic>))
+              .toList() ??
           <TaskFile>[],
     );
+  }
+
+  bool isReminderDueAt(DateTime now) {
+    if (reminder == null || reminderSent) return false;
+
+    final reminderTime = DateTime.tryParse(reminder!);
+    if (reminderTime == null) return false;
+
+    return !reminderTime.isAfter(now);
   }
 }
 
