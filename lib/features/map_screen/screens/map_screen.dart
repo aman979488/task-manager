@@ -1014,7 +1014,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
     for (final doc in snapshots[1].docs) {
       final data = doc.data();
-      addName(data['cpName'] ?? data['name'] ?? data['fullName'] ?? data['email']);
+      addName(
+        data['cpName'] ?? data['name'] ?? data['fullName'] ?? data['email'],
+      );
     }
 
     final values = valuesByName.values.toList()
@@ -1515,7 +1517,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                         final currentText = taskName.text;
 
                                         if (isMulti) {
-                                          final cursor = taskName.selection
+                                          final cursor = taskName
+                                              .selection
                                               .baseOffset
                                               .clamp(0, currentText.length)
                                               .toInt();
