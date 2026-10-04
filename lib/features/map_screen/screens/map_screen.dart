@@ -1379,34 +1379,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildShortcutHint(String symbol, String description) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 24,
-            child: Text(
-              symbol,
-              style: const TextStyle(
-                color: secondaryColor,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              description,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _openAddTaskSheet() {
     // 🚀 NAYA: Automatically request focus and show keyboard when sheet opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1634,56 +1606,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           icon: const Icon(Icons.send, color: secondaryColor),
                         ),
                       ],
-                    ),
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(top: 4, bottom: 8),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(bottom: 4),
-                            child: Text(
-                              'Quick shortcuts',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: secondaryColor,
-                              ),
-                            ),
-                          ),
-                          _buildShortcutHint(
-                            '@',
-                            'Type this to quickly assign the task to a user.',
-                          ),
-                          _buildShortcutHint(
-                            '#',
-                            'Type this to select a Client Name from your leads.',
-                          ),
-                          _buildShortcutHint(
-                            '-',
-                            'Type this to set the Priority (U1, U2, Today, etc.).',
-                          ),
-                          _buildShortcutHint(
-                            '!',
-                            'Type this to set a Deadline (presets like Tomorrow, or the Calendar).',
-                          ),
-                          _buildShortcutHint(
-                            '+',
-                            'Type this to select or add a Work Type.',
-                          ),
-                          _buildShortcutHint(
-                            '*',
-                            'Type this to set a Reminder.',
-                          ),
-                        ],
-                      ),
                     ),
                     const SizedBox(height: 8),
                     SizedBox(
