@@ -653,25 +653,56 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         final data = doc.data() as Map<String, dynamic>;
         final task = Task.fromMap(doc.id, data);
 
-        if (!task.isReminderDueAt(now)) continue;
+        if (task.assignee == null || task.assignee!.trim().isEmpty) {
+          continue;
+        }
 
-        await _sendReminderNotification(task);
-        await tasksCollection.doc(doc.id).update({'reminderSent': true});
-        task.reminderSent = true;
+        if (task.isReminderDueAt(now)) {
+          await _sendReminderNotification(task);
+          await tasksCollection.doc(doc.id).update({'reminderSent': true});
+          task.reminderSent = true;
+          continue;
+        }
+
+        if (task.isDeadlineNotificationDue(now)) {
+          await _sendDeadlineNotification(task);
+          await tasksCollection.doc(doc.id).update({
+            'deadlineReminderSent': true,
+          });
+          task.deadlineReminderSent = true;
+        }
       }
     } catch (e) {
       debugPrint('Error checking reminder notifications: $e');
     }
   }
 
+  Map<String, dynamic> _taskData(Task task) {
+    final data = task.toMap();
+    final reminderDate = task.reminder == null
+        ? null
+        : DateTime.tryParse(task.reminder!);
+    final deadlineDate = task.deadline == null
+        ? null
+        : DateTime.tryParse(task.deadline!);
+
+    data['reminderAt'] = reminderDate == null
+        ? null
+        : Timestamp.fromDate(reminderDate);
+    data['deadlineAt'] = deadlineDate == null
+        ? null
+        : Timestamp.fromDate(deadlineDate);
+    return data;
+  }
+
   Future<void> _addTaskToFirebase(Task task) async {
-    final docRef = await tasksCollection.add(task.toMap());
+    final docRef = await tasksCollection.add(_taskData(task));
     task.id = docRef.id;
   }
 
   Future<void> _updateTaskInFirebase(Task task) async {
     if (task.id == null) return;
-    await tasksCollection.doc(task.id).update(task.toMap());
+    await tasksCollection.doc(task.id).update(_taskData(task));
   }
 
   Future<void> _deleteTaskFromFirebase(Task task) async {
@@ -720,6 +751,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       priority: priority,
       reminder: reminder,
       reminderSent: false,
+      deadlineReminderSent: false,
       assignee: assignee,
       deadline: deadline,
       workType: workType,
@@ -755,22 +787,84 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
+  Future<String?> _resolveAssigneeFcmToken(String assignee) async {
+    try {
+      final userQuery = await FirebaseFirestore.instance
+          .collection('users')
+          .where('name', isEqualTo: assignee.trim())
+          .limit(1)
+          .get();
+
+      if (userQuery.docs.isNotEmpty) {
+        return userQuery.docs.first.data()['fcmToken']?.toString();
+      }
+
+      final cpQuery = await FirebaseFirestore.instance
+          .collection('cps')
+          .where('cpName', isEqualTo: assignee.trim())
+          .limit(1)
+          .get();
+
+      if (cpQuery.docs.isNotEmpty) {
+        return cpQuery.docs.first.data()['fcmToken']?.toString();
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  Future<void> _sendNotificationToAssignee({
+    required String assignee,
+    required String title,
+    required String body,
+    required String type,
+  }) async {
+    final recipient = assignee.trim();
+    if (recipient.isEmpty) return;
+
+    try {
+      final fcmToken = await _resolveAssigneeFcmToken(recipient);
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'recipientName': recipient,
+        'recipientFcmToken': fcmToken,
+        'title': title,
+        'body': body,
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'type': type,
+      });
+    } catch (e) {
+      debugPrint('Error sending $type notification: $e');
+    }
+  }
+
   Future<void> _sendReminderNotification(Task task) async {
     final assignee = task.assignee;
     if (assignee == null || assignee.trim().isEmpty) return;
 
-    try {
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'recipientName': assignee.trim(),
-        'title': 'Reminder',
-        'body': 'Reminder for task: "${task.title}"',
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-        'type': 'task_reminder',
-      });
-    } catch (e) {
-      debugPrint('Error sending reminder notification: $e');
-    }
+    await _sendNotificationToAssignee(
+      assignee: assignee,
+      title: 'Reminder',
+      body: 'Reminder for task: "${task.title}"',
+      type: 'task_reminder',
+    );
+  }
+
+  Future<void> _sendDeadlineNotification(Task task) async {
+    final assignee = task.assignee;
+    if (assignee == null || assignee.trim().isEmpty) return;
+
+    final deadline = DateTime.tryParse(task.deadline ?? '');
+    final deadlineText = deadline == null
+        ? 'your task deadline'
+        : 'your task deadline at ${deadline.toLocal().toString()}';
+
+    await _sendNotificationToAssignee(
+      assignee: assignee,
+      title: 'Deadline approaching',
+      body: 'Your task "${task.title}" is nearing $deadlineText.',
+      type: 'task_deadline',
+    );
   }
 
   Future<void> _sendTaskAssignmentNotification(
@@ -901,26 +995,44 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Future<List<String>> _loadAssigneesFromFirestore() async {
     if (_assigneesCache != null) return _assigneesCache!;
-    final snap = await FirebaseFirestore.instance.collection('users').get();
-    final values = snap.docs
-        .map((d) {
-          final data = d.data();
-          final name = (data['name'] ?? data['fullName'] ?? data['email'] ?? '')
-              .toString()
-              .trim();
-          return name;
-        })
-        .where((e) => e.isNotEmpty)
-        .toList();
+    final snapshots = await Future.wait([
+      FirebaseFirestore.instance.collection('users').get(),
+      FirebaseFirestore.instance.collection('cps').get(),
+    ]);
+    final valuesByName = <String, String>{};
+
+    void addName(Object? value) {
+      final name = value?.toString().trim() ?? '';
+      if (name.isNotEmpty) {
+        valuesByName.putIfAbsent(name.toLowerCase(), () => name);
+      }
+    }
+
+    for (final doc in snapshots[0].docs) {
+      final data = doc.data();
+      addName(data['name'] ?? data['fullName'] ?? data['email']);
+    }
+    for (final doc in snapshots[1].docs) {
+      final data = doc.data();
+      addName(data['cpName'] ?? data['name'] ?? data['fullName'] ?? data['email']);
+    }
+
+    final values = valuesByName.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     _assigneesCache = values;
     return values;
   }
 
   void _hideFloatingSheet() {
-    _floatingSheetOverlay?.remove();
-    _floatingSheetOverlay = null;
+    if (_floatingSheetOverlay != null) {
+      _floatingSheetOverlay!.remove();
+      _floatingSheetOverlay = null;
+    }
     _searchController.clear();
     _searchQuery = '';
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _showFloatingSheet(
@@ -1121,6 +1233,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     double top = buttonPosition.dy - menuHeightEstimate;
     if (top < padding) top = buttonPosition.dy + button.size.height + padding;
 
+    _hideFloatingSheet();
     _floatingSheetOverlay = OverlayEntry(
       builder: (_) => Stack(
         children: [
@@ -1303,6 +1416,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           return PopScope<Object?>(
             canPop: true,
             onPopInvokedWithResult: (didPop, result) {
+              _hideFloatingSheet();
               _focusNode.unfocus();
               FocusScope.of(context).unfocus();
               if (!kIsWeb) {
@@ -1335,29 +1449,35 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               ),
                               onChanged: (val) {
                                 if (val.isEmpty) return;
-                                final lastChar = val.substring(val.length - 1);
+                                final cursor = taskName.selection.baseOffset;
+                                if (cursor <= 0 || cursor > val.length) return;
+                                final ch = val[cursor - 1];
+                                final prev = cursor >= 2
+                                    ? val[cursor - 2]
+                                    : ' ';
+                                if (prev != ' ' && prev != '\n') return;
 
                                 FloatingSheetType? triggerType;
                                 String symbol = '';
-                                if (lastChar == '@') {
+                                if (ch == '@') {
                                   triggerType = FloatingSheetType.assign;
                                   symbol = '@';
-                                } else if (lastChar == '#') {
+                                } else if (ch == '#') {
                                   triggerType = FloatingSheetType.clientName;
                                   symbol = '#';
-                                } else if (lastChar == '-') {
+                                } else if (ch == '-') {
                                   triggerType = FloatingSheetType.priority;
                                   symbol = '-';
-                                } else if (lastChar == '!') {
+                                } else if (ch == '!') {
                                   triggerType = FloatingSheetType.deadline;
                                   symbol = '!';
-                                } else if (lastChar == '+') {
+                                } else if (ch == '+') {
                                   triggerType = FloatingSheetType.workType;
                                   symbol = '+';
-                                } else if (lastChar == '*') {
+                                } else if (ch == '*') {
                                   triggerType = FloatingSheetType.remind;
                                   symbol = '*';
-                                } else if (lastChar == '^') {
+                                } else if (ch == '^') {
                                   triggerType = FloatingSheetType.refProject;
                                   symbol = '^';
                                 }
@@ -1395,37 +1515,39 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                         final currentText = taskName.text;
 
                                         if (isMulti) {
-                                          final fullToken = '$symbol$insertVal';
-                                          if (!currentText.contains(
-                                            fullToken,
-                                          )) {
-                                            if (currentText.endsWith(symbol)) {
-                                              taskName.text =
-                                                  '$currentText$insertVal ';
-                                            } else {
-                                              taskName.text =
-                                                  '$currentText $fullToken ';
-                                            }
-                                          } else {
+                                          final cursor = taskName.selection
+                                              .baseOffset
+                                              .clamp(0, currentText.length)
+                                              .toInt();
+                                          final mentionStart = cursor > 0
+                                              ? currentText.lastIndexOf(
+                                                  symbol,
+                                                  cursor - 1,
+                                                )
+                                              : -1;
+                                          if (mentionStart >= 0) {
+                                            final beforeMention = currentText
+                                                .substring(0, mentionStart);
+                                            final afterMention = currentText
+                                                .substring(cursor);
                                             taskName.text =
-                                                currentText
-                                                    .replaceFirst(
-                                                      '$fullToken ',
-                                                      '',
-                                                    )
-                                                    .replaceFirst(fullToken, '')
-                                                    .trim() +
-                                                ' ';
+                                                '$beforeMention$afterMention';
+                                            taskName.selection =
+                                                TextSelection.collapsed(
+                                                  offset: mentionStart,
+                                                );
                                           }
                                         } else {
                                           taskName.text =
                                               '$currentText$insertVal ';
                                         }
 
-                                        taskName.selection =
-                                            TextSelection.collapsed(
-                                              offset: taskName.text.length,
-                                            );
+                                        if (!isMulti) {
+                                          taskName.selection =
+                                              TextSelection.collapsed(
+                                                offset: taskName.text.length,
+                                              );
+                                        }
 
                                         // Sync bottom buttons state
                                         if (triggerType ==
@@ -1549,6 +1671,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         },
       ),
     ).whenComplete(() {
+      _hideFloatingSheet();
       _focusNode.unfocus();
       FocusScope.of(context).unfocus();
       if (!kIsWeb) {
@@ -1558,6 +1681,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   void _openTaskDetail(Task task) {
+    _hideFloatingSheet();
     context.push('/task', extra: task);
   }
 
