@@ -8,10 +8,11 @@ class TaskStep {
     return {'title': title, 'isDone': isDone};
   }
 
-  factory TaskStep.fromMap(Map<String, dynamic> data) {
+  factory TaskStep.fromMap(dynamic raw) {
+    final data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
     return TaskStep(
-      title: data['title'] ?? '',
-      isDone: data['isDone'] ?? false,
+      title: (data['title'] ?? '').toString(),
+      isDone: data['isDone'] is bool ? data['isDone'] as bool : false,
     );
   }
 }
@@ -27,11 +28,12 @@ class TaskFile {
     return {'name': name, 'size': size, 'path': path};
   }
 
-  factory TaskFile.fromMap(Map<String, dynamic> data) {
+  factory TaskFile.fromMap(dynamic raw) {
+    final data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
     return TaskFile(
-      name: data['name'] ?? '',
-      size: data['size'] ?? 0,
-      path: data['path'],
+      name: (data['name'] ?? '').toString(),
+      size: data['size'] is num ? (data['size'] as num).toInt() : 0,
+      path: data['path']?.toString(),
     );
   }
 }
@@ -47,6 +49,7 @@ class Task {
   String? priority;
   String? reminder;
   bool reminderSent;
+  bool deadlineReminderSent;
   String? assignee;
   String? deadline;
   String? workType;
@@ -77,6 +80,7 @@ class Task {
     this.priority,
     this.reminder,
     this.reminderSent = false,
+    this.deadlineReminderSent = false,
     this.assignee,
     this.deadline,
     this.workType,
@@ -107,6 +111,7 @@ class Task {
       'priority': priority,
       'reminder': reminder,
       'reminderSent': reminderSent,
+      'deadlineReminderSent': deadlineReminderSent,
       'assignee': assignee,
       'deadline': deadline,
       'workType': workType,
@@ -128,47 +133,58 @@ class Task {
   }
 
   factory Task.fromMap(String id, Map<String, dynamic> data) {
-    final rawSteps = data['steps'] as List<dynamic>?;
-    final rawFiles = data['files'] as List<dynamic>?;
+    final rawSteps = data['steps'];
+    final rawFiles = data['files'];
+    final parsedSteps = rawSteps is List ? rawSteps : const <dynamic>[];
+    final parsedFiles = rawFiles is List ? rawFiles : const <dynamic>[];
+
+    final dynamic priorityUpdatedAtValue = data['priorityUpdatedAt'];
+    int? parsedPriorityUpdatedAt;
+    if (priorityUpdatedAtValue is int) {
+      parsedPriorityUpdatedAt = priorityUpdatedAtValue;
+    } else if (priorityUpdatedAtValue is num) {
+      parsedPriorityUpdatedAt = priorityUpdatedAtValue.toInt();
+    } else if (priorityUpdatedAtValue is String) {
+      parsedPriorityUpdatedAt = int.tryParse(priorityUpdatedAtValue);
+    }
 
     return Task(
       data['title'] ?? '',
       id: id,
       isDone: data['isDone'] ?? false,
       note: data['note'] ?? '',
-      createdDate: data['createdDate'],
-      priority: data['priority'],
-      reminder: data['reminder'],
+      createdDate: data['createdDate']?.toString(),
+      priority: data['priority']?.toString(),
+      reminder: data['reminder']?.toString(),
       reminderSent: data['reminderSent'] ?? false,
-      assignee: data['assignee'],
-      deadline: data['deadline'],
-      workType: data['workType'],
-      folder: data['folder'],
-      clientName: data['clientName'],
-      refProject: data['refProject'],
-      startTime: data['startTime'],
-      endTime: data['endTime'],
-      accompaniedBy: data['accompaniedBy'],
-      monitor: data['monitor'],
-      remark: data['remark'],
+      deadlineReminderSent: data['deadlineReminderSent'] ?? false,
+      assignee: data['assignee']?.toString(),
+      deadline: data['deadline']?.toString(),
+      workType: data['workType']?.toString(),
+      folder: data['folder']?.toString(),
+      clientName: data['clientName']?.toString(),
+      refProject: data['refProject']?.toString(),
+      startTime: data['startTime']?.toString(),
+      endTime: data['endTime']?.toString(),
+      accompaniedBy: data['accompaniedBy']?.toString(),
+      monitor: data['monitor']?.toString(),
+      remark: data['remark']?.toString(),
       createdBy: data['createdBy'] is Map
-          ? Map<String, dynamic>.from(data['createdBy'])
+          ? Map<String, dynamic>.from(data['createdBy'] as Map)
           : null,
       editedBy: data['editedBy'] is Map
-          ? Map<String, dynamic>.from(data['editedBy'])
+          ? Map<String, dynamic>.from(data['editedBy'] as Map)
           : null,
-      assigneeUid: data['assigneeUid'],
-      priorityUpdatedAt: data['priorityUpdatedAt'] as int?,
-      steps:
-          rawSteps
-              ?.map((e) => TaskStep.fromMap(e as Map<String, dynamic>))
-              .toList() ??
-          <TaskStep>[],
-      files:
-          rawFiles
-              ?.map((e) => TaskFile.fromMap(e as Map<String, dynamic>))
-              .toList() ??
-          <TaskFile>[],
+      assigneeUid: data['assigneeUid']?.toString(),
+      priorityUpdatedAt: parsedPriorityUpdatedAt,
+      steps: parsedSteps
+          .map((e) => TaskStep.fromMap(e))
+          .where((step) => step.title.isNotEmpty || step.isDone)
+          .toList(),
+      files: parsedFiles
+          .map((e) => TaskFile.fromMap(e))
+          .where((file) => file.name.isNotEmpty || file.path != null)
+          .toList(),
     );
   }
 
@@ -179,6 +195,16 @@ class Task {
     if (reminderTime == null) return false;
 
     return !reminderTime.isAfter(now);
+  }
+
+  bool isDeadlineNotificationDue(DateTime now) {
+    if (deadline == null || deadlineReminderSent) return false;
+
+    final deadlineTime = DateTime.tryParse(deadline!);
+    if (deadlineTime == null) return false;
+
+    final diff = deadlineTime.difference(now);
+    return diff > Duration.zero && diff <= const Duration(hours: 3);
   }
 }
 

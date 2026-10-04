@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+
 import '../models/task.dart';
 import '../models/floating_sheet_type.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
+
 import '../../../viewmodels/auth_viewmodel.dart';
 
 class TaskDetailPage extends StatefulWidget {
@@ -18,8 +21,8 @@ class TaskDetailPage extends StatefulWidget {
     required this.task,
     VoidCallback? onChanged,
     VoidCallback? onDelete,
-  })  : onChanged = onChanged ?? _defaultCallback,
-        onDelete = onDelete ?? _defaultCallback;
+  }) : onChanged = onChanged ?? _defaultCallback,
+       onDelete = onDelete ?? _defaultCallback;
 
   static void _defaultCallback() {}
 
@@ -76,8 +79,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   Future<List<String>> _loadWorkTypesFromFirestore() async {
     if (_workTypesCache != null) return _workTypesCache!;
-    final snap =
-    await FirebaseFirestore.instance.collection('WorkType').get();
+    final snap = await FirebaseFirestore.instance.collection('WorkType').get();
     final values = snap.docs
         .map((d) => (d.data()['workType'] ?? '').toString())
         .where((e) => e.isNotEmpty)
@@ -88,24 +90,43 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   Future<List<String>> _loadAssigneesFromFirestore() async {
     if (_assigneesCache != null) return _assigneesCache!;
-    final snap =
-    await FirebaseFirestore.instance.collection('users').get();
-    final values = snap.docs.map((d) {
-      final data = d.data();
-      final nameField = data['name'] ?? data['fullName'] ?? data['email'];
-      if (nameField != null && nameField.toString().isNotEmpty) {
-        return nameField.toString();
+    final snapshots = await Future.wait([
+      FirebaseFirestore.instance.collection('users').get(),
+      FirebaseFirestore.instance.collection('cps').get(),
+    ]);
+    final valuesByName = <String, String>{};
+
+    void addName(Object? value) {
+      final name = value?.toString().trim() ?? '';
+      if (name.isNotEmpty) {
+        valuesByName.putIfAbsent(name.toLowerCase(), () => name);
       }
-      return d.id;
-    }).where((e) => e.isNotEmpty).toList();
+    }
+
+    for (final doc in snapshots[0].docs) {
+      final data = doc.data();
+      addName(data['name'] ?? data['fullName'] ?? data['email'] ?? doc.id);
+    }
+    for (final doc in snapshots[1].docs) {
+      final data = doc.data();
+      addName(
+        data['cpName'] ??
+            data['name'] ??
+            data['fullName'] ??
+            data['email'] ??
+            doc.id,
+      );
+    }
+
+    final values = valuesByName.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     _assigneesCache = values;
     return values;
   }
 
   Future<List<String>> _loadClientsFromFirestore() async {
     if (_clientsCache != null) return _clientsCache!;
-    final snap =
-    await FirebaseFirestore.instance.collection('leads').get();
+    final snap = await FirebaseFirestore.instance.collection('leads').get();
     final values = snap.docs
         .map((d) {
           final data = d.data();
@@ -132,11 +153,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     _searchQuery = '';
   }
 
-  Future<DateTime?> pickDateTimeWithTabs(BuildContext context,
-      {DateTime? initial}) async {
+  Future<DateTime?> pickDateTimeWithTabs(
+    BuildContext context, {
+    DateTime? initial,
+  }) async {
     DateTime selectedDate = initial ?? DateTime.now();
-    TimeOfDay selectedTime =
-    TimeOfDay.fromDateTime(initial ?? DateTime.now());
+    TimeOfDay selectedTime = TimeOfDay.fromDateTime(initial ?? DateTime.now());
     int tabIndex = 0;
 
     return showDialog<DateTime>(
@@ -146,7 +168,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           builder: (context, setState) {
             return Dialog(
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: SizedBox(
                 height: 430,
                 child: Column(
@@ -177,26 +200,28 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     Expanded(
                       child: tabIndex == 0
                           ? CalendarDatePicker(
-                        initialDate: selectedDate,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                        onDateChanged: (date) {
-                          selectedDate = date;
-                        },
-                      )
+                              initialDate: selectedDate,
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                              onDateChanged: (date) {
+                                selectedDate = date;
+                              },
+                            )
                           : Center(
-                        child: Text(
-                          selectedTime.format(context),
-                          style: const TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
+                              child: Text(
+                                selectedTime.format(context),
+                                style: const TextStyle(
+                                  fontSize: 40,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
@@ -206,7 +231,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           ),
                           const SizedBox(width: 8),
                           ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                            ),
                             onPressed: () {
                               final result = DateTime(
                                 selectedDate.year,
@@ -217,7 +244,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                               );
                               Navigator.pop(context, result);
                             },
-                            child: const Text("SAVE", style: TextStyle(color: secondaryColor)),
+                            child: const Text(
+                              "SAVE",
+                              style: TextStyle(color: secondaryColor),
+                            ),
                           ),
                         ],
                       ),
@@ -232,27 +262,33 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-  Future<void> _sendTaskAssignmentNotification(String? assignee, String taskTitle, BuildContext ctx) async {
+  Future<void> _sendTaskAssignmentNotification(
+    String? assignee,
+    String taskTitle,
+    BuildContext ctx,
+  ) async {
     if (assignee == null || assignee.trim().isEmpty) return;
     final authVM = Provider.of<AuthViewModel>(ctx, listen: false);
     if (!authVM.allowNotifications) return;
     final String cleanAssignee = assignee.trim().toLowerCase();
     final String myName = authVM.userName.trim().toLowerCase();
 
-    if (cleanAssignee == myName || cleanAssignee == authVM.userUid.toLowerCase() || cleanAssignee == authVM.userEmail.toLowerCase()) {
+    if (cleanAssignee == myName ||
+        cleanAssignee == authVM.userUid.toLowerCase() ||
+        cleanAssignee == authVM.userEmail.toLowerCase()) {
       return;
     }
 
     try {
       String? targetFcmToken;
-      
+
       // Look up FCM token in 'users' collection first
       final userQuery = await FirebaseFirestore.instance
           .collection('users')
           .where('name', isEqualTo: assignee.trim())
           .limit(1)
           .get();
-      
+
       if (userQuery.docs.isNotEmpty) {
         targetFcmToken = userQuery.docs.first.data()['fcmToken']?.toString();
       } else {
@@ -269,7 +305,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
       await FirebaseFirestore.instance.collection('notifications').add({
         'recipientName': assignee.trim(),
-        'recipientFcmToken': targetFcmToken, // 🚀 NAYA: FCM Token for background push
+        'recipientFcmToken':
+            targetFcmToken, // 🚀 NAYA: FCM Token for background push
         'title': 'New Task Assigned',
         'body': '${authVM.userName} assigned you a task: "$taskTitle"',
         'timestamp': FieldValue.serverTimestamp(),
@@ -314,10 +351,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   }
 
   Future<void> _showOverlay(
-      BuildContext buttonContext,
-      FloatingSheetType type, {
-        String? fieldKey,
-      }) async {
+    BuildContext buttonContext,
+    FloatingSheetType type, {
+    String? fieldKey,
+  }) async {
     if (_overlayEntry != null) _hideOverlay();
 
     String resolvedKey;
@@ -368,20 +405,26 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       folders = await _loadFoldersFromFirestore();
     } else if (resolvedKey == 'refProject') {
       if (_projectsCache == null) {
-        final snap = await FirebaseFirestore.instance.collection('projects').get();
-        _projectsCache = snap.docs.map((d) => d['projectName']?.toString() ?? '').where((e) => e.isNotEmpty).toList();
+        final snap = await FirebaseFirestore.instance
+            .collection('projects')
+            .get();
+        _projectsCache = snap.docs
+            .map((d) => d['projectName']?.toString() ?? '')
+            .where((e) => e.isNotEmpty)
+            .toList();
       }
       projects = _projectsCache;
     }
 
     final OverlayState overlayState = Overlay.of(buttonContext);
-    final RenderBox button =
-    buttonContext.findRenderObject() as RenderBox;
+    final RenderBox button = buttonContext.findRenderObject() as RenderBox;
     final RenderBox overlayBox =
-    overlayState.context.findRenderObject() as RenderBox;
+        overlayState.context.findRenderObject() as RenderBox;
 
-    final Offset buttonPosition =
-    button.localToGlobal(Offset.zero, ancestor: overlayBox);
+    final Offset buttonPosition = button.localToGlobal(
+      Offset.zero,
+      ancestor: overlayBox,
+    );
     final Size buttonSize = button.size;
     final Size overlaySize = overlayBox.size;
 
@@ -406,56 +449,53 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         case 'deadline':
           return const [
             ListTile(
-                leading: Icon(Icons.access_time),
-                title: Text("Today (1 hour)")),
+              leading: Icon(Icons.access_time),
+              title: Text("Today (1 hour)"),
+            ),
             ListTile(
-                leading: Icon(Icons.access_time),
-                title: Text("Today (3 hour)")),
+              leading: Icon(Icons.access_time),
+              title: Text("Today (3 hour)"),
+            ),
             ListTile(
-                leading: Icon(Icons.access_time),
-                title: Text("Today (6 hour)")),
+              leading: Icon(Icons.access_time),
+              title: Text("Today (6 hour)"),
+            ),
             ListTile(
-                leading: Icon(Icons.access_time),
-                title: Text("Tomorrow (12 pm)")),
+              leading: Icon(Icons.access_time),
+              title: Text("Tomorrow (12 pm)"),
+            ),
             ListTile(
-                leading: Icon(Icons.calendar_month),
-                title: Text("Custom")),
+              leading: Icon(Icons.calendar_month),
+              title: Text("Custom"),
+            ),
           ];
         case 'assignee':
           if (assignees == null || assignees.isEmpty) {
             return const [
               ListTile(
-                  leading: Icon(Icons.person),
-                  title: Text("Assign to me")),
+                leading: Icon(Icons.person),
+                title: Text("Assign to me"),
+              ),
               ListTile(
-                  leading: Icon(Icons.group),
-                  title: Text("Assign to someone else")),
+                leading: Icon(Icons.group),
+                title: Text("Assign to someone else"),
+              ),
             ];
           }
-          return assignees
-              .map((v) => ListTile(title: Text(v)))
-              .toList();
+          return assignees.map((v) => ListTile(title: Text(v))).toList();
         case 'workType':
           return (workTypes ?? [])
               .map((v) => ListTile(title: Text(v)))
               .toList();
         case 'clientName':
           if (clients == null || clients.isEmpty) {
-            return const [
-              ListTile(title: Text("No clients found")),
-            ];
+            return const [ListTile(title: Text("No clients found"))];
           }
-          return clients
-              .map((v) => ListTile(title: Text(v)))
-              .toList();
+          return clients.map((v) => ListTile(title: Text(v))).toList();
         case 'refProject':
-          return (projects ?? [])
-              .map((v) => ListTile(title: Text(v)))
-              .toList();
+          return (projects ?? []).map((v) => ListTile(title: Text(v))).toList();
         case 'folder':
-          return (folders ?? [])
-              .map((v) => ListTile(title: Text(v)))
-              .toList();
+          return (folders ?? []).map((v) => ListTile(title: Text(v))).toList();
         default:
           return [];
       }
@@ -463,7 +503,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
     final tileWidgets = tilesFor(resolvedKey);
 
-    final bool hasSearchBar = resolvedKey == 'assignee' ||
+    final bool hasSearchBar =
+        resolvedKey == 'assignee' ||
         resolvedKey == 'workType' ||
         resolvedKey == 'clientName' ||
         resolvedKey == 'refProject';
@@ -499,14 +540,15 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   child: StatefulBuilder(
                     builder: (context, setOverlayState) {
                       final allTiles = tileWidgets;
-                      final filteredTiles = hasSearchBar && _searchQuery.isNotEmpty
+                      final filteredTiles =
+                          hasSearchBar && _searchQuery.isNotEmpty
                           ? allTiles.where((tile) {
-                        if (tile is! ListTile) return true;
-                        final text = (tile.title as Text).data ?? '';
-                        return text
-                            .toLowerCase()
-                            .contains(_searchQuery.toLowerCase());
-                      }).toList()
+                              if (tile is! ListTile) return true;
+                              final text = (tile.title as Text).data ?? '';
+                              return text.toLowerCase().contains(
+                                _searchQuery.toLowerCase(),
+                              );
+                            }).toList()
                           : allTiles;
 
                       return Column(
@@ -551,123 +593,140 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                             constraints: const BoxConstraints(maxHeight: 220),
                             child: filteredTiles.isEmpty
                                 ? Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Text(
-                                'No results found',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey.shade500,
-                                ),
-                              ),
-                            )
+                                    padding: const EdgeInsets.all(16),
+                                    child: Text(
+                                      'No results found',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey.shade500,
+                                      ),
+                                    ),
+                                  )
                                 : ListView(
-                              padding: EdgeInsets.zero,
-                              shrinkWrap: true,
-                              children: filteredTiles.map((tile) {
-                                return InkWell(
-                                  onTap: () async {
-                                    if (tile is ListTile) {
-                                      final label =
-                                          (tile.title as Text).data ?? '';
+                                    padding: EdgeInsets.zero,
+                                    shrinkWrap: true,
+                                    children: filteredTiles.map((tile) {
+                                      return InkWell(
+                                        onTap: () async {
+                                          if (tile is ListTile) {
+                                            final label =
+                                                (tile.title as Text).data ?? '';
 
-                                      if (resolvedKey == 'reminder' ||
-                                          resolvedKey == 'deadline') {
-                                        DateTime? computed;
+                                            if (resolvedKey == 'reminder' ||
+                                                resolvedKey == 'deadline') {
+                                              DateTime? computed;
 
-                                        if (label
-                                            .toLowerCase()
-                                            .contains('custom')) {
-                                          _hideOverlay();
-                                          computed =
-                                          await pickDateTimeWithTabs(
-                                              context);
-                                        } else {
-                                          final now = DateTime.now();
-                                          final lower = label.toLowerCase();
-                                          if (lower
-                                              .contains('today (1 hour)')) {
-                                            computed = now.add(
-                                                const Duration(hours: 1));
-                                          } else if (lower
-                                              .contains('today (3 hour)')) {
-                                            computed = now.add(
-                                                const Duration(hours: 3));
-                                          } else if (lower
-                                              .contains('today (6 hour)')) {
-                                            computed = now.add(
-                                                const Duration(hours: 6));
-                                          } else if (lower.contains(
-                                              'tomorrow (12 pm)')) {
-                                            final tomorrow = DateTime(
-                                                now.year,
-                                                now.month,
-                                                now.day)
-                                                .add(
-                                                const Duration(days: 1));
-                                            computed = DateTime(
-                                                tomorrow.year,
-                                                tomorrow.month,
-                                                tomorrow.day,
-                                                12,
-                                                0);
-                                          }
-                                        }
+                                              if (label.toLowerCase().contains(
+                                                'custom',
+                                              )) {
+                                                _hideOverlay();
+                                                computed =
+                                                    await pickDateTimeWithTabs(
+                                                      context,
+                                                    );
+                                              } else {
+                                                final now = DateTime.now();
+                                                final lower = label
+                                                    .toLowerCase();
+                                                if (lower.contains(
+                                                  'today (1 hour)',
+                                                )) {
+                                                  computed = now.add(
+                                                    const Duration(hours: 1),
+                                                  );
+                                                } else if (lower.contains(
+                                                  'today (3 hour)',
+                                                )) {
+                                                  computed = now.add(
+                                                    const Duration(hours: 3),
+                                                  );
+                                                } else if (lower.contains(
+                                                  'today (6 hour)',
+                                                )) {
+                                                  computed = now.add(
+                                                    const Duration(hours: 6),
+                                                  );
+                                                } else if (lower.contains(
+                                                  'tomorrow (12 pm)',
+                                                )) {
+                                                  final tomorrow =
+                                                      DateTime(
+                                                        now.year,
+                                                        now.month,
+                                                        now.day,
+                                                      ).add(
+                                                        const Duration(days: 1),
+                                                      );
+                                                  computed = DateTime(
+                                                    tomorrow.year,
+                                                    tomorrow.month,
+                                                    tomorrow.day,
+                                                    12,
+                                                    0,
+                                                  );
+                                                }
+                                              }
 
-                                        if (computed != null) {
-                                          final iso =
-                                          computed.toIso8601String();
-                                          setState(() {
-                                            if (resolvedKey == 'reminder') {
-                                              task.reminder = iso;
+                                              if (computed != null) {
+                                                final iso = computed
+                                                    .toIso8601String();
+                                                setState(() {
+                                                  if (resolvedKey ==
+                                                      'reminder') {
+                                                    task.reminder = iso;
+                                                  } else {
+                                                    task.deadline = iso;
+                                                  }
+                                                });
+                                                widget.onChanged();
+                                              }
                                             } else {
-                                              task.deadline = iso;
+                                              setState(() {
+                                                switch (resolvedKey) {
+                                                  case 'priority':
+                                                    task.priority = label;
+                                                    task.priorityUpdatedAt =
+                                                        DateTime.now()
+                                                            .millisecondsSinceEpoch;
+                                                    break;
+                                                  case 'assignee':
+                                                    task.assignee = label;
+                                                    _sendTaskAssignmentNotification(
+                                                      label,
+                                                      task.title,
+                                                      context,
+                                                    );
+                                                    break;
+                                                  case 'workType':
+                                                    task.workType = label;
+                                                    break;
+                                                  case 'clientName':
+                                                    task.clientName = label;
+                                                    break;
+                                                  case 'refProject':
+                                                    task.refProject = label;
+                                                    break;
+                                                  case 'folder':
+                                                    task.folder = label;
+                                                    break;
+                                                  default:
+                                                    break;
+                                                }
+                                              });
+                                              widget.onChanged();
                                             }
-                                          });
-                                          widget.onChanged();
-                                        }
-                                      } else {
-                                        setState(() {
-                                          switch (resolvedKey) {
-                                            case 'priority':
-                                              task.priority = label;
-                                              task.priorityUpdatedAt =
-                                                  DateTime.now()
-                                                      .millisecondsSinceEpoch;
-                                              break;
-                                            case 'assignee':
-                                              task.assignee = label;
-                                              _sendTaskAssignmentNotification(label, task.title, context);
-                                              break;
-                                            case 'workType':
-                                              task.workType = label;
-                                              break;
-                                            case 'clientName':
-                                              task.clientName = label;
-                                              break;
-                                            case 'refProject':
-                                              task.refProject = label;
-                                              break;
-                                            case 'folder':
-                                              task.folder = label;
-                                              break;
-                                            default:
-                                              break;
-                                          }
-                                        });
-                                        widget.onChanged();
-                                      }
 
-                                      _searchController.clear();
-                                      _searchQuery = '';
-                                      _hideOverlay();
-                                    } else {
-                                      _hideOverlay();
-                                    }
-                                  },
-                                  child: tile,
-                                );
-                              }).toList(),
-                            ),
+                                            _searchController.clear();
+                                            _searchQuery = '';
+                                            _hideOverlay();
+                                          } else {
+                                            _hideOverlay();
+                                          }
+                                        },
+                                        child: tile,
+                                      );
+                                    }).toList(),
+                                  ),
                           ),
                         ],
                       );
@@ -731,8 +790,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       builder: (ctx) {
         return AlertDialog(
           title: const Text('Delete step'),
-          content: const Text(
-              'Are you sure you want to delete this sub-step?'),
+          content: const Text('Are you sure you want to delete this sub-step?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
@@ -769,9 +827,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               widget.onChanged();
             },
             child: Icon(
-              step.isDone
-                  ? Icons.check_circle
-                  : Icons.radio_button_unchecked,
+              step.isDone ? Icons.check_circle : Icons.radio_button_unchecked,
               size: 22,
             ),
           ),
@@ -779,27 +835,26 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           Expanded(
             child: isEditing
                 ? TextField(
-              controller: _stepController,
-              autofocus: true,
-              decoration: const InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-              ),
-              onSubmitted: (val) =>
-                  _saveEditedStep(index, val),
-            )
+                    controller: _stepController,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                    ),
+                    onSubmitted: (val) => _saveEditedStep(index, val),
+                  )
                 : GestureDetector(
-              onTap: () => _startEditStep(index),
-              child: Text(
-                step.title,
-                style: TextStyle(
-                  fontSize: 15,
-                  decoration: step.isDone
-                      ? TextDecoration.lineThrough
-                      : TextDecoration.none,
-                ),
-              ),
-            ),
+                    onTap: () => _startEditStep(index),
+                    child: Text(
+                      step.title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        decoration: step.isDone
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                      ),
+                    ),
+                  ),
           ),
           if (isEditing)
             IconButton(
@@ -813,8 +868,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             )
           else
             IconButton(
-              icon: const Icon(Icons.delete_outline,
-                  size: 20, color: Colors.redAccent),
+              icon: const Icon(
+                Icons.delete_outline,
+                size: 20,
+                color: Colors.redAccent,
+              ),
               onPressed: () => _confirmDeleteStep(index),
               tooltip: 'Delete sub-step',
             ),
@@ -900,15 +958,13 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     }
   }
 
-  bool _isSelected(String? value) =>
-      value != null && value.isNotEmpty;
+  bool _isSelected(String? value) => value != null && value.isNotEmpty;
 
   Widget _priorityBadgeHeader() {
     final p = task.priority;
     if (p == null || p.isEmpty) return const SizedBox.shrink();
     return Container(
-      padding:
-      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: secondaryColor),
@@ -934,9 +990,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('File cannot be opened on web.'),
-            ),
+            const SnackBar(content: Text('File cannot be opened on web.')),
           );
         }
       }
@@ -948,8 +1002,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         } else {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text('Cannot open file: ${file.name}')),
+              SnackBar(content: Text('Cannot open file: ${file.name}')),
             );
           }
         }
@@ -962,7 +1015,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: primaryColor,
-        title: const Text("Task", style: TextStyle(color: secondaryColor, fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Task",
+          style: TextStyle(color: secondaryColor, fontWeight: FontWeight.bold),
+        ),
         iconTheme: const IconThemeData(color: secondaryColor),
       ),
       body: LayoutBuilder(
@@ -998,35 +1054,35 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         Expanded(
                           child: _isEditingTitle
                               ? TextField(
-                            controller: _titleController,
-                            autofocus: true,
-                            decoration: const InputDecoration(
-                                border: InputBorder.none),
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            onSubmitted: _saveTitle,
-                          )
+                                  controller: _titleController,
+                                  autofocus: true,
+                                  decoration: const InputDecoration(
+                                    border: InputBorder.none,
+                                  ),
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  onSubmitted: _saveTitle,
+                                )
                               : GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _isEditingTitle = true;
-                                _titleController.text =
-                                    task.title;
-                              });
-                            },
-                            child: Text(
-                              task.title,
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w600,
-                                decoration: task.isDone
-                                    ? TextDecoration.lineThrough
-                                    : TextDecoration.none,
-                              ),
-                            ),
-                          ),
+                                  onTap: () {
+                                    setState(() {
+                                      _isEditingTitle = true;
+                                      _titleController.text = task.title;
+                                    });
+                                  },
+                                  child: Text(
+                                    task.title,
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w600,
+                                      decoration: task.isDone
+                                          ? TextDecoration.lineThrough
+                                          : TextDecoration.none,
+                                    ),
+                                  ),
+                                ),
                         ),
                         _priorityBadgeHeader(),
                       ],
@@ -1036,27 +1092,22 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
                     // ── Steps ────────────────────────────────────────
                     if (task.steps.isNotEmpty)
-                      ...task.steps
-                          .asMap()
-                          .entries
-                          .map((e) =>
-                          _buildStepTile(e.value, e.key)),
+                      ...task.steps.asMap().entries.map(
+                        (e) => _buildStepTile(e.value, e.key),
+                      ),
 
                     if (_isAddingStep)
                       Padding(
                         padding: const EdgeInsets.all(8.0),
                         child: Row(
                           children: [
-                            const Icon(
-                                Icons.radio_button_unchecked,
-                                size: 22),
+                            const Icon(Icons.radio_button_unchecked, size: 22),
                             const SizedBox(width: 8),
                             Expanded(
                               child: TextField(
                                 controller: _stepController,
                                 autofocus: true,
-                                decoration:
-                                const InputDecoration(
+                                decoration: const InputDecoration(
                                   hintText: "Add step",
                                   border: InputBorder.none,
                                 ),
@@ -1064,8 +1115,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                               ),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.close,
-                                  size: 18),
+                              icon: const Icon(Icons.close, size: 18),
                               onPressed: () {
                                 setState(() {
                                   _isAddingStep = false;
@@ -1086,18 +1136,17 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           });
                         },
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 8.0),
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
                           child: Row(
                             children: const [
-                              Icon(Icons.add,
-                                  color: secondaryColor, size: 20),
+                              Icon(Icons.add, color: secondaryColor, size: 20),
                               SizedBox(width: 8),
                               Text(
                                 "Add step",
                                 style: TextStyle(
-                                    color: secondaryColor,
-                                    fontSize: 15),
+                                  color: secondaryColor,
+                                  fontSize: 15,
+                                ),
                               ),
                             ],
                           ),
@@ -1108,163 +1157,179 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
                     // ── Fields ───────────────────────────────────────
                     Builder(
-                      builder: (buttonContext) =>
-                          _animatedBorderedTile(
-                            isSelected: _isSelected(task.priority),
-                            child: ListTile(
-                              leading: const Icon(Icons.flag_sharp,
-                                  color: secondaryColor),
-                              title: const Text("Priority"),
-                              trailing:
-                              _infoTrailing(task.priority),
-                              onTap: () => _showOverlay(buttonContext,
-                                  FloatingSheetType.priority),
-                            ),
+                      builder: (buttonContext) => _animatedBorderedTile(
+                        isSelected: _isSelected(task.priority),
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.flag_sharp,
+                            color: secondaryColor,
                           ),
+                          title: const Text("Priority"),
+                          trailing: _infoTrailing(task.priority),
+                          onTap: () => _showOverlay(
+                            buttonContext,
+                            FloatingSheetType.priority,
+                          ),
+                        ),
+                      ),
                     ),
                     Builder(
-                      builder: (buttonContext) =>
-                          _animatedBorderedTile(
-                            isSelected: _isSelected(task.reminder),
-                            child: ListTile(
-                              leading: const Icon(
-                                  Icons.notifications_active,
-                                  color: secondaryColor),
-                              title: const Text("Remind Me"),
-                              trailing:
-                              _infoTrailing(task.reminder),
-                              onTap: () => _showOverlay(buttonContext,
-                                  FloatingSheetType.remind),
-                            ),
+                      builder: (buttonContext) => _animatedBorderedTile(
+                        isSelected: _isSelected(task.reminder),
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.notifications_active,
+                            color: secondaryColor,
                           ),
+                          title: const Text("Remind Me"),
+                          trailing: _infoTrailing(task.reminder),
+                          onTap: () => _showOverlay(
+                            buttonContext,
+                            FloatingSheetType.remind,
+                          ),
+                        ),
+                      ),
                     ),
                     Builder(
-                      builder: (buttonContext) =>
-                          _animatedBorderedTile(
-                            isSelected: _isSelected(task.assignee),
-                            child: ListTile(
-                              leading: const Icon(Icons.checklist,
-                                  color: secondaryColor),
-                              title: const Text("Assign"),
-                              trailing:
-                              _infoTrailing(task.assignee),
-                              onTap: () => _showOverlay(buttonContext,
-                                  FloatingSheetType.assign),
-                            ),
+                      builder: (buttonContext) => _animatedBorderedTile(
+                        isSelected: _isSelected(task.assignee),
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.checklist,
+                            color: secondaryColor,
                           ),
+                          title: const Text("Assign"),
+                          trailing: _infoTrailing(task.assignee),
+                          onTap: () => _showOverlay(
+                            buttonContext,
+                            FloatingSheetType.assign,
+                          ),
+                        ),
+                      ),
                     ),
                     Builder(
-                      builder: (buttonContext) =>
-                          _animatedBorderedTile(
-                            isSelected: _isSelected(task.deadline),
-                            child: ListTile(
-                              leading: const Icon(Icons.alarm,
-                                  color: secondaryColor),
-                              title: const Text("Deadline"),
-                              trailing:
-                              _infoTrailing(task.deadline),
-                              onTap: () => _showOverlay(buttonContext,
-                                  FloatingSheetType.deadline),
-                            ),
+                      builder: (buttonContext) => _animatedBorderedTile(
+                        isSelected: _isSelected(task.deadline),
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.alarm,
+                            color: secondaryColor,
                           ),
+                          title: const Text("Deadline"),
+                          trailing: _infoTrailing(task.deadline),
+                          onTap: () => _showOverlay(
+                            buttonContext,
+                            FloatingSheetType.deadline,
+                          ),
+                        ),
+                      ),
                     ),
                     Builder(
-                      builder: (buttonContext) =>
-                          _animatedBorderedTile(
-                            isSelected: _isSelected(task.workType),
-                            child: ListTile(
-                              leading: const Icon(
-                                  Icons.insert_drive_file,
-                                  color: secondaryColor),
-                              title: const Text("Work Type"),
-                              trailing:
-                              _infoTrailing(task.workType),
-                              onTap: () => _showOverlay(
-                                buttonContext,
-                                FloatingSheetType.workType,
-                                fieldKey: 'workType',
-                              ),
-                            ),
+                      builder: (buttonContext) => _animatedBorderedTile(
+                        isSelected: _isSelected(task.workType),
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.insert_drive_file,
+                            color: secondaryColor,
                           ),
+                          title: const Text("Work Type"),
+                          trailing: _infoTrailing(task.workType),
+                          onTap: () => _showOverlay(
+                            buttonContext,
+                            FloatingSheetType.workType,
+                            fieldKey: 'workType',
+                          ),
+                        ),
+                      ),
                     ),
                     Builder(
-                      builder: (buttonContext) =>
-                          _animatedBorderedTile(
-                            isSelected:
-                            _isSelected(task.clientName),
-                            child: ListTile(
-                              leading: const Icon(
-                                  Icons.business_center_outlined,
-                                  color: secondaryColor),
-                              title: const Text("Client Name"),
-                              trailing:
-                              _infoTrailing(task.clientName),
-                              onTap: () => _showOverlay(
-                                buttonContext,
-                                FloatingSheetType.clientName,
-                                fieldKey: 'clientName',
-                              ),
-                            ),
+                      builder: (buttonContext) => _animatedBorderedTile(
+                        isSelected: _isSelected(task.clientName),
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.business_center_outlined,
+                            color: secondaryColor,
                           ),
+                          title: const Text("Client Name"),
+                          trailing: _infoTrailing(task.clientName),
+                          onTap: () => _showOverlay(
+                            buttonContext,
+                            FloatingSheetType.clientName,
+                            fieldKey: 'clientName',
+                          ),
+                        ),
+                      ),
                     ),
                     Builder(
-                      builder: (buttonContext) =>
-                          _animatedBorderedTile(
-                            isSelected: _isSelected(task.refProject),
-                            child: ListTile(
-                              leading: const Icon(
-                                  Icons.apartment_outlined,
-                                  color: secondaryColor),
-                              title: const Text("Ref Project"),
-                              trailing: _infoTrailing(task.refProject),
-                              onTap: () => _showOverlay(
-                                buttonContext,
-                                FloatingSheetType.refProject,
-                                fieldKey: 'refProject',
-                              ),
-                            ),
+                      builder: (buttonContext) => _animatedBorderedTile(
+                        isSelected: _isSelected(task.refProject),
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.apartment_outlined,
+                            color: secondaryColor,
                           ),
+                          title: const Text("Ref Project"),
+                          trailing: _infoTrailing(task.refProject),
+                          onTap: () => _showOverlay(
+                            buttonContext,
+                            FloatingSheetType.refProject,
+                            fieldKey: 'refProject',
+                          ),
+                        ),
+                      ),
                     ),
                     Builder(
-                      builder: (buttonContext) =>
-                          _animatedBorderedTile(
-                            isSelected: _isSelected(task.folder),
-                            child: ListTile(
-                              leading: const Icon(
-                                  Icons.folder_outlined,
-                                  color: secondaryColor),
-                              title: const Text("Folder"),
-                              trailing: _infoTrailing(task.folder),
-                              onTap: () => _showOverlay(
-                                buttonContext,
-                                FloatingSheetType.folder,
-                                fieldKey: 'folder',
-                              ),
-                            ),
+                      builder: (buttonContext) => _animatedBorderedTile(
+                        isSelected: _isSelected(task.folder),
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.folder_outlined,
+                            color: secondaryColor,
                           ),
+                          title: const Text("Folder"),
+                          trailing: _infoTrailing(task.folder),
+                          onTap: () => _showOverlay(
+                            buttonContext,
+                            FloatingSheetType.folder,
+                            fieldKey: 'folder',
+                          ),
+                        ),
+                      ),
                     ),
 
                     const SizedBox(height: 12),
-                    
+
                     // 🚀 NAYA: Extra Fields Editor (Start, End, Acc, Monitor, Remark)
                     _buildExtraFieldRow('Start Time', task.startTime, (val) {
-                      setState(() { task.startTime = val; });
+                      setState(() {
+                        task.startTime = val;
+                      });
                       widget.onChanged();
                     }, isTime: true),
                     _buildExtraFieldRow('End Time', task.endTime, (val) {
-                      setState(() { task.endTime = val; });
+                      setState(() {
+                        task.endTime = val;
+                      });
                       widget.onChanged();
                     }, isTime: true),
-                    _buildExtraFieldRow('Accompanied By', task.accompaniedBy, (val) {
-                      setState(() { task.accompaniedBy = val; });
+                    _buildExtraFieldRow('Accompanied By', task.accompaniedBy, (
+                      val,
+                    ) {
+                      setState(() {
+                        task.accompaniedBy = val;
+                      });
                       widget.onChanged();
                     }),
                     _buildExtraFieldRow('Monitor', task.monitor, (val) {
-                      setState(() { task.monitor = val; });
+                      setState(() {
+                        task.monitor = val;
+                      });
                       widget.onChanged();
                     }),
                     _buildExtraFieldRow('Remark', task.remark, (val) {
-                      setState(() { task.remark = val; });
+                      setState(() {
+                        task.remark = val;
+                      });
                       widget.onChanged();
                     }),
 
@@ -1273,8 +1338,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     // ── Uploaded files ───────────────────────────────
                     if (task.files.isNotEmpty)
                       Column(
-                        crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
                             "Uploaded Files",
@@ -1284,71 +1348,59 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          ...task.files
-                              .asMap()
-                              .entries
-                              .map((entry) {
+                          ...task.files.asMap().entries.map((entry) {
                             final index = entry.key;
                             final file = entry.value;
                             return InkWell(
                               onTap: () => _openFile(file),
                               child: Container(
-                                margin: const EdgeInsets.only(
-                                    bottom: 8),
-                                padding:
-                                const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 10),
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                      color:
-                                      Colors.grey.shade300),
-                                  borderRadius:
-                                  BorderRadius.circular(6),
+                                    color: Colors.grey.shade300,
+                                  ),
+                                  borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Row(
                                   children: [
                                     const Icon(
-                                        Icons.insert_drive_file,
-                                        color: secondaryColor),
+                                      Icons.insert_drive_file,
+                                      color: secondaryColor,
+                                    ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment:
-                                        CrossAxisAlignment
-                                            .start,
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             file.name,
                                             maxLines: 1,
-                                            overflow: TextOverflow
-                                                .ellipsis,
+                                            overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
-                                                fontWeight:
-                                                FontWeight
-                                                    .w500),
+                                              fontWeight: FontWeight.w500,
+                                            ),
                                           ),
-                                          const SizedBox(
-                                              height: 4),
+                                          const SizedBox(height: 4),
                                           Text(
                                             "${(file.size / 1024).toStringAsFixed(1)} KB",
                                             style: TextStyle(
                                               fontSize: 12,
-                                              color: Colors
-                                                  .grey.shade600,
+                                              color: Colors.grey.shade600,
                                             ),
                                           ),
                                         ],
                                       ),
                                     ),
                                     IconButton(
-                                      icon: const Icon(
-                                          Icons.close,
-                                          size: 20),
+                                      icon: const Icon(Icons.close, size: 20),
                                       onPressed: () {
                                         setState(() {
-                                          task.files
-                                              .removeAt(index);
+                                          task.files.removeAt(index);
                                         });
                                         widget.onChanged();
                                       },
@@ -1370,7 +1422,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         padding: const EdgeInsets.only(bottom: 4),
                         child: Text(
                           "Created By: ${task.createdBy!['name'] ?? task.createdBy!['email'] ?? 'Unknown'}",
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
                       ),
                     if (task.editedBy != null)
@@ -1378,7 +1433,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Text(
                           "Last Edited By: ${task.editedBy!['name'] ?? task.editedBy!['email'] ?? 'Unknown'}",
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
                       ),
 
@@ -1387,8 +1445,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     const Text(
                       "Add note",
                       style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     TextField(
@@ -1408,8 +1467,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
                     // ── Created + delete ─────────────────────────────
                     Row(
-                      mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
                           "Created: ${task.createdDate}",
@@ -1419,8 +1477,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline,
-                              color: Colors.brown, size: 28),
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.brown,
+                            size: 28,
+                          ),
                           onPressed: () {
                             widget.onDelete();
                             context.pop();
@@ -1439,7 +1500,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   }
 
   // 🚀 NAYA: Helper for Extra Fields (Inline editing)
-  Widget _buildExtraFieldRow(String label, String? value, Function(String) onChanged, {bool isTime = false}) {
+  Widget _buildExtraFieldRow(
+    String label,
+    String? value,
+    Function(String) onChanged, {
+    bool isTime = false,
+  }) {
     final TextEditingController ctrl = TextEditingController(text: value);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1448,56 +1514,87 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         children: [
           Expanded(
             flex: 2,
-            child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: secondaryColor)),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: secondaryColor,
+              ),
+            ),
           ),
           Expanded(
             flex: 4,
-            child: isTime 
-              ? InkWell(
-                  onTap: () async {
-                    final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-                    if (time != null && mounted) {
-                      onChanged(time.format(context));
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-                    child: Text(value?.isNotEmpty == true ? value! : 'Set time', style: TextStyle(color: value?.isNotEmpty == true ? Colors.black87 : Colors.grey)),
-                  ),
-                )
-              : Focus(
-                  onFocusChange: (hasFocus) {
-                    if (!hasFocus) {
-                      onChanged(ctrl.text.trim());
-                    }
-                  },
-                  child: TextField(
-                    controller: ctrl,
-                    style: const TextStyle(fontSize: 13),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      hintText: 'Enter $label',
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                    ),
-                    onSubmitted: (val) {
-                      onChanged(val.trim());
+            child: isTime
+                ? InkWell(
+                    onTap: () async {
+                      final time = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay.now(),
+                      );
+                      if (time != null && mounted) {
+                        onChanged(time.format(context));
+                      }
                     },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        value?.isNotEmpty == true ? value! : 'Set time',
+                        style: TextStyle(
+                          color: value?.isNotEmpty == true
+                              ? Colors.black87
+                              : Colors.grey,
+                        ),
+                      ),
+                    ),
+                  )
+                : Focus(
+                    onFocusChange: (hasFocus) {
+                      if (!hasFocus) {
+                        onChanged(ctrl.text.trim());
+                      }
+                    },
+                    child: TextField(
+                      controller: ctrl,
+                      style: const TextStyle(fontSize: 13),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        hintText: 'Enter $label',
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onSubmitted: (val) {
+                        onChanged(val.trim());
+                      },
+                    ),
                   ),
-                ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAddButton(BuildContext context,
-      {required String label,
-      required IconData icon,
-      required void Function(BuildContext) onTap}) {
+  Widget _buildAddButton(
+    BuildContext context, {
+    required String label,
+    required IconData icon,
+    required void Function(BuildContext) onTap,
+  }) {
     return InkWell(
       onTap: () => onTap(context),
       borderRadius: BorderRadius.circular(20),
@@ -1515,9 +1612,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             Text(
               label,
               style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey.shade700),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade700,
+              ),
             ),
           ],
         ),
@@ -1525,10 +1623,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-  Widget _buildDetailButton(BuildContext context,
-      {required IconData icon,
-      required String label,
-      required void Function(BuildContext) onTap}) {
+  Widget _buildDetailButton(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required void Function(BuildContext) onTap,
+  }) {
     return InkWell(
       onTap: () => onTap(context),
       borderRadius: BorderRadius.circular(20),
@@ -1546,9 +1646,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             Text(
               label,
               style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: secondaryColor),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: secondaryColor,
+              ),
             ),
           ],
         ),
@@ -1556,5 +1657,5 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-// Removed duplicates.
+  // Removed duplicates.
 }
