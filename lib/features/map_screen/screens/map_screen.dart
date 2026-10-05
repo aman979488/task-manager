@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 🚀 NAYA: For SystemChannels keyboard show/hide
@@ -12,10 +10,14 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../widgets/app_drawer.dart';
 import '../../../viewmodels/auth_viewmodel.dart';
 import '../../../utils/role_permissions.dart';
+import '../../../services/home_screen_shortcut.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key, required this.title});
@@ -30,12 +32,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final FocusNode _focusNode = FocusNode();
   final TextEditingController taskName = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _taskSearchController = TextEditingController();
   String _searchQuery = '';
+  String _taskSearchQuery = '';
+  bool _isSearchVisible = false;
+  String _sortBy = 'Priority';
+  String _groupBy = 'Assignee';
+  String _viewType = 'Detailed list';
+  double _zoom = 1;
+  DateTime _calendarDate = DateTime.now();
 
   OverlayEntry? _floatingSheetOverlay;
 
   final List<Task> tasks = [];
-  Timer? _reminderTimer;
 
   // selected tasks for multi-select
   final Set<Task> _selected = {};
@@ -69,8 +78,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       .collection('map');
 
   bool _isAddingTask = false; // 🚀 NAYA: To prevent double submission
-
-  List<String>? _assigneesCache;
   List<String>? _clientsCache;
   List<String>? _projectsCache; // 🚀 NAYA
 
@@ -84,10 +91,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     super.initState();
     _tabController = TabController(length: 6, vsync: this);
     _loadButtonOrder();
-    _startReminderChecker();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadTasksFromFirebase();
-      _checkDueReminders();
     });
   }
 
@@ -403,12 +408,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _reminderTimer?.cancel();
     _tabController.dispose();
     _hideFloatingSheet();
     _focusNode.dispose();
     taskName.dispose();
     _searchController.dispose();
+    _taskSearchController.dispose();
     super.dispose();
   }
 
@@ -632,49 +637,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         ..clear()
         ..addAll(loaded);
     });
-
-    await _checkDueReminders();
-  }
-
-  void _startReminderChecker() {
-    _reminderTimer?.cancel();
-    _reminderTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (!mounted) return;
-      _checkDueReminders();
-    });
-  }
-
-  Future<void> _checkDueReminders() async {
-    try {
-      final snapshot = await tasksCollection.get();
-      final now = DateTime.now();
-
-      for (final doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
-        final task = Task.fromMap(doc.id, data);
-
-        if (task.assignee == null || task.assignee!.trim().isEmpty) {
-          continue;
-        }
-
-        if (task.isReminderDueAt(now)) {
-          await _sendReminderNotification(task);
-          await tasksCollection.doc(doc.id).update({'reminderSent': true});
-          task.reminderSent = true;
-          continue;
-        }
-
-        if (task.isDeadlineNotificationDue(now)) {
-          await _sendDeadlineNotification(task);
-          await tasksCollection.doc(doc.id).update({
-            'deadlineReminderSent': true,
-          });
-          task.deadlineReminderSent = true;
-        }
-      }
-    } catch (e) {
-      debugPrint('Error checking reminder notifications: $e');
-    }
   }
 
   Map<String, dynamic> _taskData(Task task) {
@@ -710,11 +672,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     await tasksCollection.doc(task.id).delete();
   }
 
-  Future<void> _handleAddTaskFromSheet() async {
-    if (_isAddingTask) return; // 🚀 NAYA: Prevent multiple triggers
+  Future<bool> _handleAddTaskFromSheet() async {
+    if (_isAddingTask) return false; // 🚀 NAYA: Prevent multiple triggers
 
     final text = taskName.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty) return false;
 
     setState(() {
       _isAddingTask = true;
@@ -763,8 +725,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       priorityUpdatedAt: priority != null ? nowMs : null,
     );
 
+    var added = false;
     try {
       await _addTaskToFirebase(newTask);
+      added = true;
 
       if (assignee != null && assignee.trim().isNotEmpty) {
         _sendTaskAssignmentNotification(assignee, text, authVM);
@@ -785,86 +749,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       await Future.delayed(const Duration(milliseconds: 80));
       _focusNode.requestFocus();
     }
-  }
-
-  Future<String?> _resolveAssigneeFcmToken(String assignee) async {
-    try {
-      final userQuery = await FirebaseFirestore.instance
-          .collection('users')
-          .where('name', isEqualTo: assignee.trim())
-          .limit(1)
-          .get();
-
-      if (userQuery.docs.isNotEmpty) {
-        return userQuery.docs.first.data()['fcmToken']?.toString();
-      }
-
-      final cpQuery = await FirebaseFirestore.instance
-          .collection('cps')
-          .where('cpName', isEqualTo: assignee.trim())
-          .limit(1)
-          .get();
-
-      if (cpQuery.docs.isNotEmpty) {
-        return cpQuery.docs.first.data()['fcmToken']?.toString();
-      }
-    } catch (_) {}
-
-    return null;
-  }
-
-  Future<void> _sendNotificationToAssignee({
-    required String assignee,
-    required String title,
-    required String body,
-    required String type,
-  }) async {
-    final recipient = assignee.trim();
-    if (recipient.isEmpty) return;
-
-    try {
-      final fcmToken = await _resolveAssigneeFcmToken(recipient);
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'recipientName': recipient,
-        'recipientFcmToken': fcmToken,
-        'title': title,
-        'body': body,
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-        'type': type,
-      });
-    } catch (e) {
-      debugPrint('Error sending $type notification: $e');
-    }
-  }
-
-  Future<void> _sendReminderNotification(Task task) async {
-    final assignee = task.assignee;
-    if (assignee == null || assignee.trim().isEmpty) return;
-
-    await _sendNotificationToAssignee(
-      assignee: assignee,
-      title: 'Reminder',
-      body: 'Reminder for task: "${task.title}"',
-      type: 'task_reminder',
-    );
-  }
-
-  Future<void> _sendDeadlineNotification(Task task) async {
-    final assignee = task.assignee;
-    if (assignee == null || assignee.trim().isEmpty) return;
-
-    final deadline = DateTime.tryParse(task.deadline ?? '');
-    final deadlineText = deadline == null
-        ? 'your task deadline'
-        : 'your task deadline at ${deadline.toLocal().toString()}';
-
-    await _sendNotificationToAssignee(
-      assignee: assignee,
-      title: 'Deadline approaching',
-      body: 'Your task "${task.title}" is nearing $deadlineText.',
-      type: 'task_deadline',
-    );
+    return added;
   }
 
   Future<void> _sendTaskAssignmentNotification(
@@ -994,7 +879,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Future<List<String>> _loadAssigneesFromFirestore() async {
-    if (_assigneesCache != null) return _assigneesCache!;
     final snapshots = await Future.wait([
       FirebaseFirestore.instance.collection('users').get(),
       FirebaseFirestore.instance.collection('cps').get(),
@@ -1021,7 +905,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     final values = valuesByName.values.toList()
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    _assigneesCache = values;
     return values;
   }
 
@@ -1457,7 +1340,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 final prev = cursor >= 2
                                     ? val[cursor - 2]
                                     : ' ';
-                                if (prev != ' ' && prev != '\n') return;
 
                                 FloatingSheetType? triggerType;
                                 String symbol = '';
@@ -1487,6 +1369,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 if (triggerType != null) {
                                   final bool isMulti =
                                       triggerType == FloatingSheetType.assign;
+                                  if (triggerType != FloatingSheetType.assign &&
+                                      prev != ' ' &&
+                                      prev != '\n') {
+                                    return;
+                                  }
 
                                   // Get currently selected values from the text to show checks in menu
                                   List<String> currentSelections = [];
@@ -1531,13 +1418,35 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                           if (mentionStart >= 0) {
                                             final beforeMention = currentText
                                                 .substring(0, mentionStart);
-                                            final afterMention = currentText
+                                            var afterMention = currentText
                                                 .substring(cursor);
+                                            final beforeEndsWithWhitespace =
+                                                beforeMention.endsWith(' ') ||
+                                                beforeMention.endsWith('\n');
+                                            final afterStartsWithWhitespace =
+                                                afterMention.startsWith(' ') ||
+                                                afterMention.startsWith('\n');
+
+                                            if (beforeEndsWithWhitespace &&
+                                                afterStartsWithWhitespace) {
+                                              afterMention = afterMention
+                                                  .substring(1);
+                                            }
+
+                                            final separator =
+                                                beforeMention.isNotEmpty &&
+                                                    afterMention.isNotEmpty &&
+                                                    !beforeEndsWithWhitespace &&
+                                                    !afterStartsWithWhitespace
+                                                ? ' '
+                                                : '';
                                             taskName.text =
-                                                '$beforeMention$afterMention';
+                                                '$beforeMention$separator$afterMention';
                                             taskName.selection =
                                                 TextSelection.collapsed(
-                                                  offset: mentionStart,
+                                                  offset:
+                                                      beforeMention.length +
+                                                      separator.length,
                                                 );
                                           }
                                         } else {
@@ -1592,16 +1501,20 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 }
                               },
                               onSubmitted: (_) async {
-                                await _handleAddTaskFromSheet();
-                                setModalState(() {});
+                                final added = await _handleAddTaskFromSheet();
+                                if (added && sheetContext.mounted) {
+                                  Navigator.of(sheetContext).pop();
+                                }
                               },
                             ),
                           ),
                         ),
                         IconButton(
                           onPressed: () async {
-                            await _handleAddTaskFromSheet();
-                            setModalState(() {});
+                            final added = await _handleAddTaskFromSheet();
+                            if (added && sheetContext.mounted) {
+                              Navigator.of(sheetContext).pop();
+                            }
                           },
                           icon: const Icon(Icons.send, color: secondaryColor),
                         ),
@@ -2028,8 +1941,212 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }).toList();
   }
 
+  List<Task> _getVisibleTasks(List<Task> source) {
+    final query = _taskSearchQuery.trim().toLowerCase();
+    final result = source
+        .where(
+          (task) =>
+              query.isEmpty ||
+              task.title.toLowerCase().contains(query) ||
+              (task.assignee ?? '').toLowerCase().contains(query) ||
+              (task.workType ?? '').toLowerCase().contains(query) ||
+              (task.priority ?? '').toLowerCase().contains(query),
+        )
+        .toList();
+
+    int compareDates(String? a, String? b) {
+      final first = DateTime.tryParse(a ?? '');
+      final second = DateTime.tryParse(b ?? '');
+      if (first == null) return second == null ? 0 : 1;
+      if (second == null) return -1;
+      return first.compareTo(second);
+    }
+
+    switch (_sortBy) {
+      case 'Title':
+        result.sort(
+          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+        );
+      case 'Due date':
+        result.sort(
+          (a, b) =>
+              compareDates(a.deadline ?? a.reminder, b.deadline ?? b.reminder),
+        );
+      case 'Status':
+        result.sort(
+          (a, b) => a.isDone == b.isDone
+              ? a.title.toLowerCase().compareTo(b.title.toLowerCase())
+              : (a.isDone ? 1 : -1),
+        );
+      default:
+        result.sort(_taskComparator);
+    }
+    return result;
+  }
+
+  String _groupValue(Task task) {
+    switch (_groupBy) {
+      case 'Priority':
+        return task.priority?.trim().isNotEmpty == true
+            ? task.priority!.trim()
+            : 'No priority';
+      case 'Work type':
+        return task.workType?.trim().isNotEmpty == true
+            ? task.workType!.trim()
+            : 'No work type';
+      case 'Status':
+        return task.isDone ? 'Done' : 'Pending';
+      default:
+        return task.assignee?.trim().isNotEmpty == true
+            ? task.assignee!.trim()
+            : 'Unassigned';
+    }
+  }
+
+  DateTime? _taskScheduledDate(Task task) =>
+      DateTime.tryParse(task.deadline ?? task.reminder ?? '');
+
+  Widget _buildCompactTaskTile(Task task) {
+    final isSelected = _selected.contains(task);
+    return ListTile(
+      dense: true,
+      selected: isSelected,
+      leading: Checkbox(
+        value: task.isDone,
+        activeColor: secondaryColor,
+        onChanged: (_) async {
+          setState(() => task.isDone = !task.isDone);
+          await _updateTaskInFirebase(task);
+        },
+      ),
+      title: Text(
+        task.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          decoration: task.isDone ? TextDecoration.lineThrough : null,
+          color: task.isDone ? Colors.grey : Colors.black87,
+        ),
+      ),
+      subtitle: Text(
+        [
+          if (task.priority?.isNotEmpty == true) task.priority!,
+          if (task.assignee?.isNotEmpty == true) task.assignee!,
+        ].join(' • '),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      onLongPress: () => setState(() {
+        if (isSelected) {
+          _selected.remove(task);
+        } else {
+          _selected.add(task);
+        }
+      }),
+      onTap: () {
+        if (_selected.isNotEmpty) {
+          setState(() {
+            if (isSelected) {
+              _selected.remove(task);
+            } else {
+              _selected.add(task);
+            }
+          });
+        } else {
+          _openTaskDetail(task);
+        }
+      },
+    );
+  }
+
+  Widget _buildGridTaskCard(Task task) {
+    final isSelected = _selected.contains(task);
+    return Card(
+      color: isSelected ? primaryColor.withValues(alpha: 0.15) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onLongPress: () => setState(() {
+          if (isSelected) {
+            _selected.remove(task);
+          } else {
+            _selected.add(task);
+          }
+        }),
+        onTap: () {
+          if (_selected.isNotEmpty) {
+            setState(() {
+              if (isSelected) {
+                _selected.remove(task);
+              } else {
+                _selected.add(task);
+              }
+            });
+          } else {
+            _openTaskDetail(task);
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    task.isDone
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    color: task.isDone ? Colors.green : Colors.grey,
+                    size: 20,
+                  ),
+                  const SizedBox(height: 8),
+                  if (task.priority?.isNotEmpty == true)
+                    Text(
+                      task.priority!,
+                      style: const TextStyle(
+                        color: secondaryColor,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                task.title,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  decoration: task.isDone ? TextDecoration.lineThrough : null,
+                ),
+              ),
+              const Spacer(),
+              if (task.assignee?.isNotEmpty == true)
+                Text(
+                  task.assignee!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTaskList(List<Task> list) {
-    if (list.isEmpty) {
+    final visibleTasks = _getVisibleTasks(list);
+    if (_viewType == 'Calendar') {
+      return _buildCalendarView(visibleTasks);
+    }
+    if (visibleTasks.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24.0),
@@ -2041,48 +2158,107 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         ),
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
-      itemCount: list.length,
-      itemBuilder: (context, index) {
-        return Column(
-          children: [
-            _buildTaskTile(list[index], index),
-            _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
-          ],
-        );
-      },
+    return MediaQuery(
+      data: MediaQuery.of(context)
+          .copyWith(textScaler: TextScaler.linear(_zoom)),
+      child: _viewType == 'Grid'
+          ? GridView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 260,
+                mainAxisExtent: 150 + (80 * (_zoom - 1)),
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              itemCount: visibleTasks.length,
+              itemBuilder: (context, index) =>
+                  _buildGridTaskCard(visibleTasks[index]),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
+              itemCount: visibleTasks.length,
+              itemBuilder: (context, index) => _viewType == 'List'
+                  ? _buildCompactTaskTile(visibleTasks[index])
+                  : Column(
+                      children: [
+                        _buildTaskTile(visibleTasks[index], index),
+                        _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
+                      ],
+                    ),
+            ),
+    );
+  }
+
+  Widget _buildCalendarView(List<Task> visibleTasks) {
+    final selectedDay = DateTime(
+      _calendarDate.year,
+      _calendarDate.month,
+      _calendarDate.day,
+    );
+    final dayTasks = visibleTasks.where((task) {
+      final scheduled = _taskScheduledDate(task);
+      return scheduled != null &&
+          scheduled.year == selectedDay.year &&
+          scheduled.month == selectedDay.month &&
+          scheduled.day == selectedDay.day;
+    }).toList();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 100),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CalendarDatePicker(
+            initialDate: _calendarDate,
+            firstDate: DateTime(2000),
+            lastDate: DateTime(2100),
+            onDateChanged: (date) => setState(() => _calendarDate = date),
+          ),
+          const Divider(height: 1),
+          if (dayTasks.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'No tasks scheduled for this day.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          else
+            ...dayTasks.asMap().entries.map(
+              (entry) => Column(
+                children: [
+                  _buildTaskTile(entry.value, entry.key),
+                  _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
   Widget _buildGroupByAssignView() {
     final Map<String, List<Task>> grouped = {};
-    for (var t in tasks) {
-      final assignee = (t.assignee == null || t.assignee!.trim().isEmpty)
-          ? 'Unassigned'
-          : t.assignee!.trim();
-      grouped.putIfAbsent(assignee, () => []).add(t);
+    for (final task in _getVisibleTasks(tasks)) {
+      grouped.putIfAbsent(_groupValue(task), () => []).add(task);
     }
 
     if (grouped.isEmpty) {
       return const Center(
-        child: Text(
-          'No assignee data available.',
-          style: TextStyle(color: Colors.grey),
-        ),
+        child: Text('No tasks to group.', style: TextStyle(color: Colors.grey)),
       );
     }
 
-    final assignees = grouped.keys.toList()..sort();
+    final groups = grouped.keys.toList()..sort();
 
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-      itemCount: assignees.length,
+      itemCount: groups.length,
       itemBuilder: (context, index) {
-        final assigneeName = assignees[index];
-        final assigneeTasks = grouped[assigneeName]!;
-        final completedCount = assigneeTasks.where((t) => t.isDone).length;
-        final pendingCount = assigneeTasks.length - completedCount;
+        final groupName = groups[index];
+        final groupTasks = grouped[groupName]!;
+        final completedCount = groupTasks.where((t) => t.isDone).length;
+        final pendingCount = groupTasks.length - completedCount;
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -2106,7 +2282,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             leading: CircleAvatar(
               backgroundColor: primaryColor.withOpacity(0.3),
               child: Text(
-                assigneeName.isNotEmpty ? assigneeName[0].toUpperCase() : '?',
+                groupName.isNotEmpty ? groupName[0].toUpperCase() : '?',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   color: secondaryColor,
@@ -2114,7 +2290,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
             ),
             title: Text(
-              assigneeName,
+              groupName,
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 15,
@@ -2124,7 +2300,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                'Total: ${assigneeTasks.length} • Pending: $pendingCount • Done: $completedCount',
+                'Total: ${groupTasks.length} • Pending: $pendingCount • Done: $completedCount',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
             ),
@@ -2132,7 +2308,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               Icons.chevron_right_rounded,
               color: secondaryColor,
             ),
-            onTap: () => _showAssigneeTasksModal(assigneeName, assigneeTasks),
+            onTap: () {
+              if (_groupBy == 'Assignee') {
+                _showAssigneeTasksModal(groupName, groupTasks);
+              } else {
+                _showGroupTasksDialog(groupName, groupTasks);
+              }
+            },
           ),
         );
       },
@@ -2144,6 +2326,318 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       '/assignee-tasks',
       extra: {'assigneeName': assigneeName, 'tasks': assigneeTasks},
     );
+  }
+
+  Future<void> _showGroupTasksDialog(String title, List<Task> groupTasks) =>
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(title),
+          content: SizedBox(
+            width: 360,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: groupTasks.length,
+              itemBuilder: (context, index) {
+                final task = groupTasks[index];
+                return ListTile(
+                  title: Text(task.title),
+                  leading: Icon(
+                    task.isDone
+                        ? Icons.check_circle_outline
+                        : Icons.radio_button_unchecked,
+                    color: task.isDone ? Colors.green : Colors.grey,
+                  ),
+                  onTap: () {
+                    Navigator.pop(dialogContext);
+                    _openTaskDetail(task);
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+  Future<void> _showToolbarMenu() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.sort),
+              title: const Text('Sort by'),
+              subtitle: Text(_sortBy),
+              onTap: () => Navigator.pop(context, 'sort'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.group_work_outlined),
+              title: const Text('Group by'),
+              subtitle: Text(_groupBy),
+              onTap: () => Navigator.pop(context, 'group'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.view_quilt_outlined),
+              title: const Text('View type'),
+              subtitle: Text(_viewType),
+              onTap: () => Navigator.pop(context, 'view'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.zoom_in),
+              title: const Text('Adjust zoom'),
+              subtitle: Text('${(_zoom * 100).round()}%'),
+              onTap: () => Navigator.pop(context, 'zoom'),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.add_to_home_screen),
+              title: const Text('Add shortcut to home screen'),
+              onTap: () => Navigator.pop(context, 'shortcut'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.share_outlined),
+              title: const Text('Share list'),
+              onTap: () => Navigator.pop(context, 'share'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.print_outlined),
+              title: const Text('Print list'),
+              onTap: () => Navigator.pop(context, 'print'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+
+    switch (action) {
+      case 'sort':
+        await _chooseToolbarOption(
+          title: 'Sort by',
+          options: const ['Priority', 'Title', 'Due date', 'Status'],
+          selected: _sortBy,
+          onSelected: (value) => setState(() => _sortBy = value),
+        );
+      case 'group':
+        await _chooseToolbarOption(
+          title: 'Group by',
+          options: const ['Assignee', 'Priority', 'Work type', 'Status'],
+          selected: _groupBy,
+          onSelected: (value) {
+            setState(() => _groupBy = value);
+            _tabController.animateTo(5);
+          },
+        );
+      case 'view':
+        await _chooseToolbarOption(
+          title: 'View type',
+          options: const ['Grid', 'List', 'Detailed list', 'Calendar'],
+          selected: _viewType,
+          onSelected: (value) => setState(() => _viewType = value),
+        );
+      case 'zoom':
+        await _showZoomDialog();
+      case 'shortcut':
+        final added = await installHomeScreenShortcut();
+        if (mounted) {
+          _showMessage(
+            added
+                ? 'Home screen shortcut added.'
+                : kIsWeb
+                ? 'Use the browser menu and choose "Add to Home screen" or "Install app".'
+                : 'This platform does not allow the app to add a home screen shortcut automatically.',
+          );
+        }
+      case 'share':
+        await _shareTaskList();
+      case 'print':
+        await _printTaskList();
+    }
+  }
+
+  Future<void> _chooseToolbarOption({
+    required String title,
+    required List<String> options,
+    required String selected,
+    required ValueChanged<String> onSelected,
+  }) async {
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(title),
+        children: options
+            .map(
+              (option) => RadioListTile<String>(
+                value: option,
+                groupValue: selected,
+                title: Text(option),
+                onChanged: (value) => Navigator.pop(context, value),
+              ),
+            )
+            .toList(),
+      ),
+    );
+    if (value != null && mounted) onSelected(value);
+  }
+
+  Future<void> _showZoomDialog() async {
+    var zoom = _zoom;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Adjust zoom'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Slider(
+                min: 0.8,
+                max: 1.4,
+                divisions: 6,
+                value: zoom,
+                label: '${(zoom * 100).round()}%',
+                onChanged: (value) {
+                  setDialogState(() => zoom = value);
+                  setState(() => _zoom = value);
+                },
+              ),
+              Text('${(zoom * 100).round()}%'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Task> _tasksForCurrentTab() {
+    switch (_tabController.index) {
+      case 0:
+        return _getMyTasks();
+      case 2:
+        return _getDoneTasks();
+      case 3:
+        return _getOverdueTasks();
+      case 4:
+        return _getPendingTasks();
+      default:
+        return tasks;
+    }
+  }
+
+  Future<void> _shareTaskList() async {
+    final items = _getVisibleTasks(_tasksForCurrentTab());
+    final contents = items.isEmpty
+        ? 'No tasks in this list.'
+        : items
+              .map(
+                (task) =>
+                    '${task.isDone ? '[Done]' : '[Pending]'} ${task.title}'
+                    '${task.assignee?.isNotEmpty == true ? ' — ${task.assignee}' : ''}'
+                    '${task.deadline?.isNotEmpty == true ? ' (Due: ${task.deadline})' : ''}',
+              )
+              .join('\n');
+    await SharePlus.instance.share(
+      ShareParams(subject: 'Task list', text: '${widget.title}\n\n$contents'),
+    );
+  }
+
+  Future<void> _printTaskList() async {
+    final items = _getVisibleTasks(_tasksForCurrentTab());
+    final document = pw.Document();
+    document.addPage(
+      pw.MultiPage(
+        build: (context) => [
+          pw.Text(
+            '${widget.title} - Task list',
+            style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 16),
+          if (items.isEmpty)
+            pw.Text('No tasks in this list.')
+          else
+            ...items.map(
+              (task) => pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 10),
+                child: pw.Text(
+                  '${task.isDone ? '[Done]' : '[Pending]'} ${task.title}'
+                  '${task.assignee?.isNotEmpty == true ? ' - ${task.assignee}' : ''}'
+                  '${task.deadline?.isNotEmpty == true ? ' (Due: ${task.deadline})' : ''}',
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    await Printing.layoutPdf(onLayout: (_) async => document.save());
+  }
+
+  Future<void> _showNotifications() async {
+    final now = DateTime.now();
+    final reminders =
+        tasks.where((task) {
+          if (task.isDone) return false;
+          final scheduled = _taskScheduledDate(task);
+          return scheduled != null &&
+              scheduled.isAfter(now.subtract(const Duration(days: 1)));
+        }).toList()..sort(
+          (a, b) => (_taskScheduledDate(a) ?? DateTime(2100)).compareTo(
+            _taskScheduledDate(b) ?? DateTime(2100),
+          ),
+        );
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Notifications'),
+        content: SizedBox(
+          width: 360,
+          child: reminders.isEmpty
+              ? const Text('No upcoming task reminders.')
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: reminders.length,
+                  itemBuilder: (context, index) {
+                    final task = reminders[index];
+                    final scheduled = _taskScheduledDate(task)!;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(
+                        Icons.notifications_outlined,
+                        color: secondaryColor,
+                      ),
+                      title: Text(task.title),
+                      subtitle: Text(
+                        '${scheduled.day}/${scheduled.month}/${scheduled.year} '
+                        '${scheduled.hour.toString().padLeft(2, '0')}:'
+                        '${scheduled.minute.toString().padLeft(2, '0')}',
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -2202,6 +2696,38 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              actions: [
+                IconButton(
+                  tooltip: 'Notifications',
+                  icon: const Icon(
+                    Icons.notifications_none_outlined,
+                    color: secondaryColor,
+                  ),
+                  onPressed: _showNotifications,
+                ),
+                IconButton(
+                  tooltip: _isSearchVisible ? 'Close search' : 'Search tasks',
+                  icon: Icon(
+                    _isSearchVisible ? Icons.close : Icons.search,
+                    color: secondaryColor,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _isSearchVisible = !_isSearchVisible;
+                      if (!_isSearchVisible) {
+                        _taskSearchController.clear();
+                        _taskSearchQuery = '';
+                      }
+                    });
+                  },
+                ),
+                IconButton(
+                  tooltip: 'More options',
+                  icon: const Icon(Icons.more_vert, color: secondaryColor),
+                  onPressed: _showToolbarMenu,
+                ),
+                const SizedBox(width: 4),
+              ],
             ),
       drawer: selectionActive ? null : const AppDrawer(),
       body: tasks.isEmpty && !selectionActive
@@ -2216,6 +2742,36 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             )
           : Column(
               children: [
+                if (_isSearchVisible)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    child: TextField(
+                      controller: _taskSearchController,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'Search tasks',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: IconButton(
+                          tooltip: 'Close search',
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            _taskSearchController.clear();
+                            FocusScope.of(context).unfocus();
+                            setState(() {
+                              _taskSearchQuery = '';
+                              _isSearchVisible = false;
+                            });
+                          },
+                        ),
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onChanged: (value) =>
+                          setState(() => _taskSearchQuery = value),
+                    ),
+                  ),
                 Container(
                   color: Colors.white,
                   width: double.infinity,
@@ -2243,7 +2799,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       Tab(text: 'Done (${_getDoneTasks().length})'),
                       Tab(text: 'Overdue (${_getOverdueTasks().length})'),
                       Tab(text: 'Pending (${_getPendingTasks().length})'),
-                      const Tab(text: 'Group By Assign'),
+                      Tab(text: 'Group by $_groupBy'),
                     ],
                   ),
                 ),

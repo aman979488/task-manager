@@ -1,4 +1,5 @@
 import 'package:go_router/go_router.dart';
+
 import '../features/map_screen/models/task.dart';
 import '../features/map_screen/screens/map_screen.dart';
 import '../features/map_screen/screens/task_detail_page.dart';
@@ -17,11 +18,7 @@ class AppRouter {
         path: AppRoutes.taskDetail,
         builder: (context, state) {
           final task = state.extra as Task;
-          return TaskDetailPage(
-            task: task,
-            onChanged: () {},
-            onDelete: () {},
-          );
+          return TaskDetailPage(task: task, onChanged: () {}, onDelete: () {});
         },
       ),
       GoRoute(
@@ -30,10 +27,7 @@ class AppRouter {
           final extra = state.extra as Map<String, dynamic>;
           final assigneeName = extra['assigneeName'] as String? ?? '';
           final tasks = extra['tasks'] as List<Task>? ?? [];
-          return AssigneeTasksView(
-            assigneeName: assigneeName,
-            tasks: tasks,
-          );
+          return AssigneeTasksView(assigneeName: assigneeName, tasks: tasks);
         },
       ),
     ],

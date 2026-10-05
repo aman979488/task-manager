@@ -35,4 +35,32 @@ void main() {
 
     expect(task.reminderSent, isTrue);
   });
+
+  test('deadline notification is due within three hours of the deadline', () {
+    final task = Task(
+      'Follow up client',
+      deadline: DateTime.now().add(const Duration(hours: 2)).toIso8601String(),
+    );
+
+    expect(task.isDeadlineNotificationDue(DateTime.now()), isTrue);
+  });
+
+  test('deadline notification is not due outside the three-hour window', () {
+    final task = Task(
+      'Follow up client',
+      deadline: DateTime.now().add(const Duration(hours: 4)).toIso8601String(),
+    );
+
+    expect(task.isDeadlineNotificationDue(DateTime.now()), isFalse);
+  });
+
+  test('deadline notification is not due after it was already sent', () {
+    final task = Task(
+      'Follow up client',
+      deadline: DateTime.now().add(const Duration(hours: 1)).toIso8601String(),
+      deadlineReminderSent: true,
+    );
+
+    expect(task.isDeadlineNotificationDue(DateTime.now()), isFalse);
+  });
 }
