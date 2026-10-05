@@ -39,6 +39,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   String _sortBy = 'Priority';
   String _groupBy = 'Assignee';
   String _viewType = 'Detailed list';
+  String _priorityFilter = 'All';
   double _zoom = 1;
   DateTime _calendarDate = DateTime.now();
 
@@ -86,11 +87,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   late TabController _tabController;
   String? _expandedMyWorkSection;
+  int _selectedTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 6, vsync: this);
+    _tabController.addListener(_handleTabChange);
     _loadButtonOrder();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadTasksFromFirebase();
@@ -409,6 +412,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     _hideFloatingSheet();
     _focusNode.dispose();
@@ -633,12 +637,38 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     loaded.sort(_taskComparator);
 
+    if (!mounted) return;
     setState(() {
       tasks
         ..clear()
         ..addAll(loaded);
+      if (_priorityFilter != 'All' && !loaded.any(_matchesPriorityFilter)) {
+        _priorityFilter = 'All';
+      }
     });
   }
+
+  void _handleTabChange() {
+    if (_tabController.indexIsChanging ||
+        _selectedTabIndex == _tabController.index) {
+      return;
+    }
+    setState(() => _selectedTabIndex = _tabController.index);
+  }
+
+  Future<void> _refreshTasks() async {
+    try {
+      await _loadTasksFromFirebase();
+    } on FirebaseException catch (error) {
+      if (!mounted) return;
+      _showMessage(error.message ?? 'Could not refresh tasks.');
+    }
+  }
+
+  Widget _refreshableScrollView(Widget child) => RefreshIndicator(
+    onRefresh: _refreshTasks,
+    child: Scrollbar(thumbVisibility: kIsWeb, child: child),
+  );
 
   Map<String, dynamic> _taskData(Task task) {
     final data = task.toMap();
@@ -2106,78 +2136,81 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       'Upcoming Reminders': Colors.indigo,
     };
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 100),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final name in sectionNames) ...[
-            Builder(
-              builder: (context) {
-                final color = sectionColors[name]!;
-                final count = sections[name]?.length ?? 0;
-                final isExpanded = expandedName == name;
+    return _refreshableScrollView(
+      SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 100),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final name in sectionNames) ...[
+              Builder(
+                builder: (context) {
+                  final color = sectionColors[name]!;
+                  final count = sections[name]?.length ?? 0;
+                  final isExpanded = expandedName == name;
 
-                return Column(
-                  children: [
-                    InkWell(
-                      onTap: () => setState(() {
-                        _expandedMyWorkSection = isExpanded ? null : name;
-                      }),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        child: Row(
-                          children: [
-                            Text(
-                              name.toUpperCase(),
-                              style: TextStyle(
-                                color: color,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.6,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Container(
-                              constraints: const BoxConstraints(minWidth: 36),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: color.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                '$count',
-                                textAlign: TextAlign.center,
+                  return Column(
+                    children: [
+                      InkWell(
+                        onTap: () => setState(() {
+                          _expandedMyWorkSection = isExpanded ? null : name;
+                        }),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                name.toUpperCase(),
                                 style: TextStyle(
                                   color: color,
+                                  fontSize: 14,
                                   fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.6,
                                 ),
                               ),
-                            ),
-                            const Spacer(),
-                            Icon(
-                              isExpanded
-                                  ? Icons.keyboard_arrow_up
-                                  : Icons.keyboard_arrow_down,
-                              color: color,
-                            ),
-                          ],
+                              const SizedBox(width: 12),
+                              Container(
+                                constraints: const BoxConstraints(minWidth: 36),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  '$count',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: color,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const Spacer(),
+                              Icon(
+                                isExpanded
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                color: color,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    if (isExpanded) _buildMyWorkTaskResults(expandedTasks),
-                  ],
-                );
-              },
-            ),
+                      if (isExpanded) _buildMyWorkTaskResults(expandedTasks),
+                    ],
+                  );
+                },
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -2187,11 +2220,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final result = source
         .where(
           (task) =>
-              query.isEmpty ||
-              task.title.toLowerCase().contains(query) ||
-              (task.assignee ?? '').toLowerCase().contains(query) ||
-              (task.workType ?? '').toLowerCase().contains(query) ||
-              (task.priority ?? '').toLowerCase().contains(query),
+              _matchesPriorityFilter(task) &&
+              (query.isEmpty ||
+                  task.title.toLowerCase().contains(query) ||
+                  (task.assignee ?? '').toLowerCase().contains(query) ||
+                  (task.workType ?? '').toLowerCase().contains(query) ||
+                  (task.priority ?? '').toLowerCase().contains(query)),
         )
         .toList();
 
@@ -2223,6 +2257,56 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         result.sort(_taskComparator);
     }
     return result;
+  }
+
+  bool _matchesPriorityFilter(Task task) =>
+      _priorityFilter == 'All' ||
+      task.priority?.trim().toLowerCase() == _priorityFilter.toLowerCase();
+
+  List<String> _availablePriorityFilters(List<Task> source) {
+    final priorities =
+        source
+            .map((task) => task.priority?.trim() ?? '')
+            .where((priority) => priority.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort(
+            (first, second) =>
+                _priorityOrder(first).compareTo(_priorityOrder(second)),
+          );
+    return ['All', ...priorities];
+  }
+
+  Widget _buildPriorityFilters() {
+    final options = _availablePriorityFilters(tasks);
+    if (options.length <= 1) return const SizedBox.shrink();
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Row(
+        children: options
+            .map(
+              (priority) => Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(priority == 'All' ? 'All priorities' : priority),
+                  selected: _priorityFilter == priority,
+                  onSelected: (_) => setState(() => _priorityFilter = priority),
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  int _upcomingTaskNotificationCount() {
+    final now = DateTime.now();
+    return tasks.where((task) {
+      final scheduled = _taskScheduledDate(task);
+      return !task.isDone && scheduled != null && scheduled.isAfter(now);
+    }).length;
   }
 
   String _groupValue(Task task) {
@@ -2388,45 +2472,63 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       return _buildCalendarView(visibleTasks);
     }
     if (visibleTasks.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24.0),
-          child: Text(
-            "No tasks found in this category.",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
-          ),
+      return _refreshableScrollView(
+        ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(
+              height: 240,
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text(
+                    'No tasks found in this category.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
-    return MediaQuery(
-      data: MediaQuery.of(context)
-          .copyWith(textScaler: TextScaler.linear(_zoom)),
-      child: _viewType == 'Grid'
-          ? GridView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
-              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 260,
-                mainAxisExtent: 150 + (80 * (_zoom - 1)),
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
+    return _refreshableScrollView(
+      MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(_zoom)),
+        child: _viewType == 'Grid'
+            ? GridView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 260,
+                  mainAxisExtent: 150 + (80 * (_zoom - 1)),
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                ),
+                itemCount: visibleTasks.length,
+                itemBuilder: (context, index) =>
+                    _buildGridTaskCard(visibleTasks[index]),
+              )
+            : ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
+                itemCount: visibleTasks.length,
+                itemBuilder: (context, index) => _viewType == 'List'
+                    ? _buildCompactTaskTile(visibleTasks[index])
+                    : Column(
+                        children: [
+                          _buildTaskTile(visibleTasks[index], index),
+                          _thinHairline(
+                            indent: 15,
+                            endIndent: 15,
+                            opacity: 0.05,
+                          ),
+                        ],
+                      ),
               ),
-              itemCount: visibleTasks.length,
-              itemBuilder: (context, index) =>
-                  _buildGridTaskCard(visibleTasks[index]),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
-              itemCount: visibleTasks.length,
-              itemBuilder: (context, index) => _viewType == 'List'
-                  ? _buildCompactTaskTile(visibleTasks[index])
-                  : Column(
-                      children: [
-                        _buildTaskTile(visibleTasks[index], index),
-                        _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
-                      ],
-                    ),
-            ),
+      ),
     );
   }
 
@@ -2444,36 +2546,39 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           scheduled.day == selectedDay.day;
     }).toList();
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 100),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CalendarDatePicker(
-            initialDate: _calendarDate,
-            firstDate: DateTime(2000),
-            lastDate: DateTime(2100),
-            onDateChanged: (date) => setState(() => _calendarDate = date),
-          ),
-          const Divider(height: 1),
-          if (dayTasks.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'No tasks scheduled for this day.',
-                style: TextStyle(color: Colors.grey),
-              ),
-            )
-          else
-            ...dayTasks.asMap().entries.map(
-              (entry) => Column(
-                children: [
-                  _buildTaskTile(entry.value, entry.key),
-                  _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
-                ],
-              ),
+    return _refreshableScrollView(
+      SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 100),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CalendarDatePicker(
+              initialDate: _calendarDate,
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+              onDateChanged: (date) => setState(() => _calendarDate = date),
             ),
-        ],
+            const Divider(height: 1),
+            if (dayTasks.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No tasks scheduled for this day.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              )
+            else
+              ...dayTasks.asMap().entries.map(
+                (entry) => Column(
+                  children: [
+                    _buildTaskTile(entry.value, entry.key),
+                    _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -2485,80 +2590,103 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
 
     if (grouped.isEmpty) {
-      return const Center(
-        child: Text('No tasks to group.', style: TextStyle(color: Colors.grey)),
+      return _refreshableScrollView(
+        ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(
+              height: 240,
+              child: Center(
+                child: Text(
+                  'No tasks to group.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            ),
+          ],
+        ),
       );
     }
 
     final groups = grouped.keys.toList()..sort();
 
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-      itemCount: groups.length,
-      itemBuilder: (context, index) {
-        final groupName = groups[index];
-        final groupTasks = grouped[groupName]!;
-        final completedCount = groupTasks.where((t) => t.isDone).length;
-        final pendingCount = groupTasks.length - completedCount;
+    return _refreshableScrollView(
+      ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        itemCount: groups.length,
+        itemBuilder: (context, index) {
+          final groupName = groups[index];
+          final groupTasks = grouped[groupName]!;
+          final completedCount = groupTasks.where((t) => t.isDone).length;
+          final pendingCount = groupTasks.length - completedCount;
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.02),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 10,
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            leading: CircleAvatar(
-              backgroundColor: primaryColor.withOpacity(0.3),
-              child: Text(
-                groupName.isNotEmpty ? groupName[0].toUpperCase() : '?',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: secondaryColor,
+            child: ExpansionTile(
+              leading: CircleAvatar(
+                backgroundColor: primaryColor.withOpacity(0.3),
+                child: Text(
+                  groupName.isNotEmpty ? groupName[0].toUpperCase() : '?',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: secondaryColor,
+                  ),
                 ),
               ),
-            ),
-            title: Text(
-              groupName,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-                color: Colors.black87,
+              title: Text(
+                groupName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  color: Colors.black87,
+                ),
               ),
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
+              subtitle: Text(
                 'Total: ${groupTasks.length} • Pending: $pendingCount • Done: $completedCount',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
+              children: [
+                if (_groupBy == 'Assignee')
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () =>
+                          _showAssigneeTasksModal(groupName, groupTasks),
+                      icon: const Icon(Icons.open_in_new, size: 18),
+                      label: const Text('Open assignee task view'),
+                    ),
+                  ),
+                ...groupTasks.map(
+                  (task) => ListTile(
+                    dense: true,
+                    leading: Icon(
+                      task.isDone
+                          ? Icons.check_circle_outline
+                          : Icons.radio_button_unchecked,
+                      color: task.isDone ? Colors.green : Colors.grey,
+                    ),
+                    title: Text(task.title),
+                    onTap: () => _openTaskDetail(task),
+                  ),
+                ),
+              ],
             ),
-            trailing: const Icon(
-              Icons.chevron_right_rounded,
-              color: secondaryColor,
-            ),
-            onTap: () {
-              if (_groupBy == 'Assignee') {
-                _showAssigneeTasksModal(groupName, groupTasks);
-              } else {
-                _showGroupTasksDialog(groupName, groupTasks);
-              }
-            },
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -2568,37 +2696,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       extra: {'assigneeName': assigneeName, 'tasks': assigneeTasks},
     );
   }
-
-  Future<void> _showGroupTasksDialog(String title, List<Task> groupTasks) =>
-      showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(title),
-          content: SizedBox(
-            width: 360,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: groupTasks.length,
-              itemBuilder: (context, index) {
-                final task = groupTasks[index];
-                return ListTile(
-                  title: Text(task.title),
-                  leading: Icon(
-                    task.isDone
-                        ? Icons.check_circle_outline
-                        : Icons.radio_button_unchecked,
-                    color: task.isDone ? Colors.green : Colors.grey,
-                  ),
-                  onTap: () {
-                    Navigator.pop(dialogContext);
-                    _openTaskDetail(task);
-                  },
-                );
-              },
-            ),
-          ),
-        ),
-      );
 
   Future<void> _showToolbarMenu() async {
     final action = await showModalBottomSheet<String>(
@@ -2884,6 +2981,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final bool selectionActive = _selected.isNotEmpty;
+    final upcomingNotificationCount = _upcomingTaskNotificationCount();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -2940,9 +3038,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               actions: [
                 IconButton(
                   tooltip: 'Notifications',
-                  icon: const Icon(
-                    Icons.notifications_none_outlined,
-                    color: secondaryColor,
+                  icon: Badge(
+                    isLabelVisible: upcomingNotificationCount > 0,
+                    label: Text('$upcomingNotificationCount'),
+                    child: const Icon(
+                      Icons.notifications_none_outlined,
+                      color: secondaryColor,
+                    ),
                   ),
                   onPressed: _showNotifications,
                 ),
@@ -3033,6 +3135,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ],
             ),
           ),
+          if (!selectionActive && _selectedTabIndex != 5)
+            _buildPriorityFilters(),
           const SizedBox(height: 4),
           Expanded(
             child: TabBarView(
