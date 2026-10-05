@@ -1990,6 +1990,99 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     };
   }
 
+  Widget _buildMyWorkTaskResults(List<Task> visibleTasks) {
+    if (_viewType == 'Calendar') {
+      final selectedDay = DateTime(
+        _calendarDate.year,
+        _calendarDate.month,
+        _calendarDate.day,
+      );
+      final dayTasks = visibleTasks.where((task) {
+        final scheduled = _taskScheduledDate(task);
+        return scheduled != null &&
+            scheduled.year == selectedDay.year &&
+            scheduled.month == selectedDay.month &&
+            scheduled.day == selectedDay.day;
+      }).toList();
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CalendarDatePicker(
+            initialDate: _calendarDate,
+            firstDate: DateTime(2000),
+            lastDate: DateTime(2100),
+            onDateChanged: (date) => setState(() => _calendarDate = date),
+          ),
+          const Divider(height: 1),
+          if (dayTasks.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'No tasks scheduled for this day.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          else
+            ...dayTasks.asMap().entries.map(
+              (entry) => Column(
+                children: [
+                  _buildTaskTile(entry.value, entry.key),
+                  _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
+                ],
+              ),
+            ),
+        ],
+      );
+    }
+
+    if (visibleTasks.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(24, 8, 24, 20),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'No tasks in this section.',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
+    return MediaQuery(
+      data: MediaQuery.of(context)
+          .copyWith(textScaler: TextScaler.linear(_zoom)),
+      child: _viewType == 'Grid'
+          ? GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 260,
+                mainAxisExtent: 150 + (80 * (_zoom - 1)),
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              itemCount: visibleTasks.length,
+              itemBuilder: (context, index) =>
+                  _buildGridTaskCard(visibleTasks[index]),
+            )
+          : Column(
+              children: visibleTasks.asMap().entries.map((entry) {
+                if (_viewType == 'List') {
+                  return _buildCompactTaskTile(entry.value);
+                }
+                return Column(
+                  children: [
+                    _buildTaskTile(entry.value, entry.key),
+                    _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
+                  ],
+                );
+              }).toList(),
+            ),
+    );
+  }
+
   Widget _buildMyWorkView() {
     final sections = _myWorkSections(_getMyTasks());
     const sectionNames = [
@@ -2078,31 +2171,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         ),
                       ),
                     ),
-                    if (isExpanded)
-                      if (expandedTasks.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.fromLTRB(24, 8, 24, 20),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'No tasks in this section.',
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ),
-                        )
-                      else
-                        ...expandedTasks.asMap().entries.map(
-                          (entry) => Column(
-                            children: [
-                              _buildTaskTile(entry.value, entry.key),
-                              _thinHairline(
-                                indent: 15,
-                                endIndent: 15,
-                                opacity: 0.05,
-                              ),
-                            ],
-                          ),
-                        ),
+                    if (isExpanded) _buildMyWorkTaskResults(expandedTasks),
                   ],
                 );
               },
