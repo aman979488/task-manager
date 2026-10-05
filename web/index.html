@@ -31,6 +31,20 @@
 
   <title>task_manager</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    let deferredInstallPrompt;
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+    });
+    window.promptTaskManagerInstall = async () => {
+      if (!deferredInstallPrompt) return false;
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      return choice.outcome === 'accepted';
+    };
+  </script>
 </head>
 <body>
   <!--
