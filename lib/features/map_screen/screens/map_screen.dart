@@ -85,6 +85,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   static const Color secondaryColor = Color(0xFF6B5800);
 
   late TabController _tabController;
+  String? _expandedMyWorkSection;
 
   @override
   void initState() {
@@ -1941,6 +1942,177 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }).toList();
   }
 
+  DateTime? _myWorkDeadline(Task task) =>
+      DateTime.tryParse(task.deadline ?? '');
+
+  bool _isTomorrow(DateTime date, DateTime now) {
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    return date.year == tomorrow.year &&
+        date.month == tomorrow.month &&
+        date.day == tomorrow.day;
+  }
+
+  Map<String, List<Task>> _myWorkSections(List<Task> myTasks) {
+    final now = DateTime.now();
+    final pendingTasks = myTasks.where((task) => !task.isDone);
+    final scheduledTasks = pendingTasks
+        .map((task) => (task: task, date: _myWorkDeadline(task)))
+        .where((entry) => entry.date != null)
+        .toList();
+
+    return {
+      'Urgent Works': pendingTasks
+          .where((task) => task.priority?.trim().toLowerCase() == 'urgent')
+          .toList(),
+      'Overdue Works': scheduledTasks
+          .where((entry) => entry.date!.isBefore(now))
+          .map((entry) => entry.task)
+          .toList(),
+      'Tomorrow Works': scheduledTasks
+          .where((entry) => _isTomorrow(entry.date!, now))
+          .map((entry) => entry.task)
+          .toList(),
+      'IMP Works': pendingTasks
+          .where((task) => task.priority?.trim().toLowerCase() == 'imp')
+          .toList(),
+      'Upcoming Works': scheduledTasks
+          .where(
+            (entry) =>
+                !entry.date!.isBefore(now) &&
+                (entry.task.priority?.trim().isEmpty ?? true),
+          )
+          .map((entry) => entry.task)
+          .toList(),
+      'Upcoming Reminders': pendingTasks.where((task) {
+        final reminder = DateTime.tryParse(task.reminder ?? '');
+        return !task.reminderSent && reminder != null && reminder.isAfter(now);
+      }).toList(),
+    };
+  }
+
+  Widget _buildMyWorkView() {
+    final sections = _myWorkSections(_getMyTasks());
+    const sectionNames = [
+      'Urgent Works',
+      'Overdue Works',
+      'Tomorrow Works',
+      'IMP Works',
+      'Upcoming Works',
+      'Upcoming Reminders',
+    ];
+    final expandedName = _expandedMyWorkSection;
+    final expandedTasks = expandedName == null
+        ? const <Task>[]
+        : _getVisibleTasks(sections[expandedName] ?? const <Task>[]);
+    final sectionColors = <String, Color>{
+      'Urgent Works': Colors.deepOrange,
+      'Overdue Works': Colors.redAccent,
+      'Tomorrow Works': Colors.blue,
+      'IMP Works': Colors.purple,
+      'Upcoming Works': Colors.teal,
+      'Upcoming Reminders': Colors.indigo,
+    };
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 100),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final name in sectionNames) ...[
+            Builder(
+              builder: (context) {
+                final color = sectionColors[name]!;
+                final count = sections[name]?.length ?? 0;
+                final isExpanded = expandedName == name;
+
+                return Column(
+                  children: [
+                    InkWell(
+                      onTap: () => setState(() {
+                        _expandedMyWorkSection = isExpanded ? null : name;
+                      }),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              name.toUpperCase(),
+                              style: TextStyle(
+                                color: color,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Container(
+                              constraints: const BoxConstraints(minWidth: 36),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: color.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                '$count',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: color,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            Icon(
+                              isExpanded
+                                  ? Icons.keyboard_arrow_up
+                                  : Icons.keyboard_arrow_down,
+                              color: color,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (isExpanded)
+                      if (expandedTasks.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(24, 8, 24, 20),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'No tasks in this section.',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                        )
+                      else
+                        ...expandedTasks.asMap().entries.map(
+                          (entry) => Column(
+                            children: [
+                              _buildTaskTile(entry.value, entry.key),
+                              _thinHairline(
+                                indent: 15,
+                                endIndent: 15,
+                                opacity: 0.05,
+                              ),
+                            ],
+                          ),
+                        ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   List<Task> _getVisibleTasks(List<Task> source) {
     final query = _taskSearchQuery.trim().toLowerCase();
     final result = source
@@ -2730,95 +2902,84 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ],
             ),
       drawer: selectionActive ? null : const AppDrawer(),
-      body: tasks.isEmpty && !selectionActive
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24.0),
-                child: Text(
-                  "Tasks show up here if they aren't part of any lists you've created.",
-                  textAlign: TextAlign.center,
+      body: Column(
+        children: [
+          if (_isSearchVisible)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: TextField(
+                controller: _taskSearchController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Search tasks',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: IconButton(
+                    tooltip: 'Close search',
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      _taskSearchController.clear();
+                      FocusScope.of(context).unfocus();
+                      setState(() {
+                        _taskSearchQuery = '';
+                        _isSearchVisible = false;
+                      });
+                    },
+                  ),
+                  isDense: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
+                onChanged: (value) => setState(() => _taskSearchQuery = value),
               ),
-            )
-          : Column(
-              children: [
-                if (_isSearchVisible)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                    child: TextField(
-                      controller: _taskSearchController,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        hintText: 'Search tasks',
-                        prefixIcon: const Icon(Icons.search),
-                        suffixIcon: IconButton(
-                          tooltip: 'Close search',
-                          icon: const Icon(Icons.close),
-                          onPressed: () {
-                            _taskSearchController.clear();
-                            FocusScope.of(context).unfocus();
-                            setState(() {
-                              _taskSearchQuery = '';
-                              _isSearchVisible = false;
-                            });
-                          },
-                        ),
-                        isDense: true,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onChanged: (value) =>
-                          setState(() => _taskSearchQuery = value),
-                    ),
-                  ),
-                Container(
-                  color: Colors.white,
-                  width: double.infinity,
-                  child: TabBar(
-                    controller: _tabController,
-                    isScrollable: true,
-                    tabAlignment: TabAlignment.start,
-                    indicatorColor: secondaryColor,
-                    indicatorWeight: 3.0,
-                    dividerColor: Colors.transparent,
-                    labelColor: Colors.black,
-                    labelStyle: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                    ),
-                    unselectedLabelColor: Colors.grey.shade500,
-                    unselectedLabelStyle: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                    labelPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    tabs: [
-                      Tab(text: 'My Work (${_getMyTasks().length})'),
-                      Tab(text: 'All Work (${tasks.length})'),
-                      Tab(text: 'Done (${_getDoneTasks().length})'),
-                      Tab(text: 'Overdue (${_getOverdueTasks().length})'),
-                      Tab(text: 'Pending (${_getPendingTasks().length})'),
-                      Tab(text: 'Group by $_groupBy'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildTaskList(_getMyTasks()),
-                      _buildTaskList(tasks),
-                      _buildTaskList(_getDoneTasks()),
-                      _buildTaskList(_getOverdueTasks()),
-                      _buildTaskList(_getPendingTasks()),
-                      _buildGroupByAssignView(),
-                    ],
-                  ),
-                ),
+            ),
+          Container(
+            color: Colors.white,
+            width: double.infinity,
+            child: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              indicatorColor: secondaryColor,
+              indicatorWeight: 3.0,
+              dividerColor: Colors.transparent,
+              labelColor: Colors.black,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+              ),
+              unselectedLabelColor: Colors.grey.shade500,
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+              labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+              tabs: [
+                const Tab(text: 'My Work'),
+                Tab(text: 'All Work (${tasks.length})'),
+                Tab(text: 'Done (${_getDoneTasks().length})'),
+                Tab(text: 'Overdue (${_getOverdueTasks().length})'),
+                Tab(text: 'Pending (${_getPendingTasks().length})'),
+                Tab(text: 'Group by $_groupBy'),
               ],
             ),
+          ),
+          const SizedBox(height: 4),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildMyWorkView(),
+                _buildTaskList(tasks),
+                _buildTaskList(_getDoneTasks()),
+                _buildTaskList(_getOverdueTasks()),
+                _buildTaskList(_getPendingTasks()),
+                _buildGroupByAssignView(),
+              ],
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: selectionActive
           ? null
           : FloatingActionButton(
