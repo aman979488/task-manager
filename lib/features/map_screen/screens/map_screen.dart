@@ -18,6 +18,7 @@ import '../../../widgets/app_drawer.dart';
 import '../../../viewmodels/auth_viewmodel.dart';
 import '../../../utils/role_permissions.dart';
 import '../../../services/home_screen_shortcut.dart';
+import '../../../services/task_home_widget_service.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key, required this.title});
@@ -646,6 +647,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _priorityFilter = 'All';
       }
     });
+    await updateTaskHomeWidget(tasks);
   }
 
   void _handleTabChange() {
@@ -696,6 +698,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Future<void> _updateTaskInFirebase(Task task) async {
     if (task.id == null) return;
     await tasksCollection.doc(task.id).update(_taskData(task));
+    await updateTaskHomeWidget(tasks);
   }
 
   Future<void> _deleteTaskFromFirebase(Task task) async {
@@ -770,6 +773,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           tasks.add(newTask);
           _sortTasks();
         });
+        await updateTaskHomeWidget(tasks);
       }
     } catch (e) {
       debugPrint('Error adding task: $e');
@@ -1627,9 +1631,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
-  void _openTaskDetail(Task task) {
+  Future<void> _openTaskDetail(Task task) async {
     _hideFloatingSheet();
-    context.push('/task', extra: task);
+    await context.push<void>('/task', extra: task);
+    if (mounted) await updateTaskHomeWidget(tasks);
   }
 
   Future<void> _confirmDeleteSelected() async {
@@ -1673,6 +1678,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _selected.clear();
         _sortTasks();
       });
+      await updateTaskHomeWidget(tasks);
     }
   }
 
