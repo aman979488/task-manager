@@ -18,6 +18,7 @@ import '../../../widgets/app_drawer.dart';
 import '../../../viewmodels/auth_viewmodel.dart';
 import '../../../utils/role_permissions.dart';
 import '../../../services/home_screen_shortcut.dart';
+import '../../../services/task_home_widget_service.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key, required this.title});
@@ -39,6 +40,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   String _sortBy = 'Priority';
   String _groupBy = 'Assignee';
   String _viewType = 'Detailed list';
+  String _priorityFilter = 'All';
   double _zoom = 1;
   DateTime _calendarDate = DateTime.now();
 
@@ -85,11 +87,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   static const Color secondaryColor = Color(0xFF6B5800);
 
   late TabController _tabController;
+  String? _expandedMyWorkSection;
+  int _selectedTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 6, vsync: this);
+    _tabController.addListener(_handleTabChange);
     _loadButtonOrder();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadTasksFromFirebase();
@@ -408,6 +413,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     _hideFloatingSheet();
     _focusNode.dispose();
@@ -632,12 +638,39 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     loaded.sort(_taskComparator);
 
+    if (!mounted) return;
     setState(() {
       tasks
         ..clear()
         ..addAll(loaded);
+      if (_priorityFilter != 'All' && !loaded.any(_matchesPriorityFilter)) {
+        _priorityFilter = 'All';
+      }
     });
+    await updateTaskHomeWidget(tasks);
   }
+
+  void _handleTabChange() {
+    if (_tabController.indexIsChanging ||
+        _selectedTabIndex == _tabController.index) {
+      return;
+    }
+    setState(() => _selectedTabIndex = _tabController.index);
+  }
+
+  Future<void> _refreshTasks() async {
+    try {
+      await _loadTasksFromFirebase();
+    } on FirebaseException catch (error) {
+      if (!mounted) return;
+      _showMessage(error.message ?? 'Could not refresh tasks.');
+    }
+  }
+
+  Widget _refreshableScrollView(Widget child) => RefreshIndicator(
+    onRefresh: _refreshTasks,
+    child: Scrollbar(thumbVisibility: kIsWeb, child: child),
+  );
 
   Map<String, dynamic> _taskData(Task task) {
     final data = task.toMap();
@@ -665,6 +698,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Future<void> _updateTaskInFirebase(Task task) async {
     if (task.id == null) return;
     await tasksCollection.doc(task.id).update(_taskData(task));
+    await updateTaskHomeWidget(tasks);
   }
 
   Future<void> _deleteTaskFromFirebase(Task task) async {
@@ -739,6 +773,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           tasks.add(newTask);
           _sortTasks();
         });
+        await updateTaskHomeWidget(tasks);
       }
     } catch (e) {
       debugPrint('Error adding task: $e');
@@ -1596,9 +1631,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
-  void _openTaskDetail(Task task) {
+  Future<void> _openTaskDetail(Task task) async {
     _hideFloatingSheet();
-    context.push('/task', extra: task);
+    await context.push<void>('/task', extra: task);
+    if (mounted) await updateTaskHomeWidget(tasks);
   }
 
   Future<void> _confirmDeleteSelected() async {
@@ -1642,6 +1678,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _selected.clear();
         _sortTasks();
       });
+      await updateTaskHomeWidget(tasks);
     }
   }
 
@@ -1941,16 +1978,260 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }).toList();
   }
 
+  DateTime? _myWorkDeadline(Task task) =>
+      DateTime.tryParse(task.deadline ?? '');
+
+  bool _isTomorrow(DateTime date, DateTime now) {
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    return date.year == tomorrow.year &&
+        date.month == tomorrow.month &&
+        date.day == tomorrow.day;
+  }
+
+  Map<String, List<Task>> _myWorkSections(List<Task> myTasks) {
+    final now = DateTime.now();
+    final pendingTasks = myTasks.where((task) => !task.isDone);
+    final scheduledTasks = pendingTasks
+        .map((task) => (task: task, date: _myWorkDeadline(task)))
+        .where((entry) => entry.date != null)
+        .toList();
+
+    return {
+      'Urgent Works': pendingTasks
+          .where((task) => task.priority?.trim().toLowerCase() == 'urgent')
+          .toList(),
+      'Overdue Works': scheduledTasks
+          .where((entry) => entry.date!.isBefore(now))
+          .map((entry) => entry.task)
+          .toList(),
+      'Tomorrow Works': scheduledTasks
+          .where((entry) => _isTomorrow(entry.date!, now))
+          .map((entry) => entry.task)
+          .toList(),
+      'IMP Works': pendingTasks
+          .where((task) => task.priority?.trim().toLowerCase() == 'imp')
+          .toList(),
+      'Upcoming Works': scheduledTasks
+          .where(
+            (entry) =>
+                !entry.date!.isBefore(now) &&
+                (entry.task.priority?.trim().isEmpty ?? true),
+          )
+          .map((entry) => entry.task)
+          .toList(),
+      'Upcoming Reminders': pendingTasks.where((task) {
+        final reminder = DateTime.tryParse(task.reminder ?? '');
+        return !task.reminderSent && reminder != null && reminder.isAfter(now);
+      }).toList(),
+    };
+  }
+
+  Widget _buildMyWorkTaskResults(List<Task> visibleTasks) {
+    if (_viewType == 'Calendar') {
+      final selectedDay = DateTime(
+        _calendarDate.year,
+        _calendarDate.month,
+        _calendarDate.day,
+      );
+      final dayTasks = visibleTasks.where((task) {
+        final scheduled = _taskScheduledDate(task);
+        return scheduled != null &&
+            scheduled.year == selectedDay.year &&
+            scheduled.month == selectedDay.month &&
+            scheduled.day == selectedDay.day;
+      }).toList();
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CalendarDatePicker(
+            initialDate: _calendarDate,
+            firstDate: DateTime(2000),
+            lastDate: DateTime(2100),
+            onDateChanged: (date) => setState(() => _calendarDate = date),
+          ),
+          const Divider(height: 1),
+          if (dayTasks.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'No tasks scheduled for this day.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          else
+            ...dayTasks.asMap().entries.map(
+              (entry) => Column(
+                children: [
+                  _buildTaskTile(entry.value, entry.key),
+                  _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
+                ],
+              ),
+            ),
+        ],
+      );
+    }
+
+    if (visibleTasks.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(24, 8, 24, 20),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'No tasks in this section.',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
+    return MediaQuery(
+      data: MediaQuery.of(context)
+          .copyWith(textScaler: TextScaler.linear(_zoom)),
+      child: _viewType == 'Grid'
+          ? GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 260,
+                mainAxisExtent: 150 + (80 * (_zoom - 1)),
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              itemCount: visibleTasks.length,
+              itemBuilder: (context, index) =>
+                  _buildGridTaskCard(visibleTasks[index]),
+            )
+          : Column(
+              children: visibleTasks.asMap().entries.map((entry) {
+                if (_viewType == 'List') {
+                  return _buildCompactTaskTile(entry.value);
+                }
+                return Column(
+                  children: [
+                    _buildTaskTile(entry.value, entry.key),
+                    _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
+                  ],
+                );
+              }).toList(),
+            ),
+    );
+  }
+
+  Widget _buildMyWorkView() {
+    final sections = _myWorkSections(_getMyTasks());
+    const sectionNames = [
+      'Urgent Works',
+      'Overdue Works',
+      'Tomorrow Works',
+      'IMP Works',
+      'Upcoming Works',
+      'Upcoming Reminders',
+    ];
+    final expandedName = _expandedMyWorkSection;
+    final expandedTasks = expandedName == null
+        ? const <Task>[]
+        : _getVisibleTasks(sections[expandedName] ?? const <Task>[]);
+    final sectionColors = <String, Color>{
+      'Urgent Works': Colors.deepOrange,
+      'Overdue Works': Colors.redAccent,
+      'Tomorrow Works': Colors.blue,
+      'IMP Works': Colors.purple,
+      'Upcoming Works': Colors.teal,
+      'Upcoming Reminders': Colors.indigo,
+    };
+
+    return _refreshableScrollView(
+      SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 100),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final name in sectionNames) ...[
+              Builder(
+                builder: (context) {
+                  final color = sectionColors[name]!;
+                  final count = sections[name]?.length ?? 0;
+                  final isExpanded = expandedName == name;
+
+                  return Column(
+                    children: [
+                      InkWell(
+                        onTap: () => setState(() {
+                          _expandedMyWorkSection = isExpanded ? null : name;
+                        }),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                name.toUpperCase(),
+                                style: TextStyle(
+                                  color: color,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Container(
+                                constraints: const BoxConstraints(minWidth: 36),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  '$count',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: color,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const Spacer(),
+                              Icon(
+                                isExpanded
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                color: color,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (isExpanded) _buildMyWorkTaskResults(expandedTasks),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   List<Task> _getVisibleTasks(List<Task> source) {
     final query = _taskSearchQuery.trim().toLowerCase();
     final result = source
         .where(
           (task) =>
-              query.isEmpty ||
-              task.title.toLowerCase().contains(query) ||
-              (task.assignee ?? '').toLowerCase().contains(query) ||
-              (task.workType ?? '').toLowerCase().contains(query) ||
-              (task.priority ?? '').toLowerCase().contains(query),
+              _matchesPriorityFilter(task) &&
+              (query.isEmpty ||
+                  task.title.toLowerCase().contains(query) ||
+                  (task.assignee ?? '').toLowerCase().contains(query) ||
+                  (task.workType ?? '').toLowerCase().contains(query) ||
+                  (task.priority ?? '').toLowerCase().contains(query)),
         )
         .toList();
 
@@ -1982,6 +2263,56 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         result.sort(_taskComparator);
     }
     return result;
+  }
+
+  bool _matchesPriorityFilter(Task task) =>
+      _priorityFilter == 'All' ||
+      task.priority?.trim().toLowerCase() == _priorityFilter.toLowerCase();
+
+  List<String> _availablePriorityFilters(List<Task> source) {
+    final priorities =
+        source
+            .map((task) => task.priority?.trim() ?? '')
+            .where((priority) => priority.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort(
+            (first, second) =>
+                _priorityOrder(first).compareTo(_priorityOrder(second)),
+          );
+    return ['All', ...priorities];
+  }
+
+  Widget _buildPriorityFilters() {
+    final options = _availablePriorityFilters(tasks);
+    if (options.length <= 1) return const SizedBox.shrink();
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Row(
+        children: options
+            .map(
+              (priority) => Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(priority == 'All' ? 'All priorities' : priority),
+                  selected: _priorityFilter == priority,
+                  onSelected: (_) => setState(() => _priorityFilter = priority),
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  int _upcomingTaskNotificationCount() {
+    final now = DateTime.now();
+    return tasks.where((task) {
+      final scheduled = _taskScheduledDate(task);
+      return !task.isDone && scheduled != null && scheduled.isAfter(now);
+    }).length;
   }
 
   String _groupValue(Task task) {
@@ -2147,45 +2478,63 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       return _buildCalendarView(visibleTasks);
     }
     if (visibleTasks.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24.0),
-          child: Text(
-            "No tasks found in this category.",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
-          ),
+      return _refreshableScrollView(
+        ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(
+              height: 240,
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text(
+                    'No tasks found in this category.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
-    return MediaQuery(
-      data: MediaQuery.of(context)
-          .copyWith(textScaler: TextScaler.linear(_zoom)),
-      child: _viewType == 'Grid'
-          ? GridView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
-              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 260,
-                mainAxisExtent: 150 + (80 * (_zoom - 1)),
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
+    return _refreshableScrollView(
+      MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(_zoom)),
+        child: _viewType == 'Grid'
+            ? GridView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 260,
+                  mainAxisExtent: 150 + (80 * (_zoom - 1)),
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                ),
+                itemCount: visibleTasks.length,
+                itemBuilder: (context, index) =>
+                    _buildGridTaskCard(visibleTasks[index]),
+              )
+            : ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
+                itemCount: visibleTasks.length,
+                itemBuilder: (context, index) => _viewType == 'List'
+                    ? _buildCompactTaskTile(visibleTasks[index])
+                    : Column(
+                        children: [
+                          _buildTaskTile(visibleTasks[index], index),
+                          _thinHairline(
+                            indent: 15,
+                            endIndent: 15,
+                            opacity: 0.05,
+                          ),
+                        ],
+                      ),
               ),
-              itemCount: visibleTasks.length,
-              itemBuilder: (context, index) =>
-                  _buildGridTaskCard(visibleTasks[index]),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
-              itemCount: visibleTasks.length,
-              itemBuilder: (context, index) => _viewType == 'List'
-                  ? _buildCompactTaskTile(visibleTasks[index])
-                  : Column(
-                      children: [
-                        _buildTaskTile(visibleTasks[index], index),
-                        _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
-                      ],
-                    ),
-            ),
+      ),
     );
   }
 
@@ -2203,36 +2552,39 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           scheduled.day == selectedDay.day;
     }).toList();
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 100),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CalendarDatePicker(
-            initialDate: _calendarDate,
-            firstDate: DateTime(2000),
-            lastDate: DateTime(2100),
-            onDateChanged: (date) => setState(() => _calendarDate = date),
-          ),
-          const Divider(height: 1),
-          if (dayTasks.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'No tasks scheduled for this day.',
-                style: TextStyle(color: Colors.grey),
-              ),
-            )
-          else
-            ...dayTasks.asMap().entries.map(
-              (entry) => Column(
-                children: [
-                  _buildTaskTile(entry.value, entry.key),
-                  _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
-                ],
-              ),
+    return _refreshableScrollView(
+      SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 100),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CalendarDatePicker(
+              initialDate: _calendarDate,
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+              onDateChanged: (date) => setState(() => _calendarDate = date),
             ),
-        ],
+            const Divider(height: 1),
+            if (dayTasks.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No tasks scheduled for this day.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              )
+            else
+              ...dayTasks.asMap().entries.map(
+                (entry) => Column(
+                  children: [
+                    _buildTaskTile(entry.value, entry.key),
+                    _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -2244,80 +2596,103 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
 
     if (grouped.isEmpty) {
-      return const Center(
-        child: Text('No tasks to group.', style: TextStyle(color: Colors.grey)),
+      return _refreshableScrollView(
+        ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(
+              height: 240,
+              child: Center(
+                child: Text(
+                  'No tasks to group.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            ),
+          ],
+        ),
       );
     }
 
     final groups = grouped.keys.toList()..sort();
 
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-      itemCount: groups.length,
-      itemBuilder: (context, index) {
-        final groupName = groups[index];
-        final groupTasks = grouped[groupName]!;
-        final completedCount = groupTasks.where((t) => t.isDone).length;
-        final pendingCount = groupTasks.length - completedCount;
+    return _refreshableScrollView(
+      ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        itemCount: groups.length,
+        itemBuilder: (context, index) {
+          final groupName = groups[index];
+          final groupTasks = grouped[groupName]!;
+          final completedCount = groupTasks.where((t) => t.isDone).length;
+          final pendingCount = groupTasks.length - completedCount;
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.02),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 10,
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            leading: CircleAvatar(
-              backgroundColor: primaryColor.withOpacity(0.3),
-              child: Text(
-                groupName.isNotEmpty ? groupName[0].toUpperCase() : '?',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: secondaryColor,
+            child: ExpansionTile(
+              leading: CircleAvatar(
+                backgroundColor: primaryColor.withOpacity(0.3),
+                child: Text(
+                  groupName.isNotEmpty ? groupName[0].toUpperCase() : '?',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: secondaryColor,
+                  ),
                 ),
               ),
-            ),
-            title: Text(
-              groupName,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-                color: Colors.black87,
+              title: Text(
+                groupName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  color: Colors.black87,
+                ),
               ),
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
+              subtitle: Text(
                 'Total: ${groupTasks.length} • Pending: $pendingCount • Done: $completedCount',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
+              children: [
+                if (_groupBy == 'Assignee')
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () =>
+                          _showAssigneeTasksModal(groupName, groupTasks),
+                      icon: const Icon(Icons.open_in_new, size: 18),
+                      label: const Text('Open assignee task view'),
+                    ),
+                  ),
+                ...groupTasks.map(
+                  (task) => ListTile(
+                    dense: true,
+                    leading: Icon(
+                      task.isDone
+                          ? Icons.check_circle_outline
+                          : Icons.radio_button_unchecked,
+                      color: task.isDone ? Colors.green : Colors.grey,
+                    ),
+                    title: Text(task.title),
+                    onTap: () => _openTaskDetail(task),
+                  ),
+                ),
+              ],
             ),
-            trailing: const Icon(
-              Icons.chevron_right_rounded,
-              color: secondaryColor,
-            ),
-            onTap: () {
-              if (_groupBy == 'Assignee') {
-                _showAssigneeTasksModal(groupName, groupTasks);
-              } else {
-                _showGroupTasksDialog(groupName, groupTasks);
-              }
-            },
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -2327,37 +2702,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       extra: {'assigneeName': assigneeName, 'tasks': assigneeTasks},
     );
   }
-
-  Future<void> _showGroupTasksDialog(String title, List<Task> groupTasks) =>
-      showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(title),
-          content: SizedBox(
-            width: 360,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: groupTasks.length,
-              itemBuilder: (context, index) {
-                final task = groupTasks[index];
-                return ListTile(
-                  title: Text(task.title),
-                  leading: Icon(
-                    task.isDone
-                        ? Icons.check_circle_outline
-                        : Icons.radio_button_unchecked,
-                    color: task.isDone ? Colors.green : Colors.grey,
-                  ),
-                  onTap: () {
-                    Navigator.pop(dialogContext);
-                    _openTaskDetail(task);
-                  },
-                );
-              },
-            ),
-          ),
-        ),
-      );
 
   Future<void> _showToolbarMenu() async {
     final action = await showModalBottomSheet<String>(
@@ -2643,6 +2987,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final bool selectionActive = _selected.isNotEmpty;
+    final upcomingNotificationCount = _upcomingTaskNotificationCount();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -2699,9 +3044,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               actions: [
                 IconButton(
                   tooltip: 'Notifications',
-                  icon: const Icon(
-                    Icons.notifications_none_outlined,
-                    color: secondaryColor,
+                  icon: Badge(
+                    isLabelVisible: upcomingNotificationCount > 0,
+                    label: Text('$upcomingNotificationCount'),
+                    child: const Icon(
+                      Icons.notifications_none_outlined,
+                      color: secondaryColor,
+                    ),
                   ),
                   onPressed: _showNotifications,
                 ),
@@ -2730,95 +3079,86 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ],
             ),
       drawer: selectionActive ? null : const AppDrawer(),
-      body: tasks.isEmpty && !selectionActive
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24.0),
-                child: Text(
-                  "Tasks show up here if they aren't part of any lists you've created.",
-                  textAlign: TextAlign.center,
+      body: Column(
+        children: [
+          if (_isSearchVisible)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: TextField(
+                controller: _taskSearchController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Search tasks',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: IconButton(
+                    tooltip: 'Close search',
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      _taskSearchController.clear();
+                      FocusScope.of(context).unfocus();
+                      setState(() {
+                        _taskSearchQuery = '';
+                        _isSearchVisible = false;
+                      });
+                    },
+                  ),
+                  isDense: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
+                onChanged: (value) => setState(() => _taskSearchQuery = value),
               ),
-            )
-          : Column(
-              children: [
-                if (_isSearchVisible)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                    child: TextField(
-                      controller: _taskSearchController,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        hintText: 'Search tasks',
-                        prefixIcon: const Icon(Icons.search),
-                        suffixIcon: IconButton(
-                          tooltip: 'Close search',
-                          icon: const Icon(Icons.close),
-                          onPressed: () {
-                            _taskSearchController.clear();
-                            FocusScope.of(context).unfocus();
-                            setState(() {
-                              _taskSearchQuery = '';
-                              _isSearchVisible = false;
-                            });
-                          },
-                        ),
-                        isDense: true,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onChanged: (value) =>
-                          setState(() => _taskSearchQuery = value),
-                    ),
-                  ),
-                Container(
-                  color: Colors.white,
-                  width: double.infinity,
-                  child: TabBar(
-                    controller: _tabController,
-                    isScrollable: true,
-                    tabAlignment: TabAlignment.start,
-                    indicatorColor: secondaryColor,
-                    indicatorWeight: 3.0,
-                    dividerColor: Colors.transparent,
-                    labelColor: Colors.black,
-                    labelStyle: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                    ),
-                    unselectedLabelColor: Colors.grey.shade500,
-                    unselectedLabelStyle: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                    labelPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    tabs: [
-                      Tab(text: 'My Work (${_getMyTasks().length})'),
-                      Tab(text: 'All Work (${tasks.length})'),
-                      Tab(text: 'Done (${_getDoneTasks().length})'),
-                      Tab(text: 'Overdue (${_getOverdueTasks().length})'),
-                      Tab(text: 'Pending (${_getPendingTasks().length})'),
-                      Tab(text: 'Group by $_groupBy'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildTaskList(_getMyTasks()),
-                      _buildTaskList(tasks),
-                      _buildTaskList(_getDoneTasks()),
-                      _buildTaskList(_getOverdueTasks()),
-                      _buildTaskList(_getPendingTasks()),
-                      _buildGroupByAssignView(),
-                    ],
-                  ),
-                ),
+            ),
+          Container(
+            color: Colors.white,
+            width: double.infinity,
+            child: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              indicatorColor: secondaryColor,
+              indicatorWeight: 3.0,
+              dividerColor: Colors.transparent,
+              labelColor: Colors.black,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+              ),
+              unselectedLabelColor: Colors.grey.shade500,
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+              labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+              tabs: [
+                const Tab(text: 'My Work'),
+                Tab(text: 'All Work (${tasks.length})'),
+                Tab(text: 'Done (${_getDoneTasks().length})'),
+                Tab(text: 'Overdue (${_getOverdueTasks().length})'),
+                Tab(text: 'Pending (${_getPendingTasks().length})'),
+                Tab(text: 'Group by $_groupBy'),
               ],
             ),
+          ),
+          if (!selectionActive && _selectedTabIndex != 5)
+            _buildPriorityFilters(),
+          const SizedBox(height: 4),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildMyWorkView(),
+                _buildTaskList(tasks),
+                _buildTaskList(_getDoneTasks()),
+                _buildTaskList(_getOverdueTasks()),
+                _buildTaskList(_getPendingTasks()),
+                _buildGroupByAssignView(),
+              ],
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: selectionActive
           ? null
           : FloatingActionButton(

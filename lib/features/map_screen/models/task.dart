@@ -9,7 +9,9 @@ class TaskStep {
   }
 
   factory TaskStep.fromMap(dynamic raw) {
-    final data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    final data = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : <String, dynamic>{};
     return TaskStep(
       title: (data['title'] ?? '').toString(),
       isDone: data['isDone'] is bool ? data['isDone'] as bool : false,
@@ -29,7 +31,9 @@ class TaskFile {
   }
 
   factory TaskFile.fromMap(dynamic raw) {
-    final data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    final data = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : <String, dynamic>{};
     return TaskFile(
       name: (data['name'] ?? '').toString(),
       size: data['size'] is num ? (data['size'] as num).toInt() : 0,
@@ -133,6 +137,8 @@ class Task {
   }
 
   factory Task.fromMap(String id, Map<String, dynamic> data) {
+    final rawTitle = data['title'];
+    final title = rawTitle is String ? rawTitle : '';
     final rawSteps = data['steps'];
     final rawFiles = data['files'];
     final parsedSteps = rawSteps is List ? rawSteps : const <dynamic>[];
@@ -149,7 +155,7 @@ class Task {
     }
 
     return Task(
-      data['title'] ?? '',
+      title,
       id: id,
       isDone: data['isDone'] ?? false,
       note: data['note'] ?? '',

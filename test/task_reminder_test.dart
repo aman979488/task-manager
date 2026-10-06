@@ -36,6 +36,12 @@ void main() {
     expect(task.reminderSent, isTrue);
   });
 
+  test('Task.fromMap replaces a malformed title with an empty string', () {
+    final task = Task.fromMap('bad-title', {'title': 42});
+
+    expect(task.title, isEmpty);
+  });
+
   test('deadline notification is due within three hours of the deadline', () {
     final task = Task(
       'Follow up client',

@@ -21,6 +21,10 @@ The task screen opens without requiring a staff login. Mobile push notifications
 
 The scheduled Cloud Function checks task reminders every minute, including when the app is closed. It writes due reminders and deadline alerts to `notifications`; the document trigger sends them through FCM. The app displays notifications in the system tray when backgrounded and as local notifications while open.
 
+## Android home-screen task widget
+
+Install the Android app, then long-press an empty area of the home screen, open **Widgets**, and add **Task Manager**. The widget shows the pending-task count and up to three pending task titles. It refreshes when tasks are loaded, added, completed, edited, or deleted in the app. Tap the widget to open Task Manager.
+
 A new Flutter project.
 
 ## Getting Started

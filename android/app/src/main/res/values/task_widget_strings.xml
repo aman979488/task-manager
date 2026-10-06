@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="task_widget_name">Task Manager</string>
+    <string name="task_widget_description">See your pending tasks on the home screen.</string>
+    <string name="task_widget_default_summary">Your pending tasks</string>
+    <string name="task_widget_all_caught_up">All caught up!</string>
+    <string name="task_widget_no_tasks_loaded">Open Task Manager to sync tasks.</string>
+    <plurals name="task_widget_pending_count">
+        <item quantity="one">1 pending task</item>
+        <item quantity="other">%d pending tasks</item>
+    </plurals>
+</resources>
