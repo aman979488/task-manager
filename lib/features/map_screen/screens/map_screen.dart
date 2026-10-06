@@ -86,7 +86,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   static const Color secondaryColor = Color(0xFF6B5800);
 
   late TabController _tabController;
-  String? _expandedMyWorkSection;
+  final Set<String> _expandedMyWorkSections = {};
   int _selectedTabIndex = 0;
 
   @override
@@ -1294,6 +1294,52 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   void _openAddTaskSheet() {
+    List<String>? assigneeOptions;
+    Future<List<String>>? assigneeOptionsFuture;
+    String? assigneeMentionQuery;
+    int assigneeMentionStart = -1;
+    int assigneeMentionEnd = -1;
+    bool isLoadingAssigneeOptions = false;
+
+    void completeAssigneeMention(String assignee, StateSetter setModalState) {
+      final currentText = taskName.text;
+      final beforeMention = currentText.substring(0, assigneeMentionStart);
+      final afterMention = currentText.substring(assigneeMentionEnd);
+      final separator =
+          afterMention.isEmpty ||
+              afterMention.startsWith(' ') ||
+              afterMention.startsWith('\n')
+          ? ''
+          : ' ';
+      final replacement = '$assignee$separator';
+      taskName.value = TextEditingValue(
+        text: '$beforeMention$replacement$afterMention',
+        selection: TextSelection.collapsed(
+          offset: beforeMention.length + replacement.length,
+        ),
+      );
+
+      setState(() {
+        final selectedAssignees = (_newTaskAssignee ?? '')
+            .split(',')
+            .map((name) => name.trim())
+            .where((name) => name.isNotEmpty)
+            .toList();
+        if (!selectedAssignees.any(
+          (name) => name.toLowerCase() == assignee.toLowerCase(),
+        )) {
+          selectedAssignees.add(assignee);
+        }
+        _newTaskAssignee = selectedAssignees.join(', ');
+      });
+      setModalState(() {
+        assigneeMentionQuery = null;
+        assigneeMentionStart = -1;
+        assigneeMentionEnd = -1;
+      });
+      _focusNode.requestFocus();
+    }
+
     // 🚀 NAYA: Automatically request focus and show keyboard when sheet opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_focusNode.canRequestFocus) {
@@ -1359,13 +1405,70 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               controller: taskName,
                               focusNode: _focusNode,
                               autofocus: true, // 🚀 NAYA: Always autofocus when sheet opens
+                              textInputAction: TextInputAction.done,
                               decoration: const InputDecoration(
                                 hintText: "Add a task",
                                 border: InputBorder.none,
                               ),
                               onChanged: (val) {
-                                if (val.isEmpty) return;
                                 final cursor = taskName.selection.baseOffset;
+                                final safeCursor = cursor.clamp(0, val.length);
+                                final mentionStart = safeCursor > 0
+                                    ? val.lastIndexOf('@', safeCursor - 1)
+                                    : -1;
+                                final isValidMention =
+                                    mentionStart >= 0 &&
+                                    (mentionStart == 0 ||
+                                        RegExp(r'\s')
+                                            .hasMatch(val[mentionStart - 1])) &&
+                                    !val
+                                        .substring(mentionStart + 1, safeCursor)
+                                        .contains(RegExp(r'\s'));
+
+                                setModalState(() {
+                                  if (isValidMention) {
+                                    assigneeMentionStart = mentionStart;
+                                    assigneeMentionEnd = safeCursor;
+                                    assigneeMentionQuery = val.substring(
+                                      mentionStart + 1,
+                                      safeCursor,
+                                    );
+                                  } else {
+                                    assigneeMentionQuery = null;
+                                    assigneeMentionStart = -1;
+                                    assigneeMentionEnd = -1;
+                                  }
+                                });
+
+                                if (isValidMention &&
+                                    assigneeOptions == null &&
+                                    !isLoadingAssigneeOptions) {
+                                  isLoadingAssigneeOptions = true;
+                                  assigneeOptionsFuture ??=
+                                      _loadAssigneesFromFirestore();
+                                  assigneeOptionsFuture!
+                                      .then((options) {
+                                        if (!sheetContext.mounted) return;
+                                        assigneeOptions = options;
+                                        isLoadingAssigneeOptions = false;
+                                        setModalState(() {});
+                                      })
+                                      .catchError((Object error) {
+                                        if (!sheetContext.mounted) return;
+                                        isLoadingAssigneeOptions = false;
+                                        ScaffoldMessenger.of(
+                                          sheetContext,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Could not load assignee names.',
+                                            ),
+                                          ),
+                                        );
+                                      });
+                                }
+
+                                if (val.isEmpty) return;
                                 if (cursor <= 0 || cursor > val.length) return;
                                 final ch = val[cursor - 1];
                                 final prev = cursor >= 2
@@ -1374,10 +1477,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
                                 FloatingSheetType? triggerType;
                                 String symbol = '';
-                                if (ch == '@') {
-                                  triggerType = FloatingSheetType.assign;
-                                  symbol = '@';
-                                } else if (ch == '#') {
+                                if (ch == '#') {
                                   triggerType = FloatingSheetType.clientName;
                                   symbol = '#';
                                 } else if (ch == '-') {
@@ -1532,6 +1632,62 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 }
                               },
                               onSubmitted: (_) async {
+                                if (assigneeMentionQuery != null) {
+                                  if (assigneeOptions == null) {
+                                    try {
+                                      isLoadingAssigneeOptions = true;
+                                      assigneeOptionsFuture ??=
+                                          _loadAssigneesFromFirestore();
+                                      assigneeOptions =
+                                          await assigneeOptionsFuture!;
+                                      isLoadingAssigneeOptions = false;
+                                      if (sheetContext.mounted) {
+                                        setModalState(() {});
+                                      }
+                                    } catch (error) {
+                                      isLoadingAssigneeOptions = false;
+                                      if (sheetContext.mounted) {
+                                        ScaffoldMessenger.of(
+                                          sheetContext,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Could not load assignee names: $error',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                      return;
+                                    }
+                                  }
+                                  if (!sheetContext.mounted) return;
+                                  final query = assigneeMentionQuery!
+                                      .trim()
+                                      .toLowerCase();
+                                  final matches = (assigneeOptions ?? [])
+                                      .where(
+                                        (name) => name.toLowerCase().startsWith(
+                                          query,
+                                        ),
+                                      )
+                                      .toList();
+                                  if (matches.isEmpty) {
+                                    ScaffoldMessenger.of(sheetContext)
+                                        .showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'No matching assignee found.',
+                                            ),
+                                          ),
+                                        );
+                                    return;
+                                  }
+                                  completeAssigneeMention(
+                                    matches.first,
+                                    setModalState,
+                                  );
+                                  return;
+                                }
                                 final added = await _handleAddTaskFromSheet();
                                 if (added && sheetContext.mounted) {
                                   Navigator.of(sheetContext).pop();
@@ -1551,6 +1707,189 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         ),
                       ],
                     ),
+                    if (assigneeMentionQuery != null) ...[
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 180),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: primaryColor.withValues(alpha: 0.8),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: secondaryColor.withValues(alpha: 0.08),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    4,
+                                    4,
+                                    4,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'ASSIGNEE',
+                                          style: TextStyle(
+                                            color: secondaryColor,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 0.6,
+                                          ),
+                                        ),
+                                      ),
+                                      TextButton(
+                                        onPressed:
+                                            isLoadingAssigneeOptions ||
+                                                assigneeOptions == null ||
+                                                !assigneeOptions!.any(
+                                                  (name) => name
+                                                      .toLowerCase()
+                                                      .startsWith(
+                                                        assigneeMentionQuery!
+                                                            .toLowerCase(),
+                                                      ),
+                                                )
+                                            ? null
+                                            : () {
+                                                final query =
+                                                    assigneeMentionQuery!
+                                                        .toLowerCase();
+                                                final matches = assigneeOptions!
+                                                    .where(
+                                                      (name) => name
+                                                          .toLowerCase()
+                                                          .startsWith(query),
+                                                    )
+                                                    .toList();
+                                                if (matches.isNotEmpty) {
+                                                  completeAssigneeMention(
+                                                    matches.first,
+                                                    setModalState,
+                                                  );
+                                                }
+                                              },
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: secondaryColor,
+                                          visualDensity: VisualDensity.compact,
+                                        ),
+                                        child: const Text('Done'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (isLoadingAssigneeOptions)
+                                  const Padding(
+                                    padding: EdgeInsets.all(12),
+                                    child: Row(
+                                      children: [
+                                        SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: secondaryColor,
+                                          ),
+                                        ),
+                                        SizedBox(width: 10),
+                                        Text('Loading assignees...'),
+                                      ],
+                                    ),
+                                  )
+                                else
+                                  Builder(
+                                    builder: (context) {
+                                      final query = assigneeMentionQuery!
+                                          .toLowerCase();
+                                      final matches = (assigneeOptions ?? [])
+                                          .where(
+                                            (name) => name
+                                                .toLowerCase()
+                                                .startsWith(query),
+                                          )
+                                          .toList();
+                                      if (matches.isEmpty) {
+                                        return const Padding(
+                                          padding: EdgeInsets.all(12),
+                                          child: Text(
+                                            'No matching names',
+                                            style: TextStyle(
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                      return ListView.separated(
+                                        shrinkWrap: true,
+                                        itemCount: matches.length,
+                                        separatorBuilder: (context, index) =>
+                                            const Divider(
+                                              height: 1,
+                                              indent: 48,
+                                              color: Color(0xFFF1E9B8),
+                                            ),
+                                        itemBuilder: (context, index) {
+                                          final name = matches[index];
+                                          return ListTile(
+                                            dense: true,
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            leading: CircleAvatar(
+                                              radius: 16,
+                                              backgroundColor: primaryColor
+                                                  .withValues(alpha: 0.35),
+                                              child: Text(
+                                                name.isEmpty
+                                                    ? ''
+                                                    : name[0].toUpperCase(),
+                                                style: const TextStyle(
+                                                  color: secondaryColor,
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 13,
+                                                ),
+                                              ),
+                                            ),
+                                            title: Text(
+                                              name,
+                                              style: const TextStyle(
+                                                color: secondaryColor,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            trailing: const Icon(
+                                              Icons.add_circle_outline,
+                                              color: secondaryColor,
+                                              size: 20,
+                                            ),
+                                            onTap: () =>
+                                                completeAssigneeMention(
+                                                  name,
+                                                  setModalState,
+                                                ),
+                                          );
+                                        },
+                                      );
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     SizedBox(
                       height: 56,
@@ -2123,10 +2462,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       'Upcoming Works',
       'Upcoming Reminders',
     ];
-    final expandedName = _expandedMyWorkSection;
-    final expandedTasks = expandedName == null
-        ? const <Task>[]
-        : _getVisibleTasks(sections[expandedName] ?? const <Task>[]);
     final sectionColors = <String, Color>{
       'Urgent Works': Colors.deepOrange,
       'Overdue Works': Colors.redAccent,
@@ -2148,13 +2483,29 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 builder: (context) {
                   final color = sectionColors[name]!;
                   final count = sections[name]?.length ?? 0;
-                  final isExpanded = expandedName == name;
+                  final isExpanded = _expandedMyWorkSections.contains(name);
 
                   return Column(
                     children: [
                       InkWell(
                         onTap: () => setState(() {
-                          _expandedMyWorkSection = isExpanded ? null : name;
+                          if (isExpanded) {
+                            _expandedMyWorkSections.remove(name);
+                          } else {
+                            _expandedMyWorkSections
+                              ..clear()
+                              ..add(name);
+                          }
+                        }),
+                        onDoubleTap: () => setState(() {
+                          if (_expandedMyWorkSections.length ==
+                              sectionNames.length) {
+                            _expandedMyWorkSections.clear();
+                          } else {
+                            _expandedMyWorkSections
+                              ..clear()
+                              ..addAll(sectionNames);
+                          }
                         }),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
@@ -2203,7 +2554,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
-                      if (isExpanded) _buildMyWorkTaskResults(expandedTasks),
+                      if (isExpanded)
+                        _buildMyWorkTaskResults(
+                          _getVisibleTasks(sections[name] ?? const <Task>[]),
+                        ),
                     ],
                   );
                 },
