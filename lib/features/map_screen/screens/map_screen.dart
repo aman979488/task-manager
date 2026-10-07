@@ -40,7 +40,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   String _sortBy = 'Priority';
   String _groupBy = 'Assignee';
   String _viewType = 'Detailed list';
-  String _priorityFilter = 'All';
   double _zoom = 1;
   DateTime _calendarDate = DateTime.now();
 
@@ -193,7 +192,27 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           setModalState(() {});
         };
         onClear = () {
-          setState(() => _newTaskAssignee = null);
+          setState(() {
+            final selectedAssignees = (_newTaskAssignee ?? '')
+                .split(',')
+                .map((name) => name.trim())
+                .where((name) => name.isNotEmpty);
+            var updatedText = taskName.text;
+            for (final assignee in selectedAssignees) {
+              final mentionPattern = RegExp(
+                '(^|\\s)@${RegExp.escape(assignee)}(?=\\s|${r'$'})',
+                caseSensitive: false,
+              );
+              updatedText = updatedText.replaceAll(mentionPattern, ' ');
+            }
+            updatedText = updatedText.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
+            final normalizedText = updatedText.trim();
+            taskName.value = TextEditingValue(
+              text: normalizedText,
+              selection: TextSelection.collapsed(offset: normalizedText.length),
+            );
+            _newTaskAssignee = null;
+          });
           setModalState(() {});
         };
         break;
@@ -643,9 +662,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       tasks
         ..clear()
         ..addAll(loaded);
-      if (_priorityFilter != 'All' && !loaded.any(_matchesPriorityFilter)) {
-        _priorityFilter = 'All';
-      }
     });
     await updateTaskHomeWidget(tasks);
   }
@@ -1301,25 +1317,37 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     List<String>? assigneeOptions;
     Future<List<String>>? assigneeOptionsFuture;
     String? assigneeMentionQuery;
+    String assigneeMentionSourceText = '';
     int assigneeMentionStart = -1;
     int assigneeMentionEnd = -1;
-    bool isLoadingAssigneeOptions = false;
+    int highlightedAssigneeIndex = 0;
 
-    void completeAssigneeMention(String assignee, StateSetter setModalState) {
-      final currentText = taskName.text;
-      final beforeMention = currentText.substring(0, assigneeMentionStart);
-      final afterMention = currentText.substring(assigneeMentionEnd);
-      final separator =
-          afterMention.isEmpty ||
-              afterMention.startsWith(' ') ||
-              afterMention.startsWith('\n')
-          ? ''
-          : ' ';
-      final replacement = '$assignee$separator';
+    void completeAssigneeMention(
+      String assignee,
+      StateSetter setModalState, {
+      String? sourceText,
+    }) {
+      final currentText = sourceText ?? taskName.text;
+      var endOfMention = assigneeMentionEnd;
+      while (endOfMention < currentText.length &&
+          !RegExp(r'\s').hasMatch(currentText[endOfMention])) {
+        endOfMention++;
+      }
+      final beforeMention = currentText
+          .substring(0, assigneeMentionStart)
+          .trimRight();
+      final afterMention = currentText.substring(endOfMention).trimLeft();
+      final hasTextBefore = beforeMention.isNotEmpty;
+      final hasTextAfter = afterMention.isNotEmpty;
+      final updatedText = hasTextBefore && hasTextAfter
+          ? '$beforeMention $afterMention'
+          : hasTextBefore
+          ? '$beforeMention '
+          : afterMention;
       taskName.value = TextEditingValue(
-        text: '$beforeMention$replacement$afterMention',
+        text: updatedText,
         selection: TextSelection.collapsed(
-          offset: beforeMention.length + replacement.length,
+          offset: hasTextBefore ? beforeMention.length + 1 : 0,
         ),
       );
 
@@ -1405,298 +1433,457 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       children: [
                         Expanded(
                           child: Builder(
-                            builder: (textFieldCtx) => TextField(
-                              controller: taskName,
-                              focusNode: _focusNode,
-                              autofocus: true, // 🚀 NAYA: Always autofocus when sheet opens
-                              textInputAction: TextInputAction.done,
-                              decoration: const InputDecoration(
-                                hintText: "Add a task",
-                                border: InputBorder.none,
-                              ),
-                              onChanged: (val) {
-                                final cursor = taskName.selection.baseOffset;
-                                final safeCursor = cursor.clamp(0, val.length);
-                                final mentionStart = safeCursor > 0
-                                    ? val.lastIndexOf('@', safeCursor - 1)
-                                    : -1;
-                                final isValidMention =
-                                    mentionStart >= 0 &&
-                                    (mentionStart == 0 ||
-                                        RegExp(r'\s')
-                                            .hasMatch(val[mentionStart - 1])) &&
-                                    !val
-                                        .substring(mentionStart + 1, safeCursor)
-                                        .contains(RegExp(r'\s'));
-
-                                setModalState(() {
-                                  if (isValidMention) {
-                                    assigneeMentionStart = mentionStart;
-                                    assigneeMentionEnd = safeCursor;
-                                    assigneeMentionQuery = val.substring(
-                                      mentionStart + 1,
-                                      safeCursor,
-                                    );
-                                  } else {
-                                    assigneeMentionQuery = null;
-                                    assigneeMentionStart = -1;
-                                    assigneeMentionEnd = -1;
-                                  }
-                                });
-
-                                if (isValidMention &&
-                                    assigneeOptions == null &&
-                                    !isLoadingAssigneeOptions) {
-                                  isLoadingAssigneeOptions = true;
-                                  assigneeOptionsFuture ??=
-                                      _loadAssigneesFromFirestore();
-                                  assigneeOptionsFuture!
-                                      .then((options) {
-                                        if (!sheetContext.mounted) return;
-                                        assigneeOptions = options;
-                                        isLoadingAssigneeOptions = false;
-                                        setModalState(() {});
-                                      })
-                                      .catchError((Object error) {
-                                        if (!sheetContext.mounted) return;
-                                        isLoadingAssigneeOptions = false;
-                                        ScaffoldMessenger.of(
-                                          sheetContext,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'Could not load assignee names.',
-                                            ),
-                                          ),
-                                        );
-                                      });
+                            builder: (textFieldCtx) => Focus(
+                              onKeyEvent: (node, event) {
+                                if (event is! KeyDownEvent ||
+                                    event.logicalKey !=
+                                        LogicalKeyboardKey.tab ||
+                                    assigneeMentionQuery == null ||
+                                    assigneeOptions == null) {
+                                  return KeyEventResult.ignored;
                                 }
 
-                                if (val.isEmpty) return;
-                                if (cursor <= 0 || cursor > val.length) return;
-                                final ch = val[cursor - 1];
-                                final prev = cursor >= 2
-                                    ? val[cursor - 2]
-                                    : ' ';
-
-                                FloatingSheetType? triggerType;
-                                String symbol = '';
-                                if (ch == '#') {
-                                  triggerType = FloatingSheetType.clientName;
-                                  symbol = '#';
-                                } else if (ch == '-') {
-                                  triggerType = FloatingSheetType.priority;
-                                  symbol = '-';
-                                } else if (ch == '!') {
-                                  triggerType = FloatingSheetType.deadline;
-                                  symbol = '!';
-                                } else if (ch == '+') {
-                                  triggerType = FloatingSheetType.workType;
-                                  symbol = '+';
-                                } else if (ch == '*') {
-                                  triggerType = FloatingSheetType.remind;
-                                  symbol = '*';
-                                } else if (ch == '^') {
-                                  triggerType = FloatingSheetType.refProject;
-                                  symbol = '^';
+                                final query = assigneeMentionQuery!
+                                    .toLowerCase();
+                                final matches = assigneeOptions!
+                                    .where(
+                                      (name) =>
+                                          name.toLowerCase().startsWith(
+                                            query,
+                                          ) &&
+                                          name.toLowerCase() != query,
+                                    )
+                                    .toList();
+                                if (matches.isEmpty) {
+                                  return KeyEventResult.ignored;
                                 }
 
-                                if (triggerType != null) {
-                                  final bool isMulti =
-                                      triggerType == FloatingSheetType.assign;
-                                  if (triggerType != FloatingSheetType.assign &&
-                                      prev != ' ' &&
-                                      prev != '\n') {
-                                    return;
-                                  }
-
-                                  // Get currently selected values from the text to show checks in menu
-                                  List<String> currentSelections = [];
-                                  if (isMulti) {
-                                    final parts = val.split(' ');
-                                    for (var p in parts) {
-                                      if (p.startsWith('@')) {
-                                        currentSelections.add(p.substring(1));
-                                      }
-                                    }
-                                  }
-
-                                  _showFloatingSheet(
-                                    textFieldCtx,
-                                    triggerType,
-                                    multiSelect: isMulti,
-                                    selectedValues: currentSelections,
-                                    onSelected: (sel) {
-                                      setState(() {
-                                        String insertVal = sel;
-                                        if (triggerType ==
-                                                FloatingSheetType.deadline ||
-                                            triggerType ==
-                                                FloatingSheetType.remind) {
-                                          insertVal = _formatDateTime(sel);
-                                        }
-
-                                        final currentText = taskName.text;
-
-                                        if (isMulti) {
-                                          final cursor = taskName
-                                              .selection
-                                              .baseOffset
-                                              .clamp(0, currentText.length)
-                                              .toInt();
-                                          final mentionStart = cursor > 0
-                                              ? currentText.lastIndexOf(
-                                                  symbol,
-                                                  cursor - 1,
-                                                )
-                                              : -1;
-                                          if (mentionStart >= 0) {
-                                            final beforeMention = currentText
-                                                .substring(0, mentionStart);
-                                            var afterMention = currentText
-                                                .substring(cursor);
-                                            final beforeEndsWithWhitespace =
-                                                beforeMention.endsWith(' ') ||
-                                                beforeMention.endsWith('\n');
-                                            final afterStartsWithWhitespace =
-                                                afterMention.startsWith(' ') ||
-                                                afterMention.startsWith('\n');
-
-                                            if (beforeEndsWithWhitespace &&
-                                                afterStartsWithWhitespace) {
-                                              afterMention = afterMention
-                                                  .substring(1);
-                                            }
-
-                                            final separator =
-                                                beforeMention.isNotEmpty &&
-                                                    afterMention.isNotEmpty &&
-                                                    !beforeEndsWithWhitespace &&
-                                                    !afterStartsWithWhitespace
-                                                ? ' '
-                                                : '';
-                                            taskName.text =
-                                                '$beforeMention$separator$afterMention';
-                                            taskName.selection =
-                                                TextSelection.collapsed(
-                                                  offset:
-                                                      beforeMention.length +
-                                                      separator.length,
-                                                );
-                                          }
-                                        } else {
-                                          taskName.text =
-                                              '$currentText$insertVal ';
-                                        }
-
-                                        if (!isMulti) {
-                                          taskName.selection =
-                                              TextSelection.collapsed(
-                                                offset: taskName.text.length,
-                                              );
-                                        }
-
-                                        // Sync bottom buttons state
-                                        if (triggerType ==
-                                            FloatingSheetType.priority) {
-                                          _newTaskPriority = sel;
-                                        } else if (triggerType ==
-                                            FloatingSheetType.remind) {
-                                          _newTaskReminder = sel;
-                                        } else if (triggerType ==
-                                            FloatingSheetType.assign) {
-                                          if (_newTaskAssignee == null ||
-                                              _newTaskAssignee!.isEmpty)
-                                            _newTaskAssignee = sel;
-                                          else if (!_newTaskAssignee!.contains(
-                                            sel,
-                                          ))
-                                            _newTaskAssignee =
-                                                '$_newTaskAssignee, $sel';
-                                        } else if (triggerType ==
-                                            FloatingSheetType.deadline) {
-                                          _newTaskDeadline = sel;
-                                        } else if (triggerType ==
-                                            FloatingSheetType.workType) {
-                                          _newTaskWorkType = sel;
-                                        } else if (triggerType ==
-                                            FloatingSheetType.folder) {
-                                          _newTaskFolder = sel;
-                                        } else if (triggerType ==
-                                            FloatingSheetType.clientName) {
-                                          _newTaskClientName = sel;
-                                        } else if (triggerType ==
-                                            FloatingSheetType.refProject) {
-                                          _newTaskRefProject = sel;
-                                        }
-                                      });
-                                      setModalState(() {});
-                                    },
-                                  );
-                                }
+                                final index = highlightedAssigneeIndex.clamp(
+                                  0,
+                                  matches.length - 1,
+                                );
+                                completeAssigneeMention(
+                                  matches[index],
+                                  setModalState,
+                                  sourceText: assigneeMentionSourceText,
+                                );
+                                return KeyEventResult.handled;
                               },
-                              onSubmitted: (_) async {
-                                if (assigneeMentionQuery != null) {
-                                  if (assigneeOptions == null) {
-                                    try {
-                                      isLoadingAssigneeOptions = true;
-                                      assigneeOptionsFuture ??=
-                                          _loadAssigneesFromFirestore();
-                                      assigneeOptions =
-                                          await assigneeOptionsFuture!;
-                                      isLoadingAssigneeOptions = false;
-                                      if (sheetContext.mounted) {
-                                        setModalState(() {});
-                                      }
-                                    } catch (error) {
-                                      isLoadingAssigneeOptions = false;
-                                      if (sheetContext.mounted) {
-                                        ScaffoldMessenger.of(
-                                          sheetContext,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'Could not load assignee names: $error',
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                      return;
-                                    }
+                              child: RawAutocomplete<String>(
+                                textEditingController: taskName,
+                                focusNode: _focusNode,
+                                optionsViewOpenDirection:
+                                    OptionsViewOpenDirection.up,
+                                optionsBuilder: (value) async {
+                                  final text = value.text;
+                                  final cursor = value.selection.extentOffset
+                                      .clamp(0, text.length);
+                                  final mentionStart = cursor > 0
+                                      ? text.lastIndexOf('@', cursor - 1)
+                                      : -1;
+                                  if (mentionStart < 0 ||
+                                      (mentionStart > 0 &&
+                                          !RegExp(
+                                            r'\s',
+                                          ).hasMatch(text[mentionStart - 1])) ||
+                                      text
+                                          .substring(mentionStart + 1, cursor)
+                                          .contains(RegExp(r'\s'))) {
+                                    return const <String>[];
                                   }
-                                  if (!sheetContext.mounted) return;
-                                  final query = assigneeMentionQuery!
-                                      .trim()
+
+                                  final query = text
+                                      .substring(mentionStart + 1, cursor)
                                       .toLowerCase();
-                                  final matches = (assigneeOptions ?? [])
-                                      .where(
-                                        (name) => name.toLowerCase().startsWith(
-                                          query,
-                                        ),
-                                      )
-                                      .toList();
-                                  if (matches.isEmpty) {
-                                    ScaffoldMessenger.of(sheetContext)
-                                        .showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'No matching assignee found.',
-                                            ),
+                                  try {
+                                    assigneeOptions ??=
+                                        await (assigneeOptionsFuture ??=
+                                            _loadAssigneesFromFirestore());
+                                    return assigneeOptions!
+                                        .where(
+                                          (name) =>
+                                              name.toLowerCase().startsWith(
+                                                query,
+                                              ) &&
+                                              name.toLowerCase() != query,
+                                        )
+                                        .toList();
+                                  } catch (error) {
+                                    if (sheetContext.mounted) {
+                                      ScaffoldMessenger.of(
+                                        sheetContext,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Could not load assignee names: $error',
                                           ),
-                                        );
-                                    return;
+                                        ),
+                                      );
+                                    }
+                                    return const <String>[];
                                   }
-                                  completeAssigneeMention(
-                                    matches.first,
-                                    setModalState,
+                                },
+                                onSelected: (assignee) =>
+                                    completeAssigneeMention(
+                                      assignee,
+                                      setModalState,
+                                      sourceText: assigneeMentionSourceText,
+                                    ),
+                                optionsViewBuilder: (context, onSelected, options) {
+                                  final matches = options.toList();
+                                  final highlightedIndex =
+                                      AutocompleteHighlightedOption.of(context);
+                                  highlightedAssigneeIndex = highlightedIndex;
+                                  return Align(
+                                    alignment: Alignment.bottomLeft,
+                                    child: Material(
+                                      elevation: 8,
+                                      borderRadius: BorderRadius.circular(12),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: SizedBox(
+                                        width: 240,
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            ConstrainedBox(
+                                              constraints: const BoxConstraints(
+                                                maxHeight: 190,
+                                              ),
+                                              child: ListView.builder(
+                                                padding: EdgeInsets.zero,
+                                                shrinkWrap: true,
+                                                itemCount: matches.length,
+                                                itemBuilder: (context, index) {
+                                                  final name = matches[index];
+                                                  return ListTile(
+                                                    dense: true,
+                                                    selected:
+                                                        index ==
+                                                        highlightedIndex,
+                                                    selectedTileColor:
+                                                        primaryColor.withValues(
+                                                          alpha: 0.45,
+                                                        ),
+                                                    title: Text(
+                                                      name,
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                      ),
+                                                    ),
+                                                    onTap: () =>
+                                                        onSelected(name),
+                                                  );
+                                                },
+                                              ),
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.all(8),
+                                              child: SizedBox(
+                                                width: double.infinity,
+                                                child: ElevatedButton(
+                                                  style:
+                                                      ElevatedButton.styleFrom(
+                                                        backgroundColor:
+                                                            primaryColor,
+                                                        foregroundColor:
+                                                            secondaryColor,
+                                                      ),
+                                                  onPressed: () {
+                                                    final index =
+                                                        highlightedIndex.clamp(
+                                                          0,
+                                                          matches.length - 1,
+                                                        );
+                                                    onSelected(matches[index]);
+                                                  },
+                                                  child: const Text('Done'),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
                                   );
-                                  return;
-                                }
-                                final added = await _handleAddTaskFromSheet();
-                                if (added && sheetContext.mounted) {
-                                  Navigator.of(sheetContext).pop();
-                                }
-                              },
+                                },
+                                fieldViewBuilder:
+                                    (
+                                      context,
+                                      controller,
+                                      focusNode,
+                                      onFieldSubmitted,
+                                    ) => TextField(
+                                      controller: controller,
+                                      focusNode: focusNode,
+                                      autofocus: true,
+                                      textInputAction: TextInputAction.done,
+                                      decoration: const InputDecoration(
+                                        hintText: "Add a task",
+                                        border: InputBorder.none,
+                                      ),
+                                      onChanged: (val) {
+                                        final cursor =
+                                            controller.selection.baseOffset;
+                                        final safeCursor = cursor.clamp(
+                                          0,
+                                          val.length,
+                                        );
+                                        final mentionStart = safeCursor > 0
+                                            ? val.lastIndexOf(
+                                                '@',
+                                                safeCursor - 1,
+                                              )
+                                            : -1;
+                                        final isValidMention =
+                                            mentionStart >= 0 &&
+                                            (mentionStart == 0 ||
+                                                RegExp(r'\s').hasMatch(
+                                                  val[mentionStart - 1],
+                                                )) &&
+                                            !val
+                                                .substring(
+                                                  mentionStart + 1,
+                                                  safeCursor,
+                                                )
+                                                .contains(RegExp(r'\s'));
+
+                                        assigneeMentionSourceText = val;
+                                        setModalState(() {
+                                          if (isValidMention) {
+                                            assigneeMentionStart = mentionStart;
+                                            assigneeMentionEnd = safeCursor;
+                                            assigneeMentionQuery = val
+                                                .substring(
+                                                  mentionStart + 1,
+                                                  safeCursor,
+                                                );
+                                          } else {
+                                            assigneeMentionQuery = null;
+                                            assigneeMentionStart = -1;
+                                            assigneeMentionEnd = -1;
+                                          }
+                                        });
+
+                                        if (val.isEmpty) return;
+                                        if (cursor <= 0 || cursor > val.length)
+                                          return;
+                                        final ch = val[cursor - 1];
+                                        final prev = cursor >= 2
+                                            ? val[cursor - 2]
+                                            : ' ';
+
+                                        FloatingSheetType? triggerType;
+                                        String symbol = '';
+                                        if (ch == '#') {
+                                          triggerType =
+                                              FloatingSheetType.clientName;
+                                          symbol = '#';
+                                        } else if (ch == '-') {
+                                          triggerType =
+                                              FloatingSheetType.priority;
+                                          symbol = '-';
+                                        } else if (ch == '!') {
+                                          triggerType =
+                                              FloatingSheetType.deadline;
+                                          symbol = '!';
+                                        } else if (ch == '+') {
+                                          triggerType =
+                                              FloatingSheetType.workType;
+                                          symbol = '+';
+                                        } else if (ch == '*') {
+                                          triggerType =
+                                              FloatingSheetType.remind;
+                                          symbol = '*';
+                                        } else if (ch == '^') {
+                                          triggerType =
+                                              FloatingSheetType.refProject;
+                                          symbol = '^';
+                                        }
+
+                                        if (triggerType != null) {
+                                          final bool isMulti =
+                                              triggerType ==
+                                              FloatingSheetType.assign;
+                                          if (triggerType !=
+                                                  FloatingSheetType.assign &&
+                                              prev != ' ' &&
+                                              prev != '\n') {
+                                            return;
+                                          }
+
+                                          // Get currently selected values from the text to show checks in menu
+                                          List<String> currentSelections = [];
+                                          if (isMulti) {
+                                            final parts = val.split(' ');
+                                            for (var p in parts) {
+                                              if (p.startsWith('@')) {
+                                                currentSelections.add(
+                                                  p.substring(1),
+                                                );
+                                              }
+                                            }
+                                          }
+
+                                          _showFloatingSheet(
+                                            textFieldCtx,
+                                            triggerType,
+                                            multiSelect: isMulti,
+                                            selectedValues: currentSelections,
+                                            onSelected: (sel) {
+                                              setState(() {
+                                                String insertVal = sel;
+                                                if (triggerType ==
+                                                        FloatingSheetType
+                                                            .deadline ||
+                                                    triggerType ==
+                                                        FloatingSheetType
+                                                            .remind) {
+                                                  insertVal = _formatDateTime(
+                                                    sel,
+                                                  );
+                                                }
+
+                                                final currentText =
+                                                    taskName.text;
+
+                                                if (isMulti) {
+                                                  final cursor = taskName
+                                                      .selection
+                                                      .baseOffset
+                                                      .clamp(
+                                                        0,
+                                                        currentText.length,
+                                                      )
+                                                      .toInt();
+                                                  final mentionStart =
+                                                      cursor > 0
+                                                      ? currentText.lastIndexOf(
+                                                          symbol,
+                                                          cursor - 1,
+                                                        )
+                                                      : -1;
+                                                  if (mentionStart >= 0) {
+                                                    final beforeMention =
+                                                        currentText.substring(
+                                                          0,
+                                                          mentionStart,
+                                                        );
+                                                    var afterMention =
+                                                        currentText.substring(
+                                                          cursor,
+                                                        );
+                                                    final beforeEndsWithWhitespace =
+                                                        beforeMention.endsWith(
+                                                          ' ',
+                                                        ) ||
+                                                        beforeMention.endsWith(
+                                                          '\n',
+                                                        );
+                                                    final afterStartsWithWhitespace =
+                                                        afterMention.startsWith(
+                                                          ' ',
+                                                        ) ||
+                                                        afterMention.startsWith(
+                                                          '\n',
+                                                        );
+
+                                                    if (beforeEndsWithWhitespace &&
+                                                        afterStartsWithWhitespace) {
+                                                      afterMention =
+                                                          afterMention
+                                                              .substring(1);
+                                                    }
+
+                                                    final separator =
+                                                        beforeMention
+                                                                .isNotEmpty &&
+                                                            afterMention
+                                                                .isNotEmpty &&
+                                                            !beforeEndsWithWhitespace &&
+                                                            !afterStartsWithWhitespace
+                                                        ? ' '
+                                                        : '';
+                                                    taskName.text =
+                                                        '$beforeMention$separator$afterMention';
+                                                    taskName.selection =
+                                                        TextSelection.collapsed(
+                                                          offset:
+                                                              beforeMention
+                                                                  .length +
+                                                              separator.length,
+                                                        );
+                                                  }
+                                                } else {
+                                                  taskName.text =
+                                                      '$currentText$insertVal ';
+                                                }
+
+                                                if (!isMulti) {
+                                                  taskName.selection =
+                                                      TextSelection.collapsed(
+                                                        offset: taskName
+                                                            .text
+                                                            .length,
+                                                      );
+                                                }
+
+                                                // Sync bottom buttons state
+                                                if (triggerType ==
+                                                    FloatingSheetType
+                                                        .priority) {
+                                                  _newTaskPriority = sel;
+                                                } else if (triggerType ==
+                                                    FloatingSheetType.remind) {
+                                                  _newTaskReminder = sel;
+                                                } else if (triggerType ==
+                                                    FloatingSheetType.assign) {
+                                                  if (_newTaskAssignee ==
+                                                          null ||
+                                                      _newTaskAssignee!.isEmpty)
+                                                    _newTaskAssignee = sel;
+                                                  else if (!_newTaskAssignee!
+                                                      .contains(sel))
+                                                    _newTaskAssignee =
+                                                        '$_newTaskAssignee, $sel';
+                                                } else if (triggerType ==
+                                                    FloatingSheetType
+                                                        .deadline) {
+                                                  _newTaskDeadline = sel;
+                                                } else if (triggerType ==
+                                                    FloatingSheetType
+                                                        .workType) {
+                                                  _newTaskWorkType = sel;
+                                                } else if (triggerType ==
+                                                    FloatingSheetType.folder) {
+                                                  _newTaskFolder = sel;
+                                                } else if (triggerType ==
+                                                    FloatingSheetType
+                                                        .clientName) {
+                                                  _newTaskClientName = sel;
+                                                } else if (triggerType ==
+                                                    FloatingSheetType
+                                                        .refProject) {
+                                                  _newTaskRefProject = sel;
+                                                }
+                                              });
+                                              setModalState(() {});
+                                            },
+                                          );
+                                        }
+                                      },
+                                      onSubmitted: (_) {
+                                        final isAssigneeMentionActive =
+                                            assigneeMentionQuery != null;
+                                        onFieldSubmitted();
+                                        if (isAssigneeMentionActive) return;
+                                        _handleAddTaskFromSheet().then((added) {
+                                          if (added && sheetContext.mounted) {
+                                            Navigator.of(sheetContext).pop();
+                                          }
+                                        });
+                                      },
+                                    ),
+                              ),
                             ),
                           ),
                         ),
@@ -1711,189 +1898,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         ),
                       ],
                     ),
-                    if (assigneeMentionQuery != null) ...[
-                      const SizedBox(height: 4),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 180),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: primaryColor.withValues(alpha: 0.8),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: secondaryColor.withValues(alpha: 0.08),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    12,
-                                    4,
-                                    4,
-                                    4,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Expanded(
-                                        child: Text(
-                                          'ASSIGNEE',
-                                          style: TextStyle(
-                                            color: secondaryColor,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            letterSpacing: 0.6,
-                                          ),
-                                        ),
-                                      ),
-                                      TextButton(
-                                        onPressed:
-                                            isLoadingAssigneeOptions ||
-                                                assigneeOptions == null ||
-                                                !assigneeOptions!.any(
-                                                  (name) => name
-                                                      .toLowerCase()
-                                                      .startsWith(
-                                                        assigneeMentionQuery!
-                                                            .toLowerCase(),
-                                                      ),
-                                                )
-                                            ? null
-                                            : () {
-                                                final query =
-                                                    assigneeMentionQuery!
-                                                        .toLowerCase();
-                                                final matches = assigneeOptions!
-                                                    .where(
-                                                      (name) => name
-                                                          .toLowerCase()
-                                                          .startsWith(query),
-                                                    )
-                                                    .toList();
-                                                if (matches.isNotEmpty) {
-                                                  completeAssigneeMention(
-                                                    matches.first,
-                                                    setModalState,
-                                                  );
-                                                }
-                                              },
-                                        style: TextButton.styleFrom(
-                                          foregroundColor: secondaryColor,
-                                          visualDensity: VisualDensity.compact,
-                                        ),
-                                        child: const Text('Done'),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (isLoadingAssigneeOptions)
-                                  const Padding(
-                                    padding: EdgeInsets.all(12),
-                                    child: Row(
-                                      children: [
-                                        SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: secondaryColor,
-                                          ),
-                                        ),
-                                        SizedBox(width: 10),
-                                        Text('Loading assignees...'),
-                                      ],
-                                    ),
-                                  )
-                                else
-                                  Builder(
-                                    builder: (context) {
-                                      final query = assigneeMentionQuery!
-                                          .toLowerCase();
-                                      final matches = (assigneeOptions ?? [])
-                                          .where(
-                                            (name) => name
-                                                .toLowerCase()
-                                                .startsWith(query),
-                                          )
-                                          .toList();
-                                      if (matches.isEmpty) {
-                                        return const Padding(
-                                          padding: EdgeInsets.all(12),
-                                          child: Text(
-                                            'No matching names',
-                                            style: TextStyle(
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                      return ListView.separated(
-                                        shrinkWrap: true,
-                                        itemCount: matches.length,
-                                        separatorBuilder: (context, index) =>
-                                            const Divider(
-                                              height: 1,
-                                              indent: 48,
-                                              color: Color(0xFFF1E9B8),
-                                            ),
-                                        itemBuilder: (context, index) {
-                                          final name = matches[index];
-                                          return ListTile(
-                                            dense: true,
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            leading: CircleAvatar(
-                                              radius: 16,
-                                              backgroundColor: primaryColor
-                                                  .withValues(alpha: 0.35),
-                                              child: Text(
-                                                name.isEmpty
-                                                    ? ''
-                                                    : name[0].toUpperCase(),
-                                                style: const TextStyle(
-                                                  color: secondaryColor,
-                                                  fontWeight: FontWeight.w700,
-                                                  fontSize: 13,
-                                                ),
-                                              ),
-                                            ),
-                                            title: Text(
-                                              name,
-                                              style: const TextStyle(
-                                                color: secondaryColor,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                            trailing: const Icon(
-                                              Icons.add_circle_outline,
-                                              color: secondaryColor,
-                                              size: 20,
-                                            ),
-                                            onTap: () =>
-                                                completeAssigneeMention(
-                                                  name,
-                                                  setModalState,
-                                                ),
-                                          );
-                                        },
-                                      );
-                                    },
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                     const SizedBox(height: 8),
                     SizedBox(
                       height: 56,
@@ -2205,7 +2209,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               ),
                             );
                           }
-
+                          
                           return GestureDetector(
                             onTap: () {
                               _showFloatingSheet(
@@ -2580,12 +2584,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final result = source
         .where(
           (task) =>
-              _matchesPriorityFilter(task) &&
-              (query.isEmpty ||
-                  task.title.toLowerCase().contains(query) ||
-                  (task.assignee ?? '').toLowerCase().contains(query) ||
-                  (task.workType ?? '').toLowerCase().contains(query) ||
-                  (task.priority ?? '').toLowerCase().contains(query)),
+              query.isEmpty ||
+              task.title.toLowerCase().contains(query) ||
+              (task.assignee ?? '').toLowerCase().contains(query) ||
+              (task.workType ?? '').toLowerCase().contains(query) ||
+              (task.priority ?? '').toLowerCase().contains(query),
         )
         .toList();
 
@@ -2617,48 +2620,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         result.sort(_taskComparator);
     }
     return result;
-  }
-
-  bool _matchesPriorityFilter(Task task) =>
-      _priorityFilter == 'All' ||
-      task.priority?.trim().toLowerCase() == _priorityFilter.toLowerCase();
-
-  List<String> _availablePriorityFilters(List<Task> source) {
-    final priorities =
-        source
-            .map((task) => task.priority?.trim() ?? '')
-            .where((priority) => priority.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort(
-            (first, second) =>
-                _priorityOrder(first).compareTo(_priorityOrder(second)),
-          );
-    return ['All', ...priorities];
-  }
-
-  Widget _buildPriorityFilters() {
-    final options = _availablePriorityFilters(tasks);
-    if (options.length <= 1) return const SizedBox.shrink();
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      child: Row(
-        children: options
-            .map(
-              (priority) => Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(priority == 'All' ? 'All priorities' : priority),
-                  selected: _priorityFilter == priority,
-                  onSelected: (_) => setState(() => _priorityFilter = priority),
-                ),
-              ),
-            )
-            .toList(),
-      ),
-    );
   }
 
   int _upcomingTaskNotificationCount() {
@@ -3495,8 +3456,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ],
             ),
           ),
-          if (!selectionActive && _selectedTabIndex != 5)
-            _buildPriorityFilters(),
           const SizedBox(height: 4),
           Expanded(
             child: TabBarView(
