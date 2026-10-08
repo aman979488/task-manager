@@ -7,6 +7,7 @@ import '../models/task.dart';
 import '../models/floating_sheet_type.dart';
 
 import 'package:go_router/go_router.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -66,6 +67,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     FloatingSheetType.assign,
     FloatingSheetType.deadline,
     FloatingSheetType.workType,
+    FloatingSheetType.folder,
     FloatingSheetType.clientName,
     FloatingSheetType.refProject, // 🚀 NAYA
   ];
@@ -117,11 +119,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _saveButtonOrder() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      'map_button_order',
+      _buttonOrder.map((e) => e.name).toList(),
+    );
+  }
+
   Widget _buildBottomSheetButtonWithState(
     FloatingSheetType type,
-    StateSetter setModalState, {
-    bool compact = false,
-  }) {
+    StateSetter setModalState,
+  ) {
     IconData icon = Icons.help_outline;
     String label = "";
     String? selectedValue;
@@ -263,7 +272,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
-          width: compact ? double.infinity : null,
           decoration: BoxDecoration(
             color: isSelected
                 ? primaryColor.withValues(alpha: 0.2)
@@ -297,130 +305,87 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 );
               },
               child: Padding(
-                padding: compact
-                    ? const EdgeInsets.symmetric(horizontal: 6, vertical: 8)
-                    : const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
-                child: compact
-                    ? Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                icon,
-                                size: 19,
-                                color: isSelected
-                                    ? secondaryColor
-                                    : Colors.grey.shade700,
-                              ),
-                              if (isSelected)
-                                GestureDetector(
-                                  onTap: onClear,
-                                  child: const Icon(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 17,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      transitionBuilder: (child, animation) {
+                        return ScaleTransition(
+                          scale: animation,
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Icon(
+                        icon,
+                        key: ValueKey('icon_$isSelected'),
+                        size: 18,
+                        color: isSelected
+                            ? secondaryColor
+                            : Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      transitionBuilder: (child, animation) {
+                        return SizeTransition(
+                          sizeFactor: animation,
+                          axis: Axis.horizontal,
+                          axisAlignment: -1,
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Text(
+                        displayText,
+                        key: ValueKey('text_$displayText'),
+                        style: TextStyle(
+                          color: isSelected
+                              ? secondaryColor
+                              : Colors.grey.shade700,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      width: isSelected ? 24 : 0,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 300),
+                        opacity: isSelected ? 1.0 : 0.0,
+                        child: isSelected
+                            ? GestureDetector(
+                                onTap: () {
+                                  onClear();
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.only(left: 8),
+                                  child: Icon(
                                     Icons.close,
-                                    size: 12,
+                                    size: 16,
                                     color: secondaryColor,
                                   ),
                                 ),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            displayText,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: isSelected
-                                  ? secondaryColor
-                                  : Colors.grey.shade700,
-                              fontWeight: isSelected
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
-                              fontSize: 13,
-                              height: 1.15,
-                            ),
-                          ),
-                        ],
-                      )
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 300),
-                            transitionBuilder: (child, animation) {
-                              return ScaleTransition(
-                                scale: animation,
-                                child: FadeTransition(
-                                  opacity: animation,
-                                  child: child,
-                                ),
-                              );
-                            },
-                            child: Icon(
-                              icon,
-                              key: ValueKey('icon_$isSelected'),
-                              size: 18,
-                              color: isSelected
-                                  ? secondaryColor
-                                  : Colors.grey.shade700,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 300),
-                            transitionBuilder: (child, animation) {
-                              return SizeTransition(
-                                sizeFactor: animation,
-                                axis: Axis.horizontal,
-                                axisAlignment: -1,
-                                child: FadeTransition(
-                                  opacity: animation,
-                                  child: child,
-                                ),
-                              );
-                            },
-                            child: Text(
-                              displayText,
-                              key: ValueKey('text_$displayText'),
-                              style: TextStyle(
-                                color: isSelected
-                                    ? secondaryColor
-                                    : Colors.grey.shade700,
-                                fontWeight: isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            width: isSelected ? 24 : 0,
-                            child: AnimatedOpacity(
-                              duration: const Duration(milliseconds: 300),
-                              opacity: isSelected ? 1.0 : 0.0,
-                              child: isSelected
-                                  ? GestureDetector(
-                                      onTap: () {
-                                        onClear();
-                                      },
-                                      child: const Padding(
-                                        padding: EdgeInsets.only(left: 8),
-                                        child: Icon(
-                                          Icons.close,
-                                          size: 16,
-                                          color: secondaryColor,
-                                        ),
-                                      ),
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
-                          ),
-                        ],
+                              )
+                            : const SizedBox.shrink(),
                       ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -460,7 +425,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               orElse: () => _defaultOrder.first,
             ),
           )
-          .where((type) => type != FloatingSheetType.folder)
           .toList();
     });
   }
@@ -1160,16 +1124,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       }).toList();
     }
 
+    const double menuWidth = 240;
     const double padding = 8;
-    final double menuWidth = (overlaySize.width - padding * 2).clamp(
-      0.0,
-      240.0,
-    );
     const double menuHeightEstimate = 320;
 
     double left = buttonPosition.dx;
-    if (left + menuWidth > overlaySize.width - padding)
+    if (left + menuWidth > overlaySize.width - padding) {
       left = overlaySize.width - menuWidth - padding;
+    }
     if (left < padding) left = padding;
 
     double top = buttonPosition.dy - menuHeightEstimate;
@@ -1316,66 +1278,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       height: 1,
       margin: EdgeInsets.only(left: indent, right: endIndent),
       color: Colors.grey.withAlpha(alpha),
-    );
-  }
-
-  Future<void> _showTaskSymbolHelp(BuildContext context) {
-    const shortcuts = <(String, String, String)>[
-      ('@', 'Assign', 'Type @ to find and assign a person.'),
-      ('-', 'Priority', 'Type - to choose a priority.'),
-      ('!', 'Deadline', 'Type ! to set a deadline.'),
-      ('*', 'Remind Me', 'Type * to set a reminder.'),
-      ('+', 'Work Type', 'Type + to choose a work type.'),
-      ('#', 'Client Name', 'Type # to choose a client.'),
-      ('^', 'Ref Project', 'Type ^ to choose a reference project.'),
-    ];
-
-    return showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Task shortcuts'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final (symbol, title, description) in shortcuts)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: SizedBox(
-                    width: 28,
-                    child: Text(
-                      symbol,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  title: Text(title),
-                  subtitle: Text(description),
-                ),
-              const ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: SizedBox(
-                  width: 28,
-                  child: Icon(Icons.folder_outlined, size: 20),
-                ),
-                title: Text('Folder'),
-                subtitle: Text('Folder does not have a text shortcut symbol.'),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1566,23 +1468,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         builder: (context, setModalState) {
           final viewInsets = MediaQuery.of(sheetContext).viewInsets;
           final screenWidth = MediaQuery.of(sheetContext).size.width;
-          final mobileButtonOrder = [
-            ..._buttonOrder.where(
-              (type) => type != FloatingSheetType.refProject,
-            ),
-            FloatingSheetType.refProject,
-          ];
-          const primaryButtonTypes = {
-            FloatingSheetType.priority,
-            FloatingSheetType.remind,
-            FloatingSheetType.assign,
-            FloatingSheetType.deadline,
-          };
+          final isMobileWeb = kIsWeb && screenWidth < 600;
 
           final systemNavBar = MediaQuery.of(sheetContext).padding.bottom;
-          final bottomPadding = kIsWeb
-              ? 16.0
-              : (16.0 + viewInsets.bottom + systemNavBar);
+          final bottomPadding = isMobileWeb
+              ? 350.0
+              : (kIsWeb ? 16.0 : (16.0 + viewInsets.bottom + systemNavBar));
 
           return PopScope<Object?>(
             canPop: true,
@@ -1908,14 +1799,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           ),
                         ),
                         IconButton(
-                          tooltip: 'Task shortcuts',
-                          onPressed: () => _showTaskSymbolHelp(sheetContext),
-                          icon: const Icon(
-                            Icons.info_outline,
-                            color: secondaryColor,
-                          ),
-                        ),
-                        IconButton(
                           onPressed: () async {
                             final added = await _handleAddTaskFromSheet();
                             if (added && sheetContext.mounted) {
@@ -1926,70 +1809,65 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    if (screenWidth < 600)
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: mobileButtonOrder.length + 1,
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              crossAxisSpacing: 6,
-                              mainAxisSpacing: 6,
-                              mainAxisExtent: 72,
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 56,
+                      child: (kIsWeb && screenWidth >= 600)
+                          ? Center(
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                alignment: WrapAlignment.center,
+                                children: _buttonOrder.map((type) {
+                                  return _buildBottomSheetButtonWithState(
+                                    type,
+                                    setModalState,
+                                  );
+                                }).toList(),
+                              ),
+                            )
+                          : ScrollConfiguration(
+                              behavior: ScrollConfiguration.of(sheetContext)
+                                  .copyWith(
+                                    dragDevices: {
+                                      PointerDeviceKind.touch,
+                                      PointerDeviceKind.mouse,
+                                      PointerDeviceKind.trackpad,
+                                    },
+                                  ),
+                              child: ReorderableListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                physics: const ClampingScrollPhysics(),
+                                buildDefaultDragHandles: false,
+                                itemCount: _buttonOrder.length,
+                                onReorder: (oldIndex, newIndex) {
+                                  setState(() {
+                                    if (newIndex > oldIndex) newIndex -= 1;
+                                    final item = _buttonOrder.removeAt(
+                                      oldIndex,
+                                    );
+                                    _buttonOrder.insert(newIndex, item);
+                                  });
+                                  _saveButtonOrder();
+                                  setModalState(() {});
+                                },
+                                itemBuilder: (context, index) {
+                                  final type = _buttonOrder[index];
+                                  return Padding(
+                                    key: ValueKey(type),
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: ReorderableDelayedDragStartListener(
+                                      index: index,
+                                      child: _buildBottomSheetButtonWithState(
+                                        type,
+                                        setModalState,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
-                        itemBuilder: (context, index) {
-                          if (index == mobileButtonOrder.length - 1) {
-                            return const SizedBox.shrink();
-                          }
-                          final buttonIndex =
-                              index > mobileButtonOrder.length - 1
-                              ? index - 1
-                              : index;
-                          return _buildBottomSheetButtonWithState(
-                            mobileButtonOrder[buttonIndex],
-                            setModalState,
-                            compact: true,
-                          );
-                        },
-                      )
-                    else
-                      Column(
-                        children: [
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            alignment: WrapAlignment.center,
-                            children: _buttonOrder
-                                .where(primaryButtonTypes.contains)
-                                .map(
-                                  (type) => _buildBottomSheetButtonWithState(
-                                    type,
-                                    setModalState,
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            alignment: WrapAlignment.center,
-                            children: _buttonOrder
-                                .where(
-                                  (type) => !primaryButtonTypes.contains(type),
-                                )
-                                .map(
-                                  (type) => _buildBottomSheetButtonWithState(
-                                    type,
-                                    setModalState,
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ],
-                      ),
+                    ),
                   ],
                 ),
               ),
@@ -2366,50 +2244,39 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Map<String, List<Task>> _myWorkSections(List<Task> myTasks) {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
     final pendingTasks = myTasks.where((task) => !task.isDone);
     final scheduledTasks = pendingTasks
         .map((task) => (task: task, date: _myWorkDeadline(task)))
         .where((entry) => entry.date != null)
-        .toList();
-    final todayWorks = <Task>{
-      ...scheduledTasks
-          .where(
-            (entry) =>
-                entry.date!.year == today.year &&
-                entry.date!.month == today.month &&
-                entry.date!.day == today.day,
-          )
-          .map((entry) => entry.task),
-      ...pendingTasks.where(
-        (task) => task.priority?.trim().toLowerCase() == 'today',
-      ),
-    }.toList();
-    final tomorrowWorks = <Task>{
-      ...scheduledTasks
-          .where((entry) => _isTomorrow(entry.date!, now))
-          .map((entry) => entry.task),
-      ...pendingTasks.where(
-        (task) => task.priority?.trim().toLowerCase() == 'tomorrow',
-      ),
-    }.toList();
-    List<Task> tasksWithPriority(String priority) => pendingTasks
-        .where((task) => task.priority?.trim().toLowerCase() == priority)
         .toList();
 
     return {
       'Urgent Works': pendingTasks
           .where((task) => task.priority?.trim().toLowerCase() == 'urgent')
           .toList(),
+      'Overdue Works': scheduledTasks
+          .where((entry) => entry.date!.isBefore(now))
+          .map((entry) => entry.task)
+          .toList(),
+      'Tomorrow Works': scheduledTasks
+          .where((entry) => _isTomorrow(entry.date!, now))
+          .map((entry) => entry.task)
+          .toList(),
       'IMP Works': pendingTasks
           .where((task) => task.priority?.trim().toLowerCase() == 'imp')
           .toList(),
-      'Today Works': todayWorks,
-      'Tomorrow Works': tomorrowWorks,
-      'Day Later Works': tasksWithPriority('day later'),
-      'Later Works': tasksWithPriority('later'),
-      'Process Works': tasksWithPriority('process'),
-      'Hold Works': tasksWithPriority('hold'),
+      'Upcoming Works': scheduledTasks
+          .where(
+            (entry) =>
+                !entry.date!.isBefore(now) &&
+                (entry.task.priority?.trim().isEmpty ?? true),
+          )
+          .map((entry) => entry.task)
+          .toList(),
+      'Upcoming Reminders': pendingTasks.where((task) {
+        final reminder = DateTime.tryParse(task.reminder ?? '');
+        return !task.reminderSent && reminder != null && reminder.isAfter(now);
+      }).toList(),
     };
   }
 
@@ -2510,16 +2377,20 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final sections = _myWorkSections(_getMyTasks());
     const sectionNames = [
       'Urgent Works',
-      'IMP Works',
-      'Today Works',
+      'Overdue Works',
       'Tomorrow Works',
-      'Day Later Works',
-      'Later Works',
-      'Process Works',
-      'Hold Works',
+      'IMP Works',
+      'Upcoming Works',
+      'Upcoming Reminders',
     ];
-    const sectionColor = Colors.black87;
-    const countBadgeColor = Colors.blue;
+    final sectionColors = <String, Color>{
+      'Urgent Works': Colors.deepOrange,
+      'Overdue Works': Colors.redAccent,
+      'Tomorrow Works': Colors.blue,
+      'IMP Works': Colors.purple,
+      'Upcoming Works': Colors.teal,
+      'Upcoming Reminders': Colors.indigo,
+    };
 
     return _refreshableScrollView(
       SingleChildScrollView(
@@ -2531,6 +2402,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             for (final name in sectionNames) ...[
               Builder(
                 builder: (context) {
+                  final color = sectionColors[name]!;
                   final count = sections[name]?.length ?? 0;
                   final isExpanded = _expandedMyWorkSections.contains(name);
 
@@ -2564,11 +2436,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           child: Row(
                             children: [
                               Text(
-                                name
-                                    .replaceFirst(RegExp(r' Works$'), '')
-                                    .toUpperCase(),
+                                name.toUpperCase(),
                                 style: TextStyle(
-                                  color: sectionColor,
+                                  color: color,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 0.6,
@@ -2582,16 +2452,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: countBadgeColor.withValues(
-                                    alpha: 0.12,
-                                  ),
+                                  color: color.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
                                   '$count',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    color: countBadgeColor,
+                                    color: color,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -2601,7 +2469,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 isExpanded
                                     ? Icons.keyboard_arrow_up
                                     : Icons.keyboard_arrow_down,
-                                color: sectionColor,
+                                color: color,
                               ),
                             ],
                           ),
