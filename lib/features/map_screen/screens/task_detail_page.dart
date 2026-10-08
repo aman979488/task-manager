@@ -1409,7 +1409,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                 ),
                               ),
                             );
-                          }).toList(),
+                          }),
                           const SizedBox(height: 8),
                         ],
                       ),

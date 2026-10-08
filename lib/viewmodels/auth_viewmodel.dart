@@ -8,8 +8,7 @@ import '../services/notification_service.dart';
 import '../utils/role_permissions.dart';
 
 class AuthViewModel extends ChangeNotifier {
-  AuthViewModel({required NotificationService notificationService})
-    : _notificationService = notificationService {
+  AuthViewModel({required this._notificationService}) {
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen(
       _loadCurrentUser,
       onError: (Object error) {

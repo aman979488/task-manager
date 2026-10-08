@@ -143,10 +143,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         label = "Priority";
         selectedValue = _newTaskPriority;
         onSelected = (v) {
-          setState(() {
-            _newTaskPriority = v;
-            taskName.text = '${taskName.text} -$v '.trim() + ' ';
-          });
+          setState(() => _newTaskPriority = v);
           setModalState(() {});
         };
         onClear = () {
@@ -161,11 +158,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ? _formatDateTime(_newTaskReminder!)
             : null;
         onSelected = (v) {
-          setState(() {
-            _newTaskReminder = v;
-            final date = _formatDateTime(v);
-            taskName.text = '${taskName.text} *$date '.trim() + ' ';
-          });
+          setState(() => _newTaskReminder = v);
           setModalState(() {});
         };
         onClear = () {
@@ -179,38 +172,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         selectedValue = _newTaskAssignee;
         onSelected = (v) {
           setState(() {
-            final symbol = '@';
-            final currentText = taskName.text;
-            if (_newTaskAssignee == null || _newTaskAssignee!.isEmpty) {
-              _newTaskAssignee = v;
-              taskName.text = '$currentText $symbol$v '.trim() + ' ';
-            } else if (!_newTaskAssignee!.contains(v)) {
-              _newTaskAssignee = '$_newTaskAssignee, $v';
-              taskName.text = '$currentText $symbol$v '.trim() + ' ';
+            final selectedAssignees = (_newTaskAssignee ?? '')
+                .split(',')
+                .map((name) => name.trim())
+                .where((name) => name.isNotEmpty)
+                .toList();
+            if (!selectedAssignees.any(
+              (name) => name.toLowerCase() == v.toLowerCase(),
+            )) {
+              selectedAssignees.add(v);
             }
+            _newTaskAssignee = selectedAssignees.join(', ');
           });
           setModalState(() {});
         };
         onClear = () {
           setState(() {
-            final selectedAssignees = (_newTaskAssignee ?? '')
-                .split(',')
-                .map((name) => name.trim())
-                .where((name) => name.isNotEmpty);
-            var updatedText = taskName.text;
-            for (final assignee in selectedAssignees) {
-              final mentionPattern = RegExp(
-                '(^|\\s)@${RegExp.escape(assignee)}(?=\\s|${r'$'})',
-                caseSensitive: false,
-              );
-              updatedText = updatedText.replaceAll(mentionPattern, ' ');
-            }
-            updatedText = updatedText.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
-            final normalizedText = updatedText.trim();
-            taskName.value = TextEditingValue(
-              text: normalizedText,
-              selection: TextSelection.collapsed(offset: normalizedText.length),
-            );
             _newTaskAssignee = null;
           });
           setModalState(() {});
@@ -223,11 +200,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ? _formatDateTime(_newTaskDeadline!)
             : null;
         onSelected = (v) {
-          setState(() {
-            _newTaskDeadline = v;
-            final date = _formatDateTime(v);
-            taskName.text = '${taskName.text} !$date '.trim() + ' ';
-          });
+          setState(() => _newTaskDeadline = v);
           setModalState(() {});
         };
         onClear = () {
@@ -240,10 +213,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         label = "Work Type";
         selectedValue = _newTaskWorkType;
         onSelected = (v) {
-          setState(() {
-            _newTaskWorkType = v;
-            taskName.text = '${taskName.text} +$v '.trim() + ' ';
-          });
+          setState(() => _newTaskWorkType = v);
           setModalState(() {});
         };
         onClear = () {
@@ -269,10 +239,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         label = "Client Name";
         selectedValue = _newTaskClientName;
         onSelected = (v) {
-          setState(() {
-            _newTaskClientName = v;
-            taskName.text = '${taskName.text} #$v '.trim() + ' ';
-          });
+          setState(() => _newTaskClientName = v);
           setModalState(() {});
         };
         onClear = () {
@@ -285,10 +252,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         label = "Ref Project";
         selectedValue = _newTaskRefProject;
         onSelected = (v) {
-          setState(() {
-            _newTaskRefProject = v;
-            taskName.text = '${taskName.text} ^$v '.trim() + ' ';
-          });
+          setState(() => _newTaskRefProject = v);
           setModalState(() {});
         };
         onClear = () {
@@ -810,8 +774,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   ) async {
     if (assignee == null ||
         assignee.trim().isEmpty ||
-        !authVM.allowNotifications)
+        !authVM.allowNotifications) {
       return;
+    }
     final String cleanAssignee = assignee.trim().toLowerCase();
     final String myName = authVM.userName.trim().toLowerCase();
 
@@ -994,8 +959,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           .toList();
     }
     List<String>? clients;
-    if (type == FloatingSheetType.clientName)
+    if (type == FloatingSheetType.clientName) {
       clients = await _loadClientsFromFirestore();
+    }
 
     List<String>? projects;
     if (type == FloatingSheetType.refProject) {
@@ -1019,8 +985,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     ).context;
 
     List<String>? assignees;
-    if (type == FloatingSheetType.assign)
+    if (type == FloatingSheetType.assign) {
       assignees = await _loadAssigneesFromFirestore();
+    }
 
     final RenderBox button = buttonContext.findRenderObject() as RenderBox;
     final RenderBox overlay =
@@ -1137,9 +1104,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ).add(const Duration(days: 1));
                 computed = DateTime(t.year, t.month, t.day, 12, 0);
               }
-              if (computed != null)
+              if (computed != null) {
                 finalVal = computed.toIso8601String();
-              else if (lower.contains('custom'))
+              } else if (lower.contains('custom'))
                 return; // Cancelled
             }
 
@@ -1162,8 +1129,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     const double menuHeightEstimate = 320;
 
     double left = buttonPosition.dx;
-    if (left + menuWidth > overlaySize.width - padding)
+    if (left + menuWidth > overlaySize.width - padding) {
       left = overlaySize.width - menuWidth - padding;
+    }
     if (left < padding) left = padding;
 
     double top = buttonPosition.dy - menuHeightEstimate;
@@ -1314,19 +1282,108 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   void _openAddTaskSheet() {
-    List<String>? assigneeOptions;
-    Future<List<String>>? assigneeOptionsFuture;
     String? assigneeMentionQuery;
     String assigneeMentionSourceText = '';
     int assigneeMentionStart = -1;
     int assigneeMentionEnd = -1;
     int highlightedAssigneeIndex = 0;
+    int metadataTokenStart = -1;
 
-    void completeAssigneeMention(
-      String assignee,
+    String mentionSymbol = '@';
+    const priorityOptions = [
+      "U1",
+      "U2",
+      "U3",
+      "Urgent",
+      "IMP",
+      "Today",
+      "Tomorrow",
+      "Day Later",
+      "Later",
+      "Process",
+      "Hold",
+      "Free",
+    ];
+    List<String>? assigneeOptions;
+    Future<List<String>>? assigneeOptionsFuture;
+
+    ({int start, String symbol, String query})? parseMention(
+      String text,
+      int cursor,
+    ) {
+      final c = cursor.clamp(0, text.length);
+      for (var i = c - 1; i >= 0; i--) {
+        final ch = text[i];
+        if (RegExp(r'\s').hasMatch(ch)) return null;
+        if (ch == '@' || ch == '-') {
+          if (i == 0 || RegExp(r'\s').hasMatch(text[i - 1])) {
+            return (start: i, symbol: ch, query: text.substring(i + 1, c));
+          }
+          return null;
+        }
+      }
+      return null;
+    }
+
+    Future<List<String>> mentionOptions(String symbol, String query) async {
+      final q = query.toLowerCase();
+      if (symbol == '-') {
+        return priorityOptions
+            .where((n) => n.toLowerCase().startsWith(q))
+            .toList();
+      }
+      assigneeOptions ??= await (assigneeOptionsFuture ??=
+          _loadAssigneesFromFirestore());
+      return assigneeOptions!
+          .where((n) => n.toLowerCase().startsWith(q) && n.toLowerCase() != q)
+          .toList();
+    }
+
+    void removeMetadataTokenFromTaskName() {
+      if (metadataTokenStart < 0 ||
+          metadataTokenStart >= taskName.text.length) {
+        return;
+      }
+
+      final currentText = taskName.text;
+      var tokenEnd = metadataTokenStart + 1;
+      while (tokenEnd < currentText.length &&
+          !RegExp(r'\s').hasMatch(currentText[tokenEnd])) {
+        tokenEnd++;
+      }
+
+      final beforeToken = currentText.substring(0, metadataTokenStart);
+      final afterToken = currentText.substring(tokenEnd);
+      final beforeEndsWithWhitespace =
+          beforeToken.isNotEmpty &&
+          RegExp(r'\s').hasMatch(beforeToken[beforeToken.length - 1]);
+      final afterStartsWithWhitespace =
+          afterToken.isNotEmpty && RegExp(r'\s').hasMatch(afterToken[0]);
+      final separator =
+          beforeToken.isNotEmpty &&
+              afterToken.isNotEmpty &&
+              !beforeEndsWithWhitespace &&
+              !afterStartsWithWhitespace
+          ? ' '
+          : '';
+
+      metadataTokenStart = -1;
+      taskName.value = TextEditingValue(
+        text: '$beforeToken$separator$afterToken',
+        selection: TextSelection.collapsed(
+          offset: beforeToken.length + separator.length,
+        ),
+      );
+    }
+
+    Future<void> completeMention(
+      String opt,
       StateSetter setModalState, {
       String? sourceText,
-    }) {
+    }) async {
+      final assignee = opt;
+      final symbol = mentionSymbol;
+
       final currentText = sourceText ?? taskName.text;
       var endOfMention = assigneeMentionEnd;
       while (endOfMention < currentText.length &&
@@ -1337,39 +1394,50 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           .substring(0, assigneeMentionStart)
           .trimRight();
       final afterMention = currentText.substring(endOfMention).trimLeft();
-      final hasTextBefore = beforeMention.isNotEmpty;
-      final hasTextAfter = afterMention.isNotEmpty;
-      final updatedText = hasTextBefore && hasTextAfter
-          ? '$beforeMention $afterMention'
-          : hasTextBefore
-          ? '$beforeMention '
-          : afterMention;
-      taskName.value = TextEditingValue(
-        text: updatedText,
-        selection: TextSelection.collapsed(
-          offset: hasTextBefore ? beforeMention.length + 1 : 0,
-        ),
-      );
 
-      setState(() {
-        final selectedAssignees = (_newTaskAssignee ?? '')
-            .split(',')
-            .map((name) => name.trim())
-            .where((name) => name.isNotEmpty)
-            .toList();
-        if (!selectedAssignees.any(
-          (name) => name.toLowerCase() == assignee.toLowerCase(),
-        )) {
-          selectedAssignees.add(assignee);
-        }
-        _newTaskAssignee = selectedAssignees.join(', ');
-      });
       setModalState(() {
         assigneeMentionQuery = null;
         assigneeMentionStart = -1;
         assigneeMentionEnd = -1;
       });
       _focusNode.requestFocus();
+
+      final hasTextBefore = beforeMention.isNotEmpty;
+      final hasTextAfter = afterMention.isNotEmpty;
+      final updatedText = hasTextBefore && hasTextAfter
+          ? '$beforeMention $afterMention'
+          : hasTextBefore
+          ? beforeMention
+          : hasTextAfter
+          ? afterMention
+          : '';
+      final cursorOffset = hasTextBefore
+          ? beforeMention.length + (hasTextAfter ? 1 : 0)
+          : 0;
+      taskName.value = TextEditingValue(
+        text: updatedText,
+        selection: TextSelection.collapsed(offset: cursorOffset),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        if (symbol == '-') {
+          _newTaskPriority = assignee;
+        } else {
+          final selectedAssignees = (_newTaskAssignee ?? '')
+              .split(',')
+              .map((name) => name.trim())
+              .where((name) => name.isNotEmpty)
+              .toList();
+          if (!selectedAssignees.any(
+            (name) => name.toLowerCase() == assignee.toLowerCase(),
+          )) {
+            selectedAssignees.add(assignee);
+          }
+          _newTaskAssignee = selectedAssignees.join(', ');
+        }
+      });
+      setModalState(() {});
     }
 
     // 🚀 NAYA: Automatically request focus and show keyboard when sheet opens
@@ -1438,31 +1506,33 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 if (event is! KeyDownEvent ||
                                     event.logicalKey !=
                                         LogicalKeyboardKey.tab ||
-                                    assigneeMentionQuery == null ||
-                                    assigneeOptions == null) {
+                                    assigneeMentionQuery == null) {
                                   return KeyEventResult.ignored;
                                 }
 
                                 final query = assigneeMentionQuery!
                                     .toLowerCase();
-                                final matches = assigneeOptions!
+                                final source = mentionSymbol == '-'
+                                    ? priorityOptions
+                                    : assigneeOptions;
+                                if (source == null)
+                                  return KeyEventResult.ignored;
+                                final matches = source
                                     .where(
-                                      (name) =>
-                                          name.toLowerCase().startsWith(
-                                            query,
-                                          ) &&
-                                          name.toLowerCase() != query,
+                                      (n) =>
+                                          n.toLowerCase().startsWith(query) &&
+                                          (mentionSymbol == '-' ||
+                                              n.toLowerCase() != query),
                                     )
                                     .toList();
                                 if (matches.isEmpty) {
                                   return KeyEventResult.ignored;
                                 }
 
-                                final index = highlightedAssigneeIndex.clamp(
-                                  0,
-                                  matches.length - 1,
-                                );
-                                completeAssigneeMention(
+                                final index = highlightedAssigneeIndex
+                                    .clamp(0, matches.length - 1)
+                                    .toInt();
+                                completeMention(
                                   matches[index],
                                   setModalState,
                                   sourceText: assigneeMentionSourceText,
@@ -1475,39 +1545,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 optionsViewOpenDirection:
                                     OptionsViewOpenDirection.up,
                                 optionsBuilder: (value) async {
-                                  final text = value.text;
-                                  final cursor = value.selection.extentOffset
-                                      .clamp(0, text.length);
-                                  final mentionStart = cursor > 0
-                                      ? text.lastIndexOf('@', cursor - 1)
-                                      : -1;
-                                  if (mentionStart < 0 ||
-                                      (mentionStart > 0 &&
-                                          !RegExp(
-                                            r'\s',
-                                          ).hasMatch(text[mentionStart - 1])) ||
-                                      text
-                                          .substring(mentionStart + 1, cursor)
-                                          .contains(RegExp(r'\s'))) {
+                                  final m = parseMention(
+                                    value.text,
+                                    value.selection.extentOffset,
+                                  );
+                                  if (m == null) {
                                     return const <String>[];
                                   }
-
-                                  final query = text
-                                      .substring(mentionStart + 1, cursor)
-                                      .toLowerCase();
                                   try {
-                                    assigneeOptions ??=
-                                        await (assigneeOptionsFuture ??=
-                                            _loadAssigneesFromFirestore());
-                                    return assigneeOptions!
-                                        .where(
-                                          (name) =>
-                                              name.toLowerCase().startsWith(
-                                                query,
-                                              ) &&
-                                              name.toLowerCase() != query,
-                                        )
-                                        .toList();
+                                    return await mentionOptions(
+                                      m.symbol,
+                                      m.query,
+                                    );
                                   } catch (error) {
                                     if (sheetContext.mounted) {
                                       ScaffoldMessenger.of(
@@ -1515,7 +1564,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                       ).showSnackBar(
                                         SnackBar(
                                           content: Text(
-                                            'Could not load assignee names: $error',
+                                            'Could not load options: $error',
                                           ),
                                         ),
                                       );
@@ -1523,12 +1572,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                     return const <String>[];
                                   }
                                 },
-                                onSelected: (assignee) =>
-                                    completeAssigneeMention(
-                                      assignee,
-                                      setModalState,
-                                      sourceText: assigneeMentionSourceText,
-                                    ),
+                                onSelected: (opt) => completeMention(
+                                  opt,
+                                  setModalState,
+                                  sourceText: assigneeMentionSourceText,
+                                ),
                                 optionsViewBuilder: (context, onSelected, options) {
                                   final matches = options.toList();
                                   final highlightedIndex =
@@ -1616,6 +1664,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                       controller: controller,
                                       focusNode: focusNode,
                                       autofocus: true,
+                                      minLines: 1,
+                                      maxLines: 4,
+
                                       textInputAction: TextInputAction.done,
                                       decoration: const InputDecoration(
                                         hintText: "Add a task",
@@ -1624,39 +1675,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                       onChanged: (val) {
                                         final cursor =
                                             controller.selection.baseOffset;
-                                        final safeCursor = cursor.clamp(
-                                          0,
-                                          val.length,
-                                        );
-                                        final mentionStart = safeCursor > 0
-                                            ? val.lastIndexOf(
-                                                '@',
-                                                safeCursor - 1,
-                                              )
-                                            : -1;
-                                        final isValidMention =
-                                            mentionStart >= 0 &&
-                                            (mentionStart == 0 ||
-                                                RegExp(r'\s').hasMatch(
-                                                  val[mentionStart - 1],
-                                                )) &&
-                                            !val
-                                                .substring(
-                                                  mentionStart + 1,
-                                                  safeCursor,
-                                                )
-                                                .contains(RegExp(r'\s'));
+                                        final safeCursor = cursor
+                                            .clamp(0, val.length)
+                                            .toInt();
+                                        final m = parseMention(val, safeCursor);
 
+                                        metadataTokenStart = -1;
                                         assigneeMentionSourceText = val;
                                         setModalState(() {
-                                          if (isValidMention) {
-                                            assigneeMentionStart = mentionStart;
+                                          if (m != null) {
+                                            assigneeMentionStart = m.start;
                                             assigneeMentionEnd = safeCursor;
-                                            assigneeMentionQuery = val
-                                                .substring(
-                                                  mentionStart + 1,
-                                                  safeCursor,
-                                                );
+                                            assigneeMentionQuery = m.query;
+                                            mentionSymbol = m.symbol;
                                           } else {
                                             assigneeMentionQuery = null;
                                             assigneeMentionStart = -1;
@@ -1665,167 +1696,46 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                         });
 
                                         if (val.isEmpty) return;
-                                        if (cursor <= 0 || cursor > val.length)
+                                        if (cursor <= 0 ||
+                                            cursor > val.length) {
                                           return;
+                                        }
                                         final ch = val[cursor - 1];
                                         final prev = cursor >= 2
                                             ? val[cursor - 2]
                                             : ' ';
 
                                         FloatingSheetType? triggerType;
-                                        String symbol = '';
                                         if (ch == '#') {
                                           triggerType =
                                               FloatingSheetType.clientName;
-                                          symbol = '#';
-                                        } else if (ch == '-') {
-                                          triggerType =
-                                              FloatingSheetType.priority;
-                                          symbol = '-';
                                         } else if (ch == '!') {
                                           triggerType =
                                               FloatingSheetType.deadline;
-                                          symbol = '!';
                                         } else if (ch == '+') {
                                           triggerType =
                                               FloatingSheetType.workType;
-                                          symbol = '+';
                                         } else if (ch == '*') {
                                           triggerType =
                                               FloatingSheetType.remind;
-                                          symbol = '*';
                                         } else if (ch == '^') {
                                           triggerType =
                                               FloatingSheetType.refProject;
-                                          symbol = '^';
                                         }
 
-                                        if (triggerType != null) {
-                                          final bool isMulti =
-                                              triggerType ==
-                                              FloatingSheetType.assign;
-                                          if (triggerType !=
-                                                  FloatingSheetType.assign &&
-                                              prev != ' ' &&
-                                              prev != '\n') {
+                                        if (triggerType != null && m == null) {
+                                          if (prev != ' ' && prev != '\n') {
                                             return;
                                           }
 
-                                          // Get currently selected values from the text to show checks in menu
-                                          List<String> currentSelections = [];
-                                          if (isMulti) {
-                                            final parts = val.split(' ');
-                                            for (var p in parts) {
-                                              if (p.startsWith('@')) {
-                                                currentSelections.add(
-                                                  p.substring(1),
-                                                );
-                                              }
-                                            }
-                                          }
+                                          metadataTokenStart = safeCursor - 1;
 
                                           _showFloatingSheet(
                                             textFieldCtx,
                                             triggerType,
-                                            multiSelect: isMulti,
-                                            selectedValues: currentSelections,
                                             onSelected: (sel) {
                                               setState(() {
-                                                String insertVal = sel;
-                                                if (triggerType ==
-                                                        FloatingSheetType
-                                                            .deadline ||
-                                                    triggerType ==
-                                                        FloatingSheetType
-                                                            .remind) {
-                                                  insertVal = _formatDateTime(
-                                                    sel,
-                                                  );
-                                                }
-
-                                                final currentText =
-                                                    taskName.text;
-
-                                                if (isMulti) {
-                                                  final cursor = taskName
-                                                      .selection
-                                                      .baseOffset
-                                                      .clamp(
-                                                        0,
-                                                        currentText.length,
-                                                      )
-                                                      .toInt();
-                                                  final mentionStart =
-                                                      cursor > 0
-                                                      ? currentText.lastIndexOf(
-                                                          symbol,
-                                                          cursor - 1,
-                                                        )
-                                                      : -1;
-                                                  if (mentionStart >= 0) {
-                                                    final beforeMention =
-                                                        currentText.substring(
-                                                          0,
-                                                          mentionStart,
-                                                        );
-                                                    var afterMention =
-                                                        currentText.substring(
-                                                          cursor,
-                                                        );
-                                                    final beforeEndsWithWhitespace =
-                                                        beforeMention.endsWith(
-                                                          ' ',
-                                                        ) ||
-                                                        beforeMention.endsWith(
-                                                          '\n',
-                                                        );
-                                                    final afterStartsWithWhitespace =
-                                                        afterMention.startsWith(
-                                                          ' ',
-                                                        ) ||
-                                                        afterMention.startsWith(
-                                                          '\n',
-                                                        );
-
-                                                    if (beforeEndsWithWhitespace &&
-                                                        afterStartsWithWhitespace) {
-                                                      afterMention =
-                                                          afterMention
-                                                              .substring(1);
-                                                    }
-
-                                                    final separator =
-                                                        beforeMention
-                                                                .isNotEmpty &&
-                                                            afterMention
-                                                                .isNotEmpty &&
-                                                            !beforeEndsWithWhitespace &&
-                                                            !afterStartsWithWhitespace
-                                                        ? ' '
-                                                        : '';
-                                                    taskName.text =
-                                                        '$beforeMention$separator$afterMention';
-                                                    taskName.selection =
-                                                        TextSelection.collapsed(
-                                                          offset:
-                                                              beforeMention
-                                                                  .length +
-                                                              separator.length,
-                                                        );
-                                                  }
-                                                } else {
-                                                  taskName.text =
-                                                      '$currentText$insertVal ';
-                                                }
-
-                                                if (!isMulti) {
-                                                  taskName.selection =
-                                                      TextSelection.collapsed(
-                                                        offset: taskName
-                                                            .text
-                                                            .length,
-                                                      );
-                                                }
+                                                removeMetadataTokenFromTaskName();
 
                                                 // Sync bottom buttons state
                                                 if (triggerType ==
@@ -1839,9 +1749,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                                     FloatingSheetType.assign) {
                                                   if (_newTaskAssignee ==
                                                           null ||
-                                                      _newTaskAssignee!.isEmpty)
+                                                      _newTaskAssignee!
+                                                          .isEmpty) {
                                                     _newTaskAssignee = sel;
-                                                  else if (!_newTaskAssignee!
+                                                  } else if (!_newTaskAssignee!
                                                       .contains(sel))
                                                     _newTaskAssignee =
                                                         '$_newTaskAssignee, $sel';
@@ -1872,10 +1783,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                         }
                                       },
                                       onSubmitted: (_) {
-                                        final isAssigneeMentionActive =
+                                        final isMentionActive =
                                             assigneeMentionQuery != null;
                                         onFieldSubmitted();
-                                        if (isAssigneeMentionActive) return;
+                                        if (isMentionActive) return;
                                         _handleAddTaskFromSheet().then((added) {
                                           if (added && sheetContext.mounted) {
                                             Navigator.of(sheetContext).pop();
@@ -2209,7 +2120,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               ),
                             );
                           }
-                          
+
                           return GestureDetector(
                             onTap: () {
                               _showFloatingSheet(
@@ -2565,8 +2476,25 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         ),
                       ),
                       if (isExpanded)
-                        _buildMyWorkTaskResults(
-                          _getVisibleTasks(sections[name] ?? const <Task>[]),
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 12),
+                          constraints: BoxConstraints(
+                            maxHeight: MediaQuery.of(context).size.height * 0.4,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: color.withValues(alpha: 0.25),
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: SingleChildScrollView(
+                            child: _buildMyWorkTaskResults(
+                              _getVisibleTasks(
+                                sections[name] ?? const <Task>[],
+                              ),
+                            ),
+                          ),
                         ),
                     ],
                   );
@@ -2950,7 +2878,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               border: Border.all(color: Colors.grey.shade200),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
+                  color: Colors.black.withValues(alpha: 0.02),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -2958,7 +2886,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
             child: ExpansionTile(
               leading: CircleAvatar(
-                backgroundColor: primaryColor.withOpacity(0.3),
+                backgroundColor: primaryColor.withValues(alpha: 0.3),
                 child: Text(
                   groupName.isNotEmpty ? groupName[0].toUpperCase() : '?',
                   style: const TextStyle(
