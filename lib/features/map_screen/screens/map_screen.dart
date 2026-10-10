@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 🚀 NAYA: For SystemChannels keyboard show/hide
@@ -58,6 +60,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   String? _newTaskFolder;
   String? _newTaskClientName;
   String? _newTaskRefProject; // 🚀 NAYA
+  final List<FloatingSheetType> _newTaskMetadataOrder = [];
 
   // Draggable button order
   final List<FloatingSheetType> _defaultOrder = [
@@ -75,6 +78,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   // Firestore collection reference -> MAP collection as requested
   final CollectionReference tasksCollection = FirebaseFirestore.instance
       .collection('map');
+  StreamSubscription? _tasksSubscription;
+  final Set<Task> _pendingTasks = {};
 
   bool _isAddingTask = false; // 🚀 NAYA: To prevent double submission
   List<String>? _clientsCache;
@@ -94,7 +99,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _tabController.addListener(_handleTabChange);
     _loadButtonOrder();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadTasksFromFirebase();
+      _listenForTaskUpdates();
     });
   }
 
@@ -117,6 +122,80 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
+  String? _newTaskMetadataValue(FloatingSheetType type) {
+    return switch (type) {
+      FloatingSheetType.priority => _newTaskPriority,
+      FloatingSheetType.remind => _newTaskReminder,
+      FloatingSheetType.assign => _newTaskAssignee,
+      FloatingSheetType.deadline => _newTaskDeadline,
+      FloatingSheetType.workType => _newTaskWorkType,
+      FloatingSheetType.folder => _newTaskFolder,
+      FloatingSheetType.clientName => _newTaskClientName,
+      FloatingSheetType.refProject => _newTaskRefProject,
+    };
+  }
+
+  String _newTaskMetadataLabel(FloatingSheetType type) {
+    return switch (type) {
+      FloatingSheetType.priority => 'Priority',
+      FloatingSheetType.remind => 'Remind Me',
+      FloatingSheetType.assign => 'Assign',
+      FloatingSheetType.deadline => 'Deadline',
+      FloatingSheetType.workType => 'Work Type',
+      FloatingSheetType.folder => 'Folder',
+      FloatingSheetType.clientName => 'Client Name',
+      FloatingSheetType.refProject => 'Ref Project',
+    };
+  }
+
+  IconData _newTaskMetadataIcon(FloatingSheetType type) {
+    return switch (type) {
+      FloatingSheetType.priority => Icons.flag_outlined,
+      FloatingSheetType.remind => Icons.notifications_active,
+      FloatingSheetType.assign => Icons.assignment,
+      FloatingSheetType.deadline => Icons.alarm,
+      FloatingSheetType.workType => Icons.insert_drive_file,
+      FloatingSheetType.folder => Icons.folder_outlined,
+      FloatingSheetType.clientName => Icons.business_center_outlined,
+      FloatingSheetType.refProject => Icons.apartment_outlined,
+    };
+  }
+
+  void _setNewTaskMetadata(FloatingSheetType type, String? value) {
+    switch (type) {
+      case FloatingSheetType.priority:
+        _newTaskPriority = value;
+        break;
+      case FloatingSheetType.remind:
+        _newTaskReminder = value;
+        break;
+      case FloatingSheetType.assign:
+        _newTaskAssignee = value;
+        break;
+      case FloatingSheetType.deadline:
+        _newTaskDeadline = value;
+        break;
+      case FloatingSheetType.workType:
+        _newTaskWorkType = value;
+        break;
+      case FloatingSheetType.folder:
+        _newTaskFolder = value;
+        break;
+      case FloatingSheetType.clientName:
+        _newTaskClientName = value;
+        break;
+      case FloatingSheetType.refProject:
+        _newTaskRefProject = value;
+        break;
+    }
+
+    if (value == null || value.trim().isEmpty) {
+      _newTaskMetadataOrder.remove(type);
+    } else if (!_newTaskMetadataOrder.contains(type)) {
+      _newTaskMetadataOrder.add(type);
+    }
+  }
+
   Widget _buildBottomSheetButtonWithState(
     FloatingSheetType type,
     StateSetter setModalState, {
@@ -134,11 +213,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         label = "Priority";
         selectedValue = _newTaskPriority;
         onSelected = (v) {
-          setState(() => _newTaskPriority = v);
+          setState(() => _setNewTaskMetadata(type, v));
           setModalState(() {});
         };
         onClear = () {
-          setState(() => _newTaskPriority = null);
+          setState(() => _setNewTaskMetadata(type, null));
           setModalState(() {});
         };
         break;
@@ -149,11 +228,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ? _formatDateTime(_newTaskReminder!)
             : null;
         onSelected = (v) {
-          setState(() => _newTaskReminder = v);
+          setState(() => _setNewTaskMetadata(type, v));
           setModalState(() {});
         };
         onClear = () {
-          setState(() => _newTaskReminder = null);
+          setState(() => _setNewTaskMetadata(type, null));
           setModalState(() {});
         };
         break;
@@ -173,13 +252,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             )) {
               selectedAssignees.add(v);
             }
-            _newTaskAssignee = selectedAssignees.join(', ');
+            _setNewTaskMetadata(type, selectedAssignees.join(', '));
           });
           setModalState(() {});
         };
         onClear = () {
           setState(() {
-            _newTaskAssignee = null;
+            _setNewTaskMetadata(type, null);
           });
           setModalState(() {});
         };
@@ -191,11 +270,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ? _formatDateTime(_newTaskDeadline!)
             : null;
         onSelected = (v) {
-          setState(() => _newTaskDeadline = v);
+          setState(() => _setNewTaskMetadata(type, v));
           setModalState(() {});
         };
         onClear = () {
-          setState(() => _newTaskDeadline = null);
+          setState(() => _setNewTaskMetadata(type, null));
           setModalState(() {});
         };
         break;
@@ -204,11 +283,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         label = "Work Type";
         selectedValue = _newTaskWorkType;
         onSelected = (v) {
-          setState(() => _newTaskWorkType = v);
+          setState(() => _setNewTaskMetadata(type, v));
           setModalState(() {});
         };
         onClear = () {
-          setState(() => _newTaskWorkType = null);
+          setState(() => _setNewTaskMetadata(type, null));
           setModalState(() {});
         };
         break;
@@ -217,11 +296,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         label = "Folder";
         selectedValue = _newTaskFolder;
         onSelected = (v) {
-          setState(() => _newTaskFolder = v);
+          setState(() => _setNewTaskMetadata(type, v));
           setModalState(() {});
         };
         onClear = () {
-          setState(() => _newTaskFolder = null);
+          setState(() => _setNewTaskMetadata(type, null));
           setModalState(() {});
         };
         break;
@@ -230,11 +309,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         label = "Client Name";
         selectedValue = _newTaskClientName;
         onSelected = (v) {
-          setState(() => _newTaskClientName = v);
+          setState(() => _setNewTaskMetadata(type, v));
           setModalState(() {});
         };
         onClear = () {
-          setState(() => _newTaskClientName = null);
+          setState(() => _setNewTaskMetadata(type, null));
           setModalState(() {});
         };
         break;
@@ -243,11 +322,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         label = "Ref Project";
         selectedValue = _newTaskRefProject;
         onSelected = (v) {
-          setState(() => _newTaskRefProject = v);
+          setState(() => _setNewTaskMetadata(type, v));
           setModalState(() {});
         };
         onClear = () {
-          setState(() => _newTaskRefProject = null);
+          setState(() => _setNewTaskMetadata(type, null));
           setModalState(() {});
         };
         break;
@@ -263,7 +342,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
-          width: compact ? double.infinity : null,
+          width: compact ? 112 : null,
           decoration: BoxDecoration(
             color: isSelected
                 ? primaryColor.withValues(alpha: 0.2)
@@ -298,7 +377,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               },
               child: Padding(
                 padding: compact
-                    ? const EdgeInsets.symmetric(horizontal: 6, vertical: 8)
+                    ? const EdgeInsets.symmetric(horizontal: 4, vertical: 4)
                     : const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
                 child: compact
                     ? Column(
@@ -309,7 +388,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             children: [
                               Icon(
                                 icon,
-                                size: 19,
+                                size: 17,
                                 color: isSelected
                                     ? secondaryColor
                                     : Colors.grey.shade700,
@@ -338,7 +417,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               fontWeight: isSelected
                                   ? FontWeight.w600
                                   : FontWeight.normal,
-                              fontSize: 13,
+                              fontSize: 12,
                               height: 1.15,
                             ),
                           ),
@@ -429,8 +508,27 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
+  Color _myWorkSectionColor(String section) {
+    switch (section) {
+      case 'Urgent Works':
+        return const Color(0xFF9B5965);
+      case 'IMP Works':
+        return const Color(0xFF526D8A);
+      case 'Today Works':
+      case 'Tomorrow Works':
+        return const Color(0xFF557E9B);
+      case 'Hold Works':
+        return const Color(0xFF99765B);
+      case 'Done Works':
+        return const Color(0xFF708276);
+      default:
+        return const Color(0xFF71808D);
+    }
+  }
+
   @override
   void dispose() {
+    _tasksSubscription?.cancel();
     _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     _hideFloatingSheet();
@@ -655,15 +753,58 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         .where((task) => _isTaskVisibleToUser(task, authVM))
         .toList();
 
-    loaded.sort(_taskComparator);
-
     if (!mounted) return;
+    _replaceTasks(loaded);
+    await updateTaskHomeWidget(tasks);
+  }
+
+  void _listenForTaskUpdates() {
+    _tasksSubscription = tasksCollection.snapshots().listen(
+      (snapshot) {
+        if (!mounted) return;
+        final authVM = Provider.of<AuthViewModel>(context, listen: false);
+        final loaded = snapshot.docs
+            .map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return Task.fromMap(doc.id, data);
+            })
+            .where((task) => _isTaskVisibleToUser(task, authVM))
+            .toList();
+
+        _replaceTasks(loaded);
+        unawaited(_updateTaskHomeWidgetSafely());
+      },
+      onError: (Object error) {
+        debugPrint('Error listening for task updates: $error');
+        if (mounted) {
+          _showMessage('Could not sync tasks. Pull down to refresh.');
+        }
+      },
+    );
+  }
+
+  void _replaceTasks(List<Task> loaded) {
+    loaded.sort(_taskComparator);
+    final loadedIds = loaded.map((task) => task.id).toSet();
+    final pending = _pendingTasks
+        .where((task) => task.id == null || !loadedIds.contains(task.id))
+        .toList();
+
     setState(() {
       tasks
         ..clear()
-        ..addAll(loaded);
+        ..addAll(loaded)
+        ..addAll(pending);
+      _sortTasks();
     });
-    await updateTaskHomeWidget(tasks);
+  }
+
+  Future<void> _updateTaskHomeWidgetSafely() async {
+    try {
+      await updateTaskHomeWidget(tasks);
+    } catch (error) {
+      debugPrint('Error updating task home widget: $error');
+    }
   }
 
   void _handleTabChange() {
@@ -707,8 +848,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _addTaskToFirebase(Task task) async {
-    final docRef = await tasksCollection.add(_taskData(task));
+    final docRef = tasksCollection.doc();
     task.id = docRef.id;
+    await docRef.set(_taskData(task));
   }
 
   Future<void> _updateTaskInFirebase(Task task) async {
@@ -753,6 +895,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _newTaskFolder = null;
       _newTaskClientName = null;
       _newTaskRefProject = null;
+      _newTaskMetadataOrder.clear();
     });
 
     final authVM = Provider.of<AuthViewModel>(context, listen: false);
@@ -775,32 +918,47 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       priorityUpdatedAt: priority != null ? nowMs : null,
     );
 
-    var added = false;
+    if (_isTaskVisibleToUser(newTask, authVM)) {
+      _pendingTasks.add(newTask);
+      setState(() {
+        tasks.add(newTask);
+        _sortTasks();
+      });
+    }
+
+    if (assignee != null && assignee.trim().isNotEmpty) {
+      unawaited(_sendTaskAssignmentNotification(assignee, text, authVM));
+    }
+    unawaited(_saveNewTask(newTask));
+
+    setState(() {
+      _isAddingTask = false;
+    });
+    _focusNode.requestFocus();
+    return true;
+  }
+
+  Future<void> _saveNewTask(Task task) async {
     try {
-      await _addTaskToFirebase(newTask);
-      added = true;
-
-      if (assignee != null && assignee.trim().isNotEmpty) {
-        _sendTaskAssignmentNotification(assignee, text, authVM);
-      }
-
-      if (_isTaskVisibleToUser(newTask, authVM)) {
+      await _addTaskToFirebase(task);
+    } catch (error) {
+      debugPrint('Error adding task: $error');
+      if (mounted) {
+        _pendingTasks.remove(task);
         setState(() {
-          tasks.add(newTask);
+          tasks.removeWhere(
+            (existingTask) =>
+                identical(existingTask, task) || existingTask.id == task.id,
+          );
           _sortTasks();
         });
-        await updateTaskHomeWidget(tasks);
+        _showMessage('Could not send "${task.title}". Please try again.');
       }
-    } catch (e) {
-      debugPrint('Error adding task: $e');
-    } finally {
-      setState(() {
-        _isAddingTask = false;
-      });
-      await Future.delayed(const Duration(milliseconds: 80));
-      _focusNode.requestFocus();
+      return;
     }
-    return added;
+
+    _pendingTasks.remove(task);
+    await _updateTaskHomeWidgetSafely();
   }
 
   Future<void> _sendTaskAssignmentNotification(
@@ -903,7 +1061,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (pa != pb) {
       return pa.compareTo(pb);
     }
-
     final ta = a.priorityUpdatedAt ?? 0;
     final tb = b.priorityUpdatedAt ?? 0;
 
@@ -1165,15 +1322,21 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       0.0,
       240.0,
     );
-    const double menuHeightEstimate = 320;
-
-    double left = buttonPosition.dx;
-    if (left + menuWidth > overlaySize.width - padding)
-      left = overlaySize.width - menuWidth - padding;
-    if (left < padding) left = padding;
-
-    double top = buttonPosition.dy - menuHeightEstimate;
-    if (top < padding) top = buttonPosition.dy + button.size.height + padding;
+    final desiredMenuHeight = (overlaySize.height - padding * 2)
+        .clamp(0.0, 400.0)
+        .toDouble();
+    final spaceAbove = (buttonPosition.dy - padding).clamp(
+      0.0,
+      desiredMenuHeight,
+    );
+    final spaceBelow =
+        (overlaySize.height - buttonPosition.dy - button.size.height - padding)
+            .clamp(0.0, desiredMenuHeight);
+    final openAbove = spaceAbove >= spaceBelow;
+    final menuMaxHeight = openAbove ? spaceAbove : spaceBelow;
+    final top = openAbove
+        ? buttonPosition.dy - menuMaxHeight
+        : buttonPosition.dy + button.size.height + padding;
 
     _hideFloatingSheet();
     _floatingSheetOverlay = OverlayEntry(
@@ -1186,7 +1349,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
           ),
           Positioned(
-            left: left,
+            right: padding,
             top: top,
             child: Material(
               color: Colors.white,
@@ -1201,6 +1364,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         type == FloatingSheetType.workType ||
                         type == FloatingSheetType.clientName ||
                         type == FloatingSheetType.refProject;
+                    final optionListHeight =
+                        (menuMaxHeight -
+                                (showSearch ? 68 : 0) -
+                                (multiSelect ? 64 : 0))
+                            .clamp(40.0, 250.0)
+                            .toDouble();
                     final allOptions = buildOptions(setOverlayState);
                     final filteredOptions =
                         showSearch && _searchQuery.isNotEmpty
@@ -1214,85 +1383,92 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               .toList()
                         : allOptions;
 
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (showSearch)
-                          Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: TextField(
-                              controller: _searchController,
-                              autofocus: true,
-                              decoration: InputDecoration(
-                                hintText: 'Search...',
-                                hintStyle: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey.shade400,
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: menuMaxHeight),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (showSearch)
+                            Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: TextField(
+                                controller: _searchController,
+                                autofocus: true,
+                                decoration: InputDecoration(
+                                  hintText: 'Search...',
+                                  hintStyle: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                  prefixIcon: Icon(
+                                    Icons.search,
+                                    size: 18,
+                                    color: Colors.grey.shade50,
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                  isDense: true,
+                                  filled: true,
+                                  fillColor: Colors.grey.shade100,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide.none,
+                                  ),
                                 ),
-                                prefixIcon: Icon(
-                                  Icons.search,
-                                  size: 18,
-                                  color: Colors.grey.shade50,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                isDense: true,
-                                filled: true,
-                                fillColor: Colors.grey.shade100,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide.none,
-                                ),
+                                onChanged: (val) {
+                                  _searchQuery = val;
+                                  setOverlayState(() {});
+                                },
                               ),
-                              onChanged: (val) {
-                                _searchQuery = val;
-                                setOverlayState(() {});
-                              },
                             ),
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight: optionListHeight,
+                            ),
+                            child: filteredOptions.isEmpty
+                                ? const Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: Text(
+                                      'No results',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  )
+                                : ListView(
+                                    padding: EdgeInsets.zero,
+                                    shrinkWrap: true,
+                                    children: filteredOptions,
+                                  ),
                           ),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 250),
-                          child: filteredOptions.isEmpty
-                              ? const Padding(
-                                  padding: EdgeInsets.all(16),
-                                  child: Text(
-                                    'No results',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey,
+                          if (multiSelect)
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: secondaryColor,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
                                     ),
                                   ),
-                                )
-                              : ListView(
-                                  padding: EdgeInsets.zero,
-                                  shrinkWrap: true,
-                                  children: filteredOptions,
-                                ),
-                        ),
-                        if (multiSelect)
-                          Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: secondaryColor,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
+                                  onPressed: _hideFloatingSheet,
+                                  child: const Text(
+                                    'Done',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                ),
-                                onPressed: _hideFloatingSheet,
-                                child: const Text(
-                                  'Done',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
                                 ),
                               ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     );
                   },
                 ),
@@ -1380,6 +1556,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   void _openAddTaskSheet() {
+    var initialComposerFocusScheduled = false;
     String? assigneeMentionQuery;
     String assigneeMentionSourceText = '';
     int assigneeMentionStart = -1;
@@ -1520,7 +1697,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       if (!mounted) return;
       setState(() {
         if (symbol == '-') {
-          _newTaskPriority = assignee;
+          _setNewTaskMetadata(FloatingSheetType.priority, assignee);
         } else {
           final selectedAssignees = (_newTaskAssignee ?? '')
               .split(',')
@@ -1532,21 +1709,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           )) {
             selectedAssignees.add(assignee);
           }
-          _newTaskAssignee = selectedAssignees.join(', ');
+          _setNewTaskMetadata(
+            FloatingSheetType.assign,
+            selectedAssignees.join(', '),
+          );
         }
       });
       setModalState(() {});
     }
-
-    // 🚀 NAYA: Automatically request focus and show keyboard when sheet opens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_focusNode.canRequestFocus) {
-        _focusNode.requestFocus();
-        if (!kIsWeb) {
-          SystemChannels.textInput.invokeMethod('textInput.show');
-        }
-      }
-    });
 
     showModalBottomSheet(
       context: context,
@@ -1572,17 +1742,25 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
             FloatingSheetType.refProject,
           ];
-          const primaryButtonTypes = {
-            FloatingSheetType.priority,
-            FloatingSheetType.remind,
-            FloatingSheetType.assign,
-            FloatingSheetType.deadline,
-          };
-
+          final availableButtonOrder = mobileButtonOrder.where((type) {
+            final value = _newTaskMetadataValue(type);
+            return value == null || value.isEmpty;
+          }).toList();
           final systemNavBar = MediaQuery.of(sheetContext).padding.bottom;
           final bottomPadding = kIsWeb
               ? 16.0
               : (16.0 + viewInsets.bottom + systemNavBar);
+
+          if (!initialComposerFocusScheduled) {
+            initialComposerFocusScheduled = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted &&
+                  sheetContext.mounted &&
+                  _focusNode.canRequestFocus) {
+                _focusNode.requestFocus();
+              }
+            });
+          }
 
           return PopScope<Object?>(
             canPop: true,
@@ -1606,6 +1784,57 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (_newTaskMetadataOrder.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: _newTaskMetadataOrder
+                                .map((type) {
+                                  final value = _newTaskMetadataValue(type);
+                                  if (value == null || value.isEmpty) {
+                                    return null;
+                                  }
+                                  final displayValue =
+                                      type == FloatingSheetType.remind ||
+                                          type == FloatingSheetType.deadline
+                                      ? _formatDateTime(value)
+                                      : value;
+                                  return InputChip(
+                                    avatar: Icon(
+                                      _newTaskMetadataIcon(type),
+                                      size: 16,
+                                      color: secondaryColor,
+                                    ),
+                                    label: Text(
+                                      '${_newTaskMetadataLabel(type)}: $displayValue',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    onDeleted: () {
+                                      setState(
+                                        () => _setNewTaskMetadata(type, null),
+                                      );
+                                      setModalState(() {});
+                                    },
+                                    backgroundColor: primaryColor.withValues(
+                                      alpha: 0.2,
+                                    ),
+                                    side: BorderSide(
+                                      color: secondaryColor.withValues(
+                                        alpha: 0.35,
+                                      ),
+                                    ),
+                                  );
+                                })
+                                .whereType<Widget>()
+                                .toList(),
+                          ),
+                        ),
+                      ),
                     Row(
                       children: [
                         Expanded(
@@ -1691,76 +1920,117 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   final highlightedIndex =
                                       AutocompleteHighlightedOption.of(context);
                                   highlightedAssigneeIndex = highlightedIndex;
-                                  return Align(
-                                    alignment: Alignment.bottomLeft,
-                                    child: Material(
-                                      elevation: 8,
-                                      borderRadius: BorderRadius.circular(12),
-                                      clipBehavior: Clip.antiAlias,
-                                      child: SizedBox(
-                                        width: 240,
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            ConstrainedBox(
-                                              constraints: const BoxConstraints(
-                                                maxHeight: 190,
+                                  return LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final availableHeight =
+                                          constraints.hasBoundedHeight
+                                          ? constraints.maxHeight
+                                          : 260.0;
+                                      final popupHeight = availableHeight
+                                          .clamp(0.0, 210.0)
+                                          .toDouble();
+                                      const doneAreaHeight = 56.0;
+                                      final showDone =
+                                          popupHeight >= doneAreaHeight;
+                                      final listHeight =
+                                          (popupHeight -
+                                                  (showDone
+                                                      ? doneAreaHeight
+                                                      : 0))
+                                              .clamp(0.0, 154.0)
+                                              .toDouble();
+
+                                      return Align(
+                                        alignment: Alignment.bottomRight,
+                                        child: Material(
+                                          elevation: 8,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          clipBehavior: Clip.antiAlias,
+                                          child: SizedBox(
+                                            width: 240,
+                                            child: ConstrainedBox(
+                                              constraints: BoxConstraints(
+                                                maxHeight: popupHeight,
                                               ),
-                                              child: ListView.builder(
-                                                padding: EdgeInsets.zero,
-                                                shrinkWrap: true,
-                                                itemCount: matches.length,
-                                                itemBuilder: (context, index) {
-                                                  final name = matches[index];
-                                                  return ListTile(
-                                                    dense: true,
-                                                    selected:
-                                                        index ==
-                                                        highlightedIndex,
-                                                    selectedTileColor:
-                                                        primaryColor.withValues(
-                                                          alpha: 0.45,
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  ConstrainedBox(
+                                                    constraints: BoxConstraints(
+                                                      maxHeight: listHeight,
+                                                    ),
+                                                    child: ListView.builder(
+                                                      padding: EdgeInsets.zero,
+                                                      shrinkWrap: true,
+                                                      itemCount: matches.length,
+                                                      itemBuilder: (context, index) {
+                                                        final name =
+                                                            matches[index];
+                                                        return ListTile(
+                                                          dense: true,
+                                                          selected:
+                                                              index ==
+                                                              highlightedIndex,
+                                                          selectedTileColor:
+                                                              primaryColor
+                                                                  .withValues(
+                                                                    alpha: 0.45,
+                                                                  ),
+                                                          title: Text(
+                                                            name,
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 13,
+                                                                ),
+                                                          ),
+                                                          onTap: () =>
+                                                              onSelected(name),
+                                                        );
+                                                      },
+                                                    ),
+                                                  ),
+                                                  if (showDone)
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                            8,
+                                                          ),
+                                                      child: SizedBox(
+                                                        width: double.infinity,
+                                                        child: ElevatedButton(
+                                                          style: ElevatedButton.styleFrom(
+                                                            backgroundColor:
+                                                                primaryColor,
+                                                            foregroundColor:
+                                                                secondaryColor,
+                                                          ),
+                                                          onPressed: () {
+                                                            final index =
+                                                                highlightedIndex
+                                                                    .clamp(
+                                                                      0,
+                                                                      matches.length -
+                                                                          1,
+                                                                    );
+                                                            onSelected(
+                                                              matches[index],
+                                                            );
+                                                          },
+                                                          child: const Text(
+                                                            'Done',
+                                                          ),
                                                         ),
-                                                    title: Text(
-                                                      name,
-                                                      style: const TextStyle(
-                                                        fontSize: 13,
                                                       ),
                                                     ),
-                                                    onTap: () =>
-                                                        onSelected(name),
-                                                  );
-                                                },
+                                                ],
                                               ),
                                             ),
-                                            Padding(
-                                              padding: const EdgeInsets.all(8),
-                                              child: SizedBox(
-                                                width: double.infinity,
-                                                child: ElevatedButton(
-                                                  style:
-                                                      ElevatedButton.styleFrom(
-                                                        backgroundColor:
-                                                            primaryColor,
-                                                        foregroundColor:
-                                                            secondaryColor,
-                                                      ),
-                                                  onPressed: () {
-                                                    final index =
-                                                        highlightedIndex.clamp(
-                                                          0,
-                                                          matches.length - 1,
-                                                        );
-                                                    onSelected(matches[index]);
-                                                  },
-                                                  child: const Text('Done'),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
+                                          ),
                                         ),
-                                      ),
-                                    ),
+                                      );
+                                    },
                                   );
                                 },
                                 fieldViewBuilder:
@@ -1773,6 +2043,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                       controller: controller,
                                       focusNode: focusNode,
                                       autofocus: true,
+                                      onTap: () {
+                                        if (!focusNode.hasFocus) {
+                                          focusNode.requestFocus();
+                                        }
+                                      },
                                       minLines: 1,
                                       maxLines: 4,
 
@@ -1850,40 +2125,79 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                                 if (triggerType ==
                                                     FloatingSheetType
                                                         .priority) {
-                                                  _newTaskPriority = sel;
+                                                  _setNewTaskMetadata(
+                                                    FloatingSheetType.priority,
+                                                    sel,
+                                                  );
                                                 } else if (triggerType ==
                                                     FloatingSheetType.remind) {
-                                                  _newTaskReminder = sel;
+                                                  _setNewTaskMetadata(
+                                                    FloatingSheetType.remind,
+                                                    sel,
+                                                  );
                                                 } else if (triggerType ==
                                                     FloatingSheetType.assign) {
-                                                  if (_newTaskAssignee ==
-                                                          null ||
-                                                      _newTaskAssignee!
-                                                          .isEmpty) {
-                                                    _newTaskAssignee = sel;
-                                                  } else if (!_newTaskAssignee!
-                                                      .contains(sel))
-                                                    _newTaskAssignee =
-                                                        '$_newTaskAssignee, $sel';
+                                                  final selectedAssignees =
+                                                      (_newTaskAssignee ?? '')
+                                                          .split(',')
+                                                          .map(
+                                                            (name) =>
+                                                                name.trim(),
+                                                          )
+                                                          .where(
+                                                            (name) =>
+                                                                name.isNotEmpty,
+                                                          )
+                                                          .toList();
+                                                  if (!selectedAssignees.any(
+                                                    (name) =>
+                                                        name.toLowerCase() ==
+                                                        sel.toLowerCase(),
+                                                  )) {
+                                                    selectedAssignees.add(sel);
+                                                  }
+                                                  _setNewTaskMetadata(
+                                                    FloatingSheetType.assign,
+                                                    selectedAssignees.join(
+                                                      ', ',
+                                                    ),
+                                                  );
                                                 } else if (triggerType ==
                                                     FloatingSheetType
                                                         .deadline) {
-                                                  _newTaskDeadline = sel;
+                                                  _setNewTaskMetadata(
+                                                    FloatingSheetType.deadline,
+                                                    sel,
+                                                  );
                                                 } else if (triggerType ==
                                                     FloatingSheetType
                                                         .workType) {
-                                                  _newTaskWorkType = sel;
+                                                  _setNewTaskMetadata(
+                                                    FloatingSheetType.workType,
+                                                    sel,
+                                                  );
                                                 } else if (triggerType ==
                                                     FloatingSheetType.folder) {
-                                                  _newTaskFolder = sel;
+                                                  _setNewTaskMetadata(
+                                                    FloatingSheetType.folder,
+                                                    sel,
+                                                  );
                                                 } else if (triggerType ==
                                                     FloatingSheetType
                                                         .clientName) {
-                                                  _newTaskClientName = sel;
+                                                  _setNewTaskMetadata(
+                                                    FloatingSheetType
+                                                        .clientName,
+                                                    sel,
+                                                  );
                                                 } else if (triggerType ==
                                                     FloatingSheetType
                                                         .refProject) {
-                                                  _newTaskRefProject = sel;
+                                                  _setNewTaskMetadata(
+                                                    FloatingSheetType
+                                                        .refProject,
+                                                    sel,
+                                                  );
                                                 }
                                               });
                                               setModalState(() {});
@@ -1927,69 +2241,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    if (screenWidth < 600)
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: mobileButtonOrder.length + 1,
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              crossAxisSpacing: 6,
-                              mainAxisSpacing: 6,
-                              mainAxisExtent: 72,
-                            ),
-                        itemBuilder: (context, index) {
-                          if (index == mobileButtonOrder.length - 1) {
-                            return const SizedBox.shrink();
-                          }
-                          final buttonIndex =
-                              index > mobileButtonOrder.length - 1
-                              ? index - 1
-                              : index;
-                          return _buildBottomSheetButtonWithState(
-                            mobileButtonOrder[buttonIndex],
-                            setModalState,
-                            compact: true,
-                          );
-                        },
-                      )
-                    else
-                      Column(
-                        children: [
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            alignment: WrapAlignment.center,
-                            children: _buttonOrder
-                                .where(primaryButtonTypes.contains)
-                                .map(
-                                  (type) => _buildBottomSheetButtonWithState(
-                                    type,
-                                    setModalState,
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            alignment: WrapAlignment.center,
-                            children: _buttonOrder
-                                .where(
-                                  (type) => !primaryButtonTypes.contains(type),
-                                )
-                                .map(
-                                  (type) => _buildBottomSheetButtonWithState(
-                                    type,
-                                    setModalState,
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ],
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: availableButtonOrder
+                            .map(
+                              (type) => Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: _buildBottomSheetButtonWithState(
+                                  type,
+                                  setModalState,
+                                  compact: screenWidth < 600,
+                                ),
+                              ),
+                            )
+                            .toList(),
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -2170,25 +2438,43 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     Text(
                       task.title,
                       style: TextStyle(
-                        fontSize: 17,
+                        fontSize: 15,
                         fontWeight: FontWeight.w600,
+                        color: const Color(0xFF26364A),
                         decoration: task.isDone
                             ? TextDecoration.lineThrough
                             : TextDecoration.none,
+                        decorationColor: Colors.blueGrey.shade400,
                       ),
                     ),
+                    if (task.note.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Text(
+                          task.note.trim(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.25,
+                            color: task.isDone
+                                ? Colors.grey.shade500
+                                : Colors.blueGrey.shade500,
+                          ),
+                        ),
+                      ),
                     if (task.workType != null && task.workType!.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(top: 6.0),
+                        padding: const EdgeInsets.only(top: 3.0),
                         child: Text(
                           task.workType!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: 12,
                             color: task.isDone
                                 ? Colors.grey.shade500
-                                : Colors.grey.shade700,
+                                : Colors.blueGrey.shade500,
                           ),
                         ),
                       ),
@@ -2343,8 +2629,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           isCreator = true;
         }
       }
+
       final assignee = (task.assignee ?? '').toString().trim().toLowerCase();
-      bool isAssignee =
+      final isAssignee =
           assignee.isNotEmpty &&
           ((myName.isNotEmpty && assignee.contains(myName)) ||
               (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
@@ -2368,7 +2655,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final pendingTasks = myTasks.where((task) => !task.isDone);
+    final doneTasks = myTasks.where((task) => task.isDone).toList();
     final scheduledTasks = pendingTasks
+        .where((task) => task.priority?.trim().isEmpty ?? true)
         .map((task) => (task: task, date: _myWorkDeadline(task)))
         .where((entry) => entry.date != null)
         .toList();
@@ -2399,18 +2688,88 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     return {
       'Urgent Works': pendingTasks
-          .where((task) => task.priority?.trim().toLowerCase() == 'urgent')
+          .where(
+            (task) => const {
+              'u1',
+              'u2',
+              'u3',
+              'urgent',
+            }.contains(task.priority?.trim().toLowerCase()),
+          )
           .toList(),
-      'IMP Works': pendingTasks
-          .where((task) => task.priority?.trim().toLowerCase() == 'imp')
-          .toList(),
+      'IMP Works': tasksWithPriority('imp'),
       'Today Works': todayWorks,
       'Tomorrow Works': tomorrowWorks,
       'Day Later Works': tasksWithPriority('day later'),
       'Later Works': tasksWithPriority('later'),
       'Process Works': tasksWithPriority('process'),
       'Hold Works': tasksWithPriority('hold'),
+      'Done Works': doneTasks,
     };
+  }
+
+  Widget _buildTaskPriorityBadge(Task task, {bool compact = false}) {
+    final priority = task.priority?.trim();
+    final badgeColor = _taskPriorityColor(priority);
+    return GestureDetector(
+      onTap: () {
+        _showFloatingSheet(
+          context,
+          FloatingSheetType.priority,
+          onSelected: (value) async {
+            setState(() {
+              task.priority = value;
+              task.priorityUpdatedAt = DateTime.now().millisecondsSinceEpoch;
+            });
+            _sortTasks();
+            await _updateTaskInFirebase(task);
+          },
+        );
+      },
+      child: Container(
+        constraints: compact ? const BoxConstraints(maxWidth: 76) : null,
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 8 : 10,
+          vertical: compact ? 4 : 6,
+        ),
+        decoration: BoxDecoration(
+          color: badgeColor.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: badgeColor.withValues(alpha: 0.42)),
+        ),
+        child: Text(
+          priority != null && priority.isNotEmpty ? priority : 'None',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: compact ? 11 : 13,
+            color: badgeColor,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _taskPriorityColor(String? priority) {
+    switch (priority?.trim().toLowerCase()) {
+      case 'u1':
+      case 'u2':
+      case 'u3':
+      case 'urgent':
+        return const Color(0xFF9B5965);
+      case 'imp':
+        return const Color(0xFF526D8A);
+      case 'today':
+      case 'tomorrow':
+        return const Color(0xFF557E9B);
+      case 'hold':
+        return const Color(0xFF99765B);
+      case 'process':
+        return const Color(0xFF667F89);
+      default:
+        return const Color(0xFF71808D);
+    }
   }
 
   Widget _buildMyWorkTaskResults(List<Task> visibleTasks) {
@@ -2517,123 +2876,145 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       'Later Works',
       'Process Works',
       'Hold Works',
+      'Done Works',
     ];
-    const sectionColor = Colors.black87;
-    const countBadgeColor = Colors.blue;
-
+    final populatedSectionNames = sectionNames
+        .where((name) => sections[name]?.isNotEmpty ?? false)
+        .toList();
     return _refreshableScrollView(
       SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 100),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final name in sectionNames) ...[
-              Builder(
-                builder: (context) {
-                  final count = sections[name]?.length ?? 0;
-                  final isExpanded = _expandedMyWorkSections.contains(name);
+          children: populatedSectionNames.isEmpty
+              ? const [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(16, 20, 16, 20),
+                    child: Text(
+                      'No tasks in My Work.',
+                      style: TextStyle(color: Colors.blueGrey),
+                    ),
+                  ),
+                ]
+              : [
+                  for (final name in populatedSectionNames) ...[
+                    Builder(
+                      builder: (context) {
+                        final count = sections[name]?.length ?? 0;
+                        final isExpanded = _expandedMyWorkSections.contains(
+                          name,
+                        );
+                        final countBadgeColor = _myWorkSectionColor(name);
 
-                  return Column(
-                    children: [
-                      InkWell(
-                        onTap: () => setState(() {
-                          if (isExpanded) {
-                            _expandedMyWorkSections.remove(name);
-                          } else {
-                            _expandedMyWorkSections
-                              ..clear()
-                              ..add(name);
-                          }
-                        }),
-                        onDoubleTap: () => setState(() {
-                          if (_expandedMyWorkSections.length ==
-                              sectionNames.length) {
-                            _expandedMyWorkSections.clear();
-                          } else {
-                            _expandedMyWorkSections
-                              ..clear()
-                              ..addAll(sectionNames);
-                          }
-                        }),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                          child: Row(
-                            children: [
-                              Text(
-                                name
-                                    .replaceFirst(RegExp(r' Works$'), '')
-                                    .toUpperCase(),
-                                style: TextStyle(
-                                  color: sectionColor,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.6,
+                        return Column(
+                          children: [
+                            InkWell(
+                              onTap: () => setState(() {
+                                if (isExpanded) {
+                                  _expandedMyWorkSections.remove(name);
+                                } else {
+                                  _expandedMyWorkSections
+                                    ..clear()
+                                    ..add(name);
+                                }
+                              }),
+                              onDoubleTap: () => setState(() {
+                                if (_expandedMyWorkSections.length ==
+                                    populatedSectionNames.length) {
+                                  _expandedMyWorkSections.clear();
+                                } else {
+                                  _expandedMyWorkSections
+                                    ..clear()
+                                    ..addAll(populatedSectionNames);
+                                }
+                              }),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 14,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      name
+                                          .replaceFirst(RegExp(r' Works$'), '')
+                                          .toUpperCase(),
+                                      style: TextStyle(
+                                        color: countBadgeColor,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.4,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      constraints: const BoxConstraints(
+                                        minWidth: 28,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 7,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: countBadgeColor.withValues(
+                                          alpha: 0.12,
+                                        ),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        '$count',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: countBadgeColor,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Icon(
+                                      isExpanded
+                                          ? Icons.keyboard_arrow_up
+                                          : Icons.keyboard_arrow_down,
+                                      color: countBadgeColor,
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                            ),
+                            if (isExpanded)
                               Container(
-                                constraints: const BoxConstraints(minWidth: 36),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                constraints: BoxConstraints(
+                                  maxHeight:
+                                      MediaQuery.of(context).size.height * 0.4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: countBadgeColor.withValues(
-                                    alpha: 0.12,
+                                  border: Border.all(
+                                    color: countBadgeColor.withValues(
+                                      alpha: 0.25,
+                                    ),
                                   ),
-                                  borderRadius: BorderRadius.circular(20),
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Text(
-                                  '$count',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: countBadgeColor,
-                                    fontWeight: FontWeight.w700,
+                                clipBehavior: Clip.antiAlias,
+                                child: SingleChildScrollView(
+                                  child: _buildMyWorkTaskResults(
+                                    _getVisibleTasks(
+                                      sections[name] ?? const <Task>[],
+                                    ),
                                   ),
                                 ),
                               ),
-                              const Spacer(),
-                              Icon(
-                                isExpanded
-                                    ? Icons.keyboard_arrow_up
-                                    : Icons.keyboard_arrow_down,
-                                color: sectionColor,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (isExpanded)
-                        Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 12),
-                          constraints: BoxConstraints(
-                            maxHeight: MediaQuery.of(context).size.height * 0.4,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: color.withValues(alpha: 0.25),
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: SingleChildScrollView(
-                            child: _buildMyWorkTaskResults(
-                              _getVisibleTasks(
-                                sections[name] ?? const <Task>[],
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
-            ],
-          ],
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ],
         ),
       ),
     );
@@ -2646,6 +3027,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           (task) =>
               query.isEmpty ||
               task.title.toLowerCase().contains(query) ||
+              task.note.toLowerCase().contains(query) ||
               (task.assignee ?? '').toLowerCase().contains(query) ||
               (task.workType ?? '').toLowerCase().contains(query) ||
               (task.priority ?? '').toLowerCase().contains(query),
@@ -2714,6 +3096,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Widget _buildCompactTaskTile(Task task) {
     final isSelected = _selected.contains(task);
+    final description = task.note.trim();
+    final workType = task.workType?.trim() ?? '';
     return ListTile(
       dense: true,
       selected: isSelected,
@@ -2723,6 +3107,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         onChanged: (_) async {
           setState(() => task.isDone = !task.isDone);
           await _updateTaskInFirebase(task);
+          if (mounted) _sortTasks();
         },
       ),
       title: Text(
@@ -2730,17 +3115,43 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF26364A),
           decoration: task.isDone ? TextDecoration.lineThrough : null,
-          color: task.isDone ? Colors.grey : Colors.black87,
+          decorationColor: Colors.blueGrey.shade400,
         ),
       ),
-      subtitle: Text(
-        [
-          if (task.priority?.isNotEmpty == true) task.priority!,
-          if (task.assignee?.isNotEmpty == true) task.assignee!,
-        ].join(' • '),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+      subtitle: description.isNotEmpty || workType.isNotEmpty
+          ? Text(
+              [
+                if (description.isNotEmpty) description,
+                if (workType.isNotEmpty) workType,
+              ].join(' • '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.blueGrey.shade500,
+                height: 1.25,
+              ),
+            )
+          : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildTaskPriorityBadge(task, compact: true),
+          IconButton(
+            tooltip: 'Add subtask',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _promptAddSubstep(task),
+            icon: const Icon(
+              Icons.add_circle_outline,
+              color: Color(0xFF526D8A),
+              size: 21,
+            ),
+          ),
+        ],
       ),
       onLongPress: () => setState(() {
         if (isSelected) {
@@ -3498,14 +3909,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               labelColor: Colors.black,
               labelStyle: const TextStyle(
                 fontWeight: FontWeight.w900,
-                fontSize: 14,
+                fontSize: 12,
               ),
               unselectedLabelColor: Colors.grey.shade500,
               unselectedLabelStyle: const TextStyle(
                 fontWeight: FontWeight.w600,
-                fontSize: 14,
+                fontSize: 12,
               ),
-              labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+              labelPadding: const EdgeInsets.symmetric(horizontal: 12),
               tabs: [
                 const Tab(text: 'My Work'),
                 Tab(text: 'All Work (${tasks.length})'),
