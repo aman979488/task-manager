@@ -37,6 +37,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final TextEditingController _taskSearchController = TextEditingController();
   final ScrollController _metadataButtonsScrollController = ScrollController();
   double _metadataButtonScrollStep = 118;
+  final GlobalKey _assignButtonKey = GlobalKey();
   String _searchQuery = '';
   String _taskSearchQuery = '';
   bool _isSearchVisible = false;
@@ -330,6 +331,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     return Builder(
       builder: (buttonContext) => AnimatedSize(
+        key: type == FloatingSheetType.assign ? _assignButtonKey : null,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
         child: AnimatedContainer(
@@ -1134,6 +1136,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     BuildContext buttonContext,
     FloatingSheetType type, {
     void Function(String)? onSelected,
+    VoidCallback? onDone,
+    bool Function()? shouldShow,
+    bool closeOnSelect = false,
     bool multiSelect = false,
     List<String>? selectedValues,
   }) async {
@@ -1182,6 +1187,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (type == FloatingSheetType.assign) {
       assignees = await _loadAssigneesFromFirestore();
     }
+
+    if (shouldShow != null && !shouldShow()) return;
 
     final RenderBox button = buttonContext.findRenderObject() as RenderBox;
     final RenderBox overlay =
@@ -1306,10 +1313,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
             if (onSelected != null) onSelected(finalVal);
 
-            if (!multiSelect) {
+            if (!multiSelect || closeOnSelect) {
               _searchController.clear();
               _searchQuery = '';
               _hideFloatingSheet();
+              if (closeOnSelect) onDone?.call();
             } else {
               if (setOverlayState != null) setOverlayState(() {});
             }
@@ -1360,15 +1368,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 width: menuWidth,
                 child: StatefulBuilder(
                   builder: (context, setOverlayState) {
-                    final bool showSearch =
-                        type == FloatingSheetType.assign ||
-                        type == FloatingSheetType.workType ||
-                        type == FloatingSheetType.clientName ||
-                        type == FloatingSheetType.refProject;
+                    const showSearch = true;
                     final optionListHeight =
-                        (menuMaxHeight -
-                                (showSearch ? 68 : 0) -
-                                (multiSelect ? 64 : 0))
+                        (menuMaxHeight - 68 - (multiSelect ? 64 : 0))
                             .clamp(40.0, 250.0)
                             .toDouble();
                     final allOptions = buildOptions(setOverlayState);
@@ -1458,7 +1460,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                   ),
-                                  onPressed: _hideFloatingSheet,
+                                  onPressed: () {
+                                    _hideFloatingSheet();
+                                    onDone?.call();
+                                  },
                                   child: const Text(
                                     'Done',
                                     style: TextStyle(
@@ -1498,52 +1503,75 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Future<void> _showTaskSymbolHelp(BuildContext context) {
     const shortcuts = <(String, String, String)>[
-      ('@', 'Assign', 'Type @ to find and assign a person.'),
-      ('-', 'Priority', 'Type - to choose a priority.'),
-      ('!', 'Deadline', 'Type ! to set a deadline.'),
-      ('*', 'Remind Me', 'Type * to set a reminder.'),
-      ('+', 'Work Type', 'Type + to choose a work type.'),
-      ('#', 'Client Name', 'Type # to choose a client.'),
-      ('^', 'Ref Project', 'Type ^ to choose a reference project.'),
+      ('@', 'Assign', 'Type @ to search and assign a person.'),
+      (
+        '-',
+        'Priority',
+        'Type - and a letter, such as -u, to filter priorities.',
+      ),
+      (
+        '!',
+        'Deadline',
+        'Type ! and a word, such as !tom, to filter deadlines.',
+      ),
+      ('*', 'Remind Me', 'Type * and a word to filter reminder options.'),
+      ('+', 'Work Type', 'Type + and a word to filter work types.'),
+      ('#', 'Client Name', 'Type # and a name to filter clients.'),
+      ('^', 'Ref Project', 'Type ^ and a name to filter projects.'),
     ];
 
     return showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         title: const Text('Task shortcuts'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final (symbol, title, description) in shortcuts)
-                ListTile(
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 360,
+            maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.42,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (symbol, title, description) in shortcuts)
+                  ListTile(
+                    dense: true,
+                    visualDensity: const VisualDensity(vertical: -2),
+                    contentPadding: EdgeInsets.zero,
+                    leading: SizedBox(
+                      width: 28,
+                      child: Text(
+                        symbol,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    title: Text(title, style: const TextStyle(fontSize: 13)),
+                    subtitle: Text(
+                      description,
+                      style: const TextStyle(fontSize: 11, height: 1.1),
+                    ),
+                  ),
+                const ListTile(
                   dense: true,
+                  visualDensity: VisualDensity(vertical: -2),
                   contentPadding: EdgeInsets.zero,
                   leading: SizedBox(
                     width: 28,
-                    child: Text(
-                      symbol,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    child: Icon(Icons.folder_outlined, size: 20),
                   ),
-                  title: Text(title),
-                  subtitle: Text(description),
+                  title: Text('Folder', style: TextStyle(fontSize: 13)),
+                  subtitle: Text(
+                    'Folder does not have a text shortcut symbol.',
+                    style: TextStyle(fontSize: 11, height: 1.1),
+                  ),
                 ),
-              const ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: SizedBox(
-                  width: 28,
-                  child: Icon(Icons.folder_outlined, size: 20),
-                ),
-                title: Text('Folder'),
-                subtitle: Text('Folder does not have a text shortcut symbol.'),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         actions: [
@@ -1558,6 +1586,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   void _openAddTaskSheet() {
     var initialComposerFocusScheduled = false;
+    var assigneePickerOpenedForMention = false;
     String? assigneeMentionQuery;
     String assigneeMentionSourceText = '';
     int assigneeMentionStart = -1;
@@ -1582,6 +1611,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     ];
     List<String>? assigneeOptions;
     Future<List<String>>? assigneeOptionsFuture;
+    final shortcutOptionsFutures = <String, Future<List<String>>>{};
+    const dateOptions = [
+      'Today (1 hour)',
+      'Today (3 hour)',
+      'Today (6 hour)',
+      'Tomorrow (12 pm)',
+      'Custom',
+    ];
 
     ({int start, String symbol, String query})? parseMention(
       String text,
@@ -1591,7 +1628,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       for (var i = c - 1; i >= 0; i--) {
         final ch = text[i];
         if (RegExp(r'\s').hasMatch(ch)) return null;
-        if (ch == '@' || ch == '-') {
+        if ('@-!*+#^'.contains(ch)) {
           if (i == 0 || RegExp(r'\s').hasMatch(text[i - 1])) {
             return (start: i, symbol: ch, query: text.substring(i + 1, c));
           }
@@ -1601,17 +1638,49 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       return null;
     }
 
+    Future<List<String>> loadMentionSource(String symbol) {
+      return shortcutOptionsFutures.putIfAbsent(symbol, () async {
+        switch (symbol) {
+          case '-':
+            return priorityOptions;
+          case '@':
+            assigneeOptions ??= await (assigneeOptionsFuture ??=
+                _loadAssigneesFromFirestore());
+            return assigneeOptions!;
+          case '!':
+          case '*':
+            return dateOptions;
+          case '+':
+            final snapshot = await FirebaseFirestore.instance
+                .collection('WorkType')
+                .get();
+            return snapshot.docs
+                .map((doc) => doc['workType']?.toString() ?? '')
+                .where((value) => value.isNotEmpty)
+                .toList();
+          case '#':
+            return _loadClientsFromFirestore();
+          case '^':
+            if (_projectsCache != null) return _projectsCache!;
+            final snapshot = await FirebaseFirestore.instance
+                .collection('projects')
+                .get();
+            _projectsCache = snapshot.docs
+                .map((doc) => doc['projectName']?.toString() ?? '')
+                .where((value) => value.isNotEmpty)
+                .toList();
+            return _projectsCache!;
+          default:
+            return const <String>[];
+        }
+      });
+    }
+
     Future<List<String>> mentionOptions(String symbol, String query) async {
       final q = query.toLowerCase();
-      if (symbol == '-') {
-        return priorityOptions
-            .where((n) => n.toLowerCase().startsWith(q))
-            .toList();
-      }
-      assigneeOptions ??= await (assigneeOptionsFuture ??=
-          _loadAssigneesFromFirestore());
-      return assigneeOptions!
-          .where((n) => n.toLowerCase().startsWith(q) && n.toLowerCase() != q)
+      final source = await loadMentionSource(symbol);
+      return source
+          .where((option) => option.toLowerCase().startsWith(q))
           .toList();
     }
 
@@ -1657,8 +1726,51 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       StateSetter setModalState, {
       String? sourceText,
     }) async {
-      final assignee = opt;
       final symbol = mentionSymbol;
+      final type = switch (symbol) {
+        '-' => FloatingSheetType.priority,
+        '@' => FloatingSheetType.assign,
+        '!' => FloatingSheetType.deadline,
+        '*' => FloatingSheetType.remind,
+        '+' => FloatingSheetType.workType,
+        '#' => FloatingSheetType.clientName,
+        '^' => FloatingSheetType.refProject,
+        _ => null,
+      };
+      if (type == null) return;
+
+      var selectedValue = opt;
+      if (type == FloatingSheetType.deadline ||
+          type == FloatingSheetType.remind) {
+        final lower = opt.toLowerCase();
+        DateTime? selectedDate;
+        if (lower.contains('custom')) {
+          selectedDate = await pickDateTimeWithTabs(context);
+        } else {
+          final now = DateTime.now();
+          if (lower.contains('1 hour')) {
+            selectedDate = now.add(const Duration(hours: 1));
+          } else if (lower.contains('3 hour')) {
+            selectedDate = now.add(const Duration(hours: 3));
+          } else if (lower.contains('6 hour')) {
+            selectedDate = now.add(const Duration(hours: 6));
+          } else if (lower.contains('tomorrow')) {
+            final tomorrow = DateTime(
+              now.year,
+              now.month,
+              now.day,
+            ).add(const Duration(days: 1));
+            selectedDate = DateTime(
+              tomorrow.year,
+              tomorrow.month,
+              tomorrow.day,
+              12,
+            );
+          }
+        }
+        if (selectedDate == null) return;
+        selectedValue = selectedDate.toIso8601String();
+      }
 
       final currentText = sourceText ?? taskName.text;
       var endOfMention = assigneeMentionEnd;
@@ -1697,26 +1809,87 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
       if (!mounted) return;
       setState(() {
-        if (symbol == '-') {
-          _setNewTaskMetadata(FloatingSheetType.priority, assignee);
-        } else {
+        if (type == FloatingSheetType.assign) {
           final selectedAssignees = (_newTaskAssignee ?? '')
               .split(',')
               .map((name) => name.trim())
               .where((name) => name.isNotEmpty)
               .toList();
           if (!selectedAssignees.any(
-            (name) => name.toLowerCase() == assignee.toLowerCase(),
+            (name) => name.toLowerCase() == selectedValue.toLowerCase(),
           )) {
-            selectedAssignees.add(assignee);
+            selectedAssignees.add(selectedValue);
           }
           _setNewTaskMetadata(
             FloatingSheetType.assign,
             selectedAssignees.join(', '),
           );
+        } else {
+          _setNewTaskMetadata(type, selectedValue);
         }
       });
       setModalState(() {});
+    }
+
+    List<String> currentNewTaskAssignees() => (_newTaskAssignee ?? '')
+        .split(',')
+        .map((name) => name.trim())
+        .where((name) => name.isNotEmpty)
+        .toList();
+
+    void addNewTaskAssignee(String name, StateSetter setModalState) {
+      setState(() {
+        final selectedAssignees = currentNewTaskAssignees();
+        if (!selectedAssignees.any(
+          (selected) => selected.toLowerCase() == name.toLowerCase(),
+        )) {
+          selectedAssignees.add(name);
+        }
+        _setNewTaskMetadata(
+          FloatingSheetType.assign,
+          selectedAssignees.join(', '),
+        );
+      });
+      setModalState(() {});
+    }
+
+    void removeAssigneeMention(StateSetter setModalState) {
+      final currentText = taskName.text;
+      final start = assigneeMentionStart;
+      if (start < 0 || start >= currentText.length) return;
+
+      var end = start;
+      while (end < currentText.length &&
+          !RegExp(r'\s').hasMatch(currentText[end])) {
+        end++;
+      }
+
+      final beforeMention = currentText.substring(0, start).trimRight();
+      final afterMention = currentText.substring(end).trimLeft();
+      final hasTextBefore = beforeMention.isNotEmpty;
+      final hasTextAfter = afterMention.isNotEmpty;
+      final updatedText = hasTextBefore && hasTextAfter
+          ? '$beforeMention $afterMention'
+          : hasTextBefore
+          ? beforeMention
+          : afterMention;
+      final cursorOffset = hasTextBefore
+          ? beforeMention.length + (hasTextAfter ? 1 : 0)
+          : 0;
+
+      taskName.value = TextEditingValue(
+        text: updatedText,
+        selection: TextSelection.collapsed(offset: cursorOffset),
+      );
+      setModalState(() {
+        assigneeMentionQuery = null;
+        assigneeMentionStart = -1;
+        assigneeMentionEnd = -1;
+      });
+      assigneePickerOpenedForMention = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusNode.requestFocus();
+      });
     }
 
     showModalBottomSheet(
@@ -1805,33 +1978,43 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   return KeyEventResult.ignored;
                                 }
 
-                                final query = assigneeMentionQuery!
-                                    .toLowerCase();
-                                final source = mentionSymbol == '-'
-                                    ? priorityOptions
-                                    : assigneeOptions;
-                                if (source == null)
-                                  return KeyEventResult.ignored;
-                                final matches = source
-                                    .where(
-                                      (n) =>
-                                          n.toLowerCase().startsWith(query) &&
-                                          (mentionSymbol == '-' ||
-                                              n.toLowerCase() != query),
-                                    )
-                                    .toList();
-                                if (matches.isEmpty) {
-                                  return KeyEventResult.ignored;
-                                }
-
-                                final index = highlightedAssigneeIndex
-                                    .clamp(0, matches.length - 1)
-                                    .toInt();
-                                completeMention(
-                                  matches[index],
-                                  setModalState,
-                                  sourceText: assigneeMentionSourceText,
-                                );
+                                final query = assigneeMentionQuery!;
+                                final symbol = mentionSymbol;
+                                unawaited(() async {
+                                  try {
+                                    final source = await loadMentionSource(
+                                      symbol,
+                                    );
+                                    final matches = source
+                                        .where(
+                                          (option) => option
+                                              .toLowerCase()
+                                              .startsWith(query.toLowerCase()),
+                                        )
+                                        .toList();
+                                    if (matches.isEmpty) return;
+                                    final index = highlightedAssigneeIndex
+                                        .clamp(0, matches.length - 1)
+                                        .toInt();
+                                    await completeMention(
+                                      matches[index],
+                                      setModalState,
+                                      sourceText: assigneeMentionSourceText,
+                                    );
+                                  } catch (error) {
+                                    if (sheetContext.mounted) {
+                                      ScaffoldMessenger.of(
+                                        sheetContext,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Could not load options: $error',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                }());
                                 return KeyEventResult.handled;
                               },
                               child: RawAutocomplete<String>(
@@ -1844,7 +2027,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                     value.text,
                                     value.selection.extentOffset,
                                   );
-                                  if (m == null) {
+                                  if (m == null || m.symbol == '@') {
                                     return const <String>[];
                                   }
                                   try {
@@ -2035,6 +2218,35 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                             assigneeMentionEnd = -1;
                                           }
                                         });
+
+                                        if (m?.symbol == '@' &&
+                                            !assigneePickerOpenedForMention) {
+                                          assigneePickerOpenedForMention = true;
+                                          _showFloatingSheet(
+                                            _assignButtonKey.currentContext ??
+                                                textFieldCtx,
+                                            FloatingSheetType.assign,
+                                            shouldShow: () =>
+                                                assigneePickerOpenedForMention,
+                                            closeOnSelect: true,
+                                            multiSelect: true,
+                                            selectedValues:
+                                                currentNewTaskAssignees(),
+                                            onSelected: (name) =>
+                                                addNewTaskAssignee(
+                                                  name,
+                                                  setModalState,
+                                                ),
+                                            onDone: () => removeAssigneeMention(
+                                              setModalState,
+                                            ),
+                                          );
+                                        } else if (m?.symbol != '@' &&
+                                            assigneePickerOpenedForMention) {
+                                          assigneePickerOpenedForMention =
+                                              false;
+                                          _hideFloatingSheet();
+                                        }
 
                                         if (val.isEmpty) return;
                                         if (cursor <= 0 ||
@@ -2839,141 +3051,175 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final populatedSectionNames = sectionNames
         .where((name) => sections[name]?.isNotEmpty ?? false)
         .toList();
-    return _refreshableScrollView(
-      SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 100),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: populatedSectionNames.isEmpty
-              ? const [
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(16, 20, 16, 20),
-                    child: Text(
-                      'No tasks in My Work.',
-                      style: TextStyle(color: Colors.blueGrey),
-                    ),
-                  ),
-                ]
-              : [
-                  for (final name in populatedSectionNames) ...[
-                    Builder(
-                      builder: (context) {
-                        final count = sections[name]?.length ?? 0;
-                        final isExpanded = _expandedMyWorkSections.contains(
-                          name,
-                        );
-                        final countBadgeColor = _myWorkSectionColor(name);
+    Widget buildBlankArea({double? height}) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          if (populatedSectionNames.isEmpty) return;
+          final topSection = populatedSectionNames.first;
+          setState(() {
+            if (_expandedMyWorkSections.contains(topSection)) {
+              _expandedMyWorkSections.remove(topSection);
+            } else {
+              _expandedMyWorkSections
+                ..clear()
+                ..add(topSection);
+            }
+          });
+        },
+        child: SizedBox(height: height, width: double.infinity),
+      );
+    }
 
-                        return Column(
-                          children: [
-                            InkWell(
-                              onTap: () => setState(() {
-                                if (isExpanded) {
-                                  _expandedMyWorkSections.remove(name);
-                                } else {
-                                  _expandedMyWorkSections
-                                    ..clear()
-                                    ..add(name);
-                                }
-                              }),
-                              onDoubleTap: () => setState(() {
-                                if (_expandedMyWorkSections.length ==
-                                    populatedSectionNames.length) {
-                                  _expandedMyWorkSections.clear();
-                                } else {
-                                  _expandedMyWorkSections
-                                    ..clear()
-                                    ..addAll(populatedSectionNames);
-                                }
-                              }),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      name
-                                          .replaceFirst(RegExp(r' Works$'), '')
-                                          .toUpperCase(),
-                                      style: TextStyle(
-                                        color: countBadgeColor,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 0.4,
+    return _refreshableScrollView(
+      CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: EdgeInsets.zero,
+            sliver: SliverList(
+              delegate: SliverChildListDelegate(
+                populatedSectionNames.isEmpty
+                    ? const [
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(16, 20, 16, 20),
+                          child: Text(
+                            'No tasks in My Work.',
+                            style: TextStyle(color: Colors.blueGrey),
+                          ),
+                        ),
+                      ]
+                    : [
+                        for (final name in populatedSectionNames) ...[
+                          Builder(
+                            builder: (context) {
+                              final count = sections[name]?.length ?? 0;
+                              final isExpanded = _expandedMyWorkSections
+                                  .contains(name);
+                              final countBadgeColor = _myWorkSectionColor(name);
+
+                              return Column(
+                                children: [
+                                  InkWell(
+                                    onTap: () => setState(() {
+                                      if (isExpanded) {
+                                        _expandedMyWorkSections.remove(name);
+                                      } else {
+                                        _expandedMyWorkSections
+                                          ..clear()
+                                          ..add(name);
+                                      }
+                                    }),
+                                    onDoubleTap: () => setState(() {
+                                      if (_expandedMyWorkSections.length ==
+                                          populatedSectionNames.length) {
+                                        _expandedMyWorkSections.clear();
+                                      } else {
+                                        _expandedMyWorkSections
+                                          ..clear()
+                                          ..addAll(populatedSectionNames);
+                                      }
+                                    }),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 14,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Text(
+                                            name
+                                                .replaceFirst(
+                                                  RegExp(r' Works$'),
+                                                  '',
+                                                )
+                                                .toUpperCase(),
+                                            style: TextStyle(
+                                              color: countBadgeColor,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700,
+                                              letterSpacing: 0.4,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            constraints: const BoxConstraints(
+                                              minWidth: 28,
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 7,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: countBadgeColor.withValues(
+                                                alpha: 0.12,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                            child: Text(
+                                              '$count',
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                color: countBadgeColor,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          Icon(
+                                            isExpanded
+                                                ? Icons.keyboard_arrow_up
+                                                : Icons.keyboard_arrow_down,
+                                            color: countBadgeColor,
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
+                                  ),
+                                  if (isExpanded)
                                     Container(
-                                      constraints: const BoxConstraints(
-                                        minWidth: 28,
+                                      margin: const EdgeInsets.symmetric(
+                                        horizontal: 12,
                                       ),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 7,
-                                        vertical: 4,
+                                      constraints: BoxConstraints(
+                                        maxHeight:
+                                            MediaQuery.of(context).size.height *
+                                            0.4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: countBadgeColor.withValues(
-                                          alpha: 0.12,
+                                        border: Border.all(
+                                          color: countBadgeColor.withValues(
+                                            alpha: 0.25,
+                                          ),
                                         ),
-                                        borderRadius: BorderRadius.circular(20),
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
-                                      child: Text(
-                                        '$count',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          color: countBadgeColor,
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 11,
+                                      clipBehavior: Clip.antiAlias,
+                                      child: SingleChildScrollView(
+                                        child: _buildMyWorkTaskResults(
+                                          _getVisibleTasks(
+                                            sections[name] ?? const <Task>[],
+                                          ),
                                         ),
                                       ),
                                     ),
-                                    const Spacer(),
-                                    Icon(
-                                      isExpanded
-                                          ? Icons.keyboard_arrow_up
-                                          : Icons.keyboard_arrow_down,
-                                      color: countBadgeColor,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            if (isExpanded)
-                              Container(
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                                constraints: BoxConstraints(
-                                  maxHeight:
-                                      MediaQuery.of(context).size.height * 0.4,
-                                ),
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: countBadgeColor.withValues(
-                                      alpha: 0.25,
-                                    ),
-                                  ),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: SingleChildScrollView(
-                                  child: _buildMyWorkTaskResults(
-                                    _getVisibleTasks(
-                                      sections[name] ?? const <Task>[],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ],
-        ),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ],
+                addAutomaticKeepAlives: false,
+              ),
+            ),
+          ),
+          if (populatedSectionNames.isNotEmpty)
+            SliverToBoxAdapter(child: buildBlankArea(height: 100)),
+          if (populatedSectionNames.isNotEmpty)
+            SliverFillRemaining(hasScrollBody: false, child: buildBlankArea()),
+        ],
       ),
     );
   }
@@ -3699,41 +3945,93 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Notifications'),
-        content: SizedBox(
-          width: 360,
-          child: reminders.isEmpty
-              ? const Text('No upcoming task reminders.')
-              : ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: reminders.length,
-                  itemBuilder: (context, index) {
-                    final task = reminders[index];
-                    final scheduled = _taskScheduledDate(task)!;
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(
-                        Icons.notifications_outlined,
-                        color: secondaryColor,
-                      ),
-                      title: Text(task.title),
-                      subtitle: Text(
-                        '${scheduled.day}/${scheduled.month}/${scheduled.year} '
-                        '${scheduled.hour.toString().padLeft(2, '0')}:'
-                        '${scheduled.minute.toString().padLeft(2, '0')}',
-                      ),
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+      builder: (dialogContext) {
+        final screenHeight = MediaQuery.sizeOf(dialogContext).height;
+        final visibleReminderCount = reminders.length.clamp(1, 3);
+        final maxListHeight = (screenHeight * 0.75 - 140).clamp(72.0, 216.0);
+        final listHeight = (visibleReminderCount * 72.0)
+            .clamp(72.0, maxListHeight)
+            .toDouble();
+
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
           ),
-        ],
-      ),
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 360,
+              maxHeight: screenHeight * 0.85,
+            ),
+            child: SizedBox(
+              width: 360,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Notifications',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (reminders.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Text('No upcoming task reminders.'),
+                      )
+                    else
+                      SizedBox(
+                        height: listHeight,
+                        child: ListView.builder(
+                          padding: EdgeInsets.zero,
+                          itemExtent: 72,
+                          itemCount: reminders.length,
+                          itemBuilder: (context, index) {
+                            final task = reminders[index];
+                            final scheduled = _taskScheduledDate(task)!;
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(
+                                Icons.notifications_outlined,
+                                color: secondaryColor,
+                              ),
+                              title: Text(
+                                task.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                '${scheduled.day}/${scheduled.month}/${scheduled.year} '
+                                '${scheduled.hour.toString().padLeft(2, '0')}:'
+                                '${scheduled.minute.toString().padLeft(2, '0')}',
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        child: const Text('Close'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
