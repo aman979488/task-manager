@@ -387,12 +387,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                     : Colors.grey.shade700,
                               ),
                               if (isSelected)
-                                GestureDetector(
-                                  onTap: onClear,
-                                  child: const Icon(
-                                    Icons.close,
-                                    size: 12,
-                                    color: secondaryColor,
+                                SizedBox(
+                                  width: 36,
+                                  height: 36,
+                                  child: IconButton(
+                                    tooltip: 'Clear $label',
+                                    onPressed: onClear,
+                                    padding: EdgeInsets.zero,
+                                    icon: const Icon(
+                                      Icons.close,
+                                      size: 18,
+                                      color: secondaryColor,
+                                    ),
                                   ),
                                 ),
                             ],
@@ -470,22 +476,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           ),
                           AnimatedContainer(
                             duration: const Duration(milliseconds: 300),
-                            width: isSelected ? 24 : 0,
+                            width: isSelected ? 36 : 0,
                             child: AnimatedOpacity(
                               duration: const Duration(milliseconds: 300),
                               opacity: isSelected ? 1.0 : 0.0,
                               child: isSelected
-                                  ? GestureDetector(
-                                      onTap: () {
-                                        onClear();
-                                      },
-                                      child: const Padding(
-                                        padding: EdgeInsets.only(left: 8),
-                                        child: Icon(
-                                          Icons.close,
-                                          size: 16,
-                                          color: secondaryColor,
-                                        ),
+                                  ? IconButton(
+                                      tooltip: 'Clear $label',
+                                      onPressed: onClear,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 36,
+                                        minHeight: 36,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.close,
+                                        size: 18,
+                                        color: secondaryColor,
                                       ),
                                     )
                                   : const SizedBox.shrink(),
