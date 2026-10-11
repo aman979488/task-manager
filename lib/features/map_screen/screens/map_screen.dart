@@ -35,6 +35,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final TextEditingController taskName = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _taskSearchController = TextEditingController();
+  final ScrollController _metadataButtonsScrollController = ScrollController();
+  double _metadataButtonScrollStep = 118;
   String _searchQuery = '';
   String _taskSearchQuery = '';
   bool _isSearchVisible = false;
@@ -135,33 +137,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     };
   }
 
-  String _newTaskMetadataLabel(FloatingSheetType type) {
-    return switch (type) {
-      FloatingSheetType.priority => 'Priority',
-      FloatingSheetType.remind => 'Remind Me',
-      FloatingSheetType.assign => 'Assign',
-      FloatingSheetType.deadline => 'Deadline',
-      FloatingSheetType.workType => 'Work Type',
-      FloatingSheetType.folder => 'Folder',
-      FloatingSheetType.clientName => 'Client Name',
-      FloatingSheetType.refProject => 'Ref Project',
-    };
-  }
-
-  IconData _newTaskMetadataIcon(FloatingSheetType type) {
-    return switch (type) {
-      FloatingSheetType.priority => Icons.flag_outlined,
-      FloatingSheetType.remind => Icons.notifications_active,
-      FloatingSheetType.assign => Icons.assignment,
-      FloatingSheetType.deadline => Icons.alarm,
-      FloatingSheetType.workType => Icons.insert_drive_file,
-      FloatingSheetType.folder => Icons.folder_outlined,
-      FloatingSheetType.clientName => Icons.business_center_outlined,
-      FloatingSheetType.refProject => Icons.apartment_outlined,
-    };
-  }
-
   void _setNewTaskMetadata(FloatingSheetType type, String? value) {
+    final wasSelected = _newTaskMetadataValue(type)?.trim().isNotEmpty ?? false;
     switch (type) {
       case FloatingSheetType.priority:
         _newTaskPriority = value;
@@ -191,8 +168,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     if (value == null || value.trim().isEmpty) {
       _newTaskMetadataOrder.remove(type);
-    } else if (!_newTaskMetadataOrder.contains(type)) {
-      _newTaskMetadataOrder.add(type);
+    } else {
+      _newTaskMetadataOrder
+        ..remove(type)
+        ..insert(0, type);
+      if (!wasSelected && _newTaskMetadataOrder.length >= 3) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_metadataButtonsScrollController.hasClients) return;
+          final controller = _metadataButtonsScrollController;
+          final nextOffset = (controller.offset + _metadataButtonScrollStep)
+              .clamp(0.0, controller.position.maxScrollExtent)
+              .toDouble();
+          controller.animateTo(
+            nextOffset,
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeInOut,
+          );
+        });
+      }
     }
   }
 
@@ -536,6 +529,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     taskName.dispose();
     _searchController.dispose();
     _taskSearchController.dispose();
+    _metadataButtonsScrollController.dispose();
     super.dispose();
   }
 
@@ -1736,16 +1730,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         builder: (context, setModalState) {
           final viewInsets = MediaQuery.of(sheetContext).viewInsets;
           final screenWidth = MediaQuery.of(sheetContext).size.width;
+          _metadataButtonScrollStep = screenWidth < 600 ? 118 : 156;
           final mobileButtonOrder = [
             ..._buttonOrder.where(
               (type) => type != FloatingSheetType.refProject,
             ),
             FloatingSheetType.refProject,
           ];
-          final availableButtonOrder = mobileButtonOrder.where((type) {
+          final selectedButtonOrder = _newTaskMetadataOrder.where((type) {
             final value = _newTaskMetadataValue(type);
-            return value == null || value.isEmpty;
+            return value != null && value.isNotEmpty;
           }).toList();
+          final availableButtonOrder = [
+            ...selectedButtonOrder,
+            ...mobileButtonOrder.where(
+              (type) => !selectedButtonOrder.contains(type),
+            ),
+          ];
           final systemNavBar = MediaQuery.of(sheetContext).padding.bottom;
           final bottomPadding = kIsWeb
               ? 16.0
@@ -1784,57 +1785,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (_newTaskMetadataOrder.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: _newTaskMetadataOrder
-                                .map((type) {
-                                  final value = _newTaskMetadataValue(type);
-                                  if (value == null || value.isEmpty) {
-                                    return null;
-                                  }
-                                  final displayValue =
-                                      type == FloatingSheetType.remind ||
-                                          type == FloatingSheetType.deadline
-                                      ? _formatDateTime(value)
-                                      : value;
-                                  return InputChip(
-                                    avatar: Icon(
-                                      _newTaskMetadataIcon(type),
-                                      size: 16,
-                                      color: secondaryColor,
-                                    ),
-                                    label: Text(
-                                      '${_newTaskMetadataLabel(type)}: $displayValue',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    onDeleted: () {
-                                      setState(
-                                        () => _setNewTaskMetadata(type, null),
-                                      );
-                                      setModalState(() {});
-                                    },
-                                    backgroundColor: primaryColor.withValues(
-                                      alpha: 0.2,
-                                    ),
-                                    side: BorderSide(
-                                      color: secondaryColor.withValues(
-                                        alpha: 0.35,
-                                      ),
-                                    ),
-                                  );
-                                })
-                                .whereType<Widget>()
-                                .toList(),
-                          ),
-                        ),
-                      ),
                     Row(
                       children: [
                         Expanded(
@@ -2242,6 +2192,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     ),
                     const SizedBox(height: 6),
                     SingleChildScrollView(
+                      controller: _metadataButtonsScrollController,
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: availableButtonOrder
@@ -2436,7 +2387,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      task.title,
+                      _taskListName(task),
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -2447,11 +2398,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         decorationColor: Colors.blueGrey.shade400,
                       ),
                     ),
-                    if (task.note.trim().isNotEmpty)
+                    if (_taskListDescription(task)?.isNotEmpty == true)
                       Padding(
                         padding: const EdgeInsets.only(top: 3),
                         child: Text(
-                          task.note.trim(),
+                          _taskListDescription(task)!,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -3094,9 +3045,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   DateTime? _taskScheduledDate(Task task) =>
       DateTime.tryParse(task.deadline ?? task.reminder ?? '');
 
+  String _taskListName(Task task) {
+    final assignee = task.assignee?.trim();
+    return assignee != null && assignee.isNotEmpty ? assignee : task.title;
+  }
+
+  String? _taskListDescription(Task task) {
+    final assignee = task.assignee?.trim();
+    if (assignee == null || assignee.isEmpty) {
+      final note = task.note.trim();
+      return note.isEmpty ? null : note;
+    }
+    final title = task.title.trim();
+    return title.isEmpty ? null : title;
+  }
+
   Widget _buildCompactTaskTile(Task task) {
     final isSelected = _selected.contains(task);
-    final description = task.note.trim();
+    final description = _taskListDescription(task);
     final workType = task.workType?.trim() ?? '';
     return ListTile(
       dense: true,
@@ -3111,7 +3077,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         },
       ),
       title: Text(
-        task.title,
+        _taskListName(task),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
@@ -3122,10 +3088,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           decorationColor: Colors.blueGrey.shade400,
         ),
       ),
-      subtitle: description.isNotEmpty || workType.isNotEmpty
+      subtitle: (description?.isNotEmpty ?? false) || workType.isNotEmpty
           ? Text(
               [
-                if (description.isNotEmpty) description,
+                if (description?.isNotEmpty == true) description!,
                 if (workType.isNotEmpty) workType,
               ].join(' • '),
               maxLines: 2,
@@ -3235,7 +3201,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
               const SizedBox(height: 10),
               Text(
-                task.title,
+                _taskListName(task),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -3244,9 +3210,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ),
               const Spacer(),
-              if (task.assignee?.isNotEmpty == true)
+              if (_taskListDescription(task)?.isNotEmpty == true)
                 Text(
-                  task.assignee!,
+                  _taskListDescription(task)!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
