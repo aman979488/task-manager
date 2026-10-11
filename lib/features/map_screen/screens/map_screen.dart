@@ -37,7 +37,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final TextEditingController _taskSearchController = TextEditingController();
   final ScrollController _metadataButtonsScrollController = ScrollController();
   double _metadataButtonScrollStep = 118;
-  final GlobalKey _assignButtonKey = GlobalKey();
+  final Map<FloatingSheetType, GlobalKey> _metadataButtonKeys = {
+    for (final type in FloatingSheetType.values) type: GlobalKey(),
+  };
   String _searchQuery = '';
   String _taskSearchQuery = '';
   bool _isSearchVisible = false;
@@ -331,7 +333,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     return Builder(
       builder: (buttonContext) => AnimatedSize(
-        key: type == FloatingSheetType.assign ? _assignButtonKey : null,
+        key: _metadataButtonKeys[type],
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
         child: AnimatedContainer(
@@ -1138,13 +1140,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     void Function(String)? onSelected,
     VoidCallback? onDone,
     bool Function()? shouldShow,
+    String Function()? searchQuery,
     bool closeOnSelect = false,
     bool multiSelect = false,
     List<String>? selectedValues,
   }) async {
-    if (_floatingSheetOverlay != null && !multiSelect) {
-      _hideFloatingSheet();
-    }
+    if (_floatingSheetOverlay != null) _hideFloatingSheet();
 
     // ... logic for fetching types ...
     List<String>? workTypes;
@@ -1255,10 +1256,25 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           break;
       }
 
+      final typedQuery = searchQuery?.call().trim().toLowerCase() ?? '';
+      final matchingOptions = typedQuery.isEmpty
+          ? const <String>[]
+          : options
+                .where((option) => option.toLowerCase().startsWith(typedQuery))
+                .toList();
+      final highlightedOption = matchingOptions.firstWhere(
+        (option) => option.toLowerCase() == typedQuery,
+        orElse: () => matchingOptions.isEmpty ? '' : matchingOptions.first,
+      );
+
       return options.map((opt) {
         final bool isSelected = selectedValues?.contains(opt) ?? false;
+        final bool isHighlighted =
+            highlightedOption.isNotEmpty && opt == highlightedOption;
         return ListTile(
           dense: true,
+          selected: isSelected || isHighlighted,
+          selectedTileColor: primaryColor.withValues(alpha: 0.22),
           leading:
               type == FloatingSheetType.priority ||
                   type == FloatingSheetType.remind ||
@@ -1273,8 +1289,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           title: Text(
             opt,
             style: TextStyle(
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected ? secondaryColor : Colors.black87,
+              fontWeight: isSelected || isHighlighted
+                  ? FontWeight.bold
+                  : FontWeight.normal,
+              color: isSelected || isHighlighted
+                  ? secondaryColor
+                  : Colors.black87,
             ),
           ),
           trailing: isSelected
@@ -1348,6 +1368,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         : buttonPosition.dy + button.size.height + padding;
 
     _hideFloatingSheet();
+    final initialQuery = searchQuery?.call() ?? '';
+    _searchQuery = initialQuery;
+    _searchController.clear();
     _floatingSheetOverlay = OverlayEntry(
       builder: (_) => Stack(
         children: [
@@ -1376,14 +1399,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     final allOptions = buildOptions(setOverlayState);
                     final filteredOptions =
                         showSearch && _searchQuery.isNotEmpty
-                        ? allOptions
-                              .where(
-                                (tile) => ((tile as ListTile).title as Text)
-                                    .data!
-                                    .toLowerCase()
-                                    .contains(_searchQuery.toLowerCase()),
-                              )
-                              .toList()
+                        ? allOptions.where((tile) {
+                            final title = ((tile as ListTile).title as Text)
+                                .data!
+                                .toLowerCase();
+                            final query = _searchQuery.toLowerCase();
+                            return searchQuery != null
+                                ? title.startsWith(query)
+                                : title.contains(query);
+                          }).toList()
                         : allOptions;
 
                     return ConstrainedBox(
@@ -1396,7 +1420,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               padding: const EdgeInsets.all(10),
                               child: TextField(
                                 controller: _searchController,
-                                autofocus: true,
+                                autofocus: false,
                                 decoration: InputDecoration(
                                   hintText: 'Search...',
                                   hintStyle: TextStyle(
@@ -1586,13 +1610,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   void _openAddTaskSheet() {
     var initialComposerFocusScheduled = false;
-    var assigneePickerOpenedForMention = false;
     String? assigneeMentionQuery;
+    String? activeMentionPickerSymbol;
     String assigneeMentionSourceText = '';
     int assigneeMentionStart = -1;
     int assigneeMentionEnd = -1;
     int highlightedAssigneeIndex = 0;
-    int metadataTokenStart = -1;
 
     String mentionSymbol = '@';
     const priorityOptions = [
@@ -1676,51 +1699,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       });
     }
 
-    Future<List<String>> mentionOptions(String symbol, String query) async {
-      final q = query.toLowerCase();
-      final source = await loadMentionSource(symbol);
-      return source
-          .where((option) => option.toLowerCase().startsWith(q))
-          .toList();
-    }
-
-    void removeMetadataTokenFromTaskName() {
-      if (metadataTokenStart < 0 ||
-          metadataTokenStart >= taskName.text.length) {
-        return;
-      }
-
-      final currentText = taskName.text;
-      var tokenEnd = metadataTokenStart + 1;
-      while (tokenEnd < currentText.length &&
-          !RegExp(r'\s').hasMatch(currentText[tokenEnd])) {
-        tokenEnd++;
-      }
-
-      final beforeToken = currentText.substring(0, metadataTokenStart);
-      final afterToken = currentText.substring(tokenEnd);
-      final beforeEndsWithWhitespace =
-          beforeToken.isNotEmpty &&
-          RegExp(r'\s').hasMatch(beforeToken[beforeToken.length - 1]);
-      final afterStartsWithWhitespace =
-          afterToken.isNotEmpty && RegExp(r'\s').hasMatch(afterToken[0]);
-      final separator =
-          beforeToken.isNotEmpty &&
-              afterToken.isNotEmpty &&
-              !beforeEndsWithWhitespace &&
-              !afterStartsWithWhitespace
-          ? ' '
-          : '';
-
-      metadataTokenStart = -1;
-      taskName.value = TextEditingValue(
-        text: '$beforeToken$separator$afterToken',
-        selection: TextSelection.collapsed(
-          offset: beforeToken.length + separator.length,
-        ),
-      );
-    }
-
     Future<void> completeMention(
       String opt,
       StateSetter setModalState, {
@@ -1743,10 +1721,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       if (type == FloatingSheetType.deadline ||
           type == FloatingSheetType.remind) {
         final lower = opt.toLowerCase();
-        DateTime? selectedDate;
-        if (lower.contains('custom')) {
+        DateTime? selectedDate = DateTime.tryParse(opt);
+        if (selectedDate == null && lower.contains('custom')) {
           selectedDate = await pickDateTimeWithTabs(context);
-        } else {
+        } else if (selectedDate == null) {
           final now = DateTime.now();
           if (lower.contains('1 hour')) {
             selectedDate = now.add(const Duration(hours: 1));
@@ -1886,10 +1864,42 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         assigneeMentionStart = -1;
         assigneeMentionEnd = -1;
       });
-      assigneePickerOpenedForMention = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _focusNode.requestFocus();
       });
+    }
+
+    Future<void> selectMentionOnEnter(StateSetter setModalState) async {
+      final query = assigneeMentionQuery?.trim() ?? '';
+      if (query.isEmpty) return;
+      final symbol = mentionSymbol;
+      final sourceText = assigneeMentionSourceText;
+
+      try {
+        final options = await loadMentionSource(symbol);
+        if (assigneeMentionQuery?.trim() != query || mentionSymbol != symbol) {
+          return;
+        }
+        final normalizedQuery = query.toLowerCase();
+        final matches = options
+            .where((option) => option.toLowerCase().startsWith(normalizedQuery))
+            .toList();
+        if (matches.isEmpty) return;
+
+        final selected = matches.firstWhere(
+          (option) => option.toLowerCase() == normalizedQuery,
+          orElse: () => matches.first,
+        );
+        activeMentionPickerSymbol = null;
+        _hideFloatingSheet();
+        await completeMention(selected, setModalState, sourceText: sourceText);
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not load options: $error')),
+          );
+        }
+      }
     }
 
     showModalBottomSheet(
@@ -1971,6 +1981,21 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           child: Builder(
                             builder: (textFieldCtx) => Focus(
                               onKeyEvent: (node, event) {
+                                if (event is KeyDownEvent &&
+                                    (event.logicalKey ==
+                                            LogicalKeyboardKey.enter ||
+                                        event.logicalKey ==
+                                            LogicalKeyboardKey.numpadEnter) &&
+                                    assigneeMentionQuery != null) {
+                                  if (assigneeMentionQuery!.trim().isEmpty) {
+                                    return KeyEventResult.ignored;
+                                  }
+                                  unawaited(
+                                    selectMentionOnEnter(setModalState),
+                                  );
+                                  return KeyEventResult.handled;
+                                }
+
                                 if (event is! KeyDownEvent ||
                                     event.logicalKey !=
                                         LogicalKeyboardKey.tab ||
@@ -2022,34 +2047,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 focusNode: _focusNode,
                                 optionsViewOpenDirection:
                                     OptionsViewOpenDirection.up,
-                                optionsBuilder: (value) async {
-                                  final m = parseMention(
-                                    value.text,
-                                    value.selection.extentOffset,
-                                  );
-                                  if (m == null || m.symbol == '@') {
-                                    return const <String>[];
-                                  }
-                                  try {
-                                    return await mentionOptions(
-                                      m.symbol,
-                                      m.query,
-                                    );
-                                  } catch (error) {
-                                    if (sheetContext.mounted) {
-                                      ScaffoldMessenger.of(
-                                        sheetContext,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Could not load options: $error',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                    return const <String>[];
-                                  }
-                                },
+                                optionsBuilder: (value) => const <String>[],
                                 onSelected: (opt) => completeMention(
                                   opt,
                                   setModalState,
@@ -2204,7 +2202,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                             .toInt();
                                         final m = parseMention(val, safeCursor);
 
-                                        metadataTokenStart = -1;
                                         assigneeMentionSourceText = val;
                                         setModalState(() {
                                           if (m != null) {
@@ -2219,166 +2216,98 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                           }
                                         });
 
-                                        if (m?.symbol == '@' &&
-                                            !assigneePickerOpenedForMention) {
-                                          assigneePickerOpenedForMention = true;
-                                          _showFloatingSheet(
-                                            _assignButtonKey.currentContext ??
-                                                textFieldCtx,
-                                            FloatingSheetType.assign,
-                                            shouldShow: () =>
-                                                assigneePickerOpenedForMention,
-                                            closeOnSelect: true,
-                                            multiSelect: true,
-                                            selectedValues:
-                                                currentNewTaskAssignees(),
-                                            onSelected: (name) =>
-                                                addNewTaskAssignee(
-                                                  name,
-                                                  setModalState,
-                                                ),
-                                            onDone: () => removeAssigneeMention(
-                                              setModalState,
-                                            ),
-                                          );
-                                        } else if (m?.symbol != '@' &&
-                                            assigneePickerOpenedForMention) {
-                                          assigneePickerOpenedForMention =
-                                              false;
-                                          _hideFloatingSheet();
-                                        }
-
-                                        if (val.isEmpty) return;
-                                        if (cursor <= 0 ||
-                                            cursor > val.length) {
+                                        if (m == null) {
+                                          activeMentionPickerSymbol = null;
+                                          if (_floatingSheetOverlay != null) {
+                                            _hideFloatingSheet();
+                                          }
                                           return;
                                         }
-                                        final ch = val[cursor - 1];
-                                        final prev = cursor >= 2
-                                            ? val[cursor - 2]
-                                            : ' ';
 
-                                        FloatingSheetType? triggerType;
-                                        if (ch == '#') {
-                                          triggerType =
-                                              FloatingSheetType.clientName;
-                                        } else if (ch == '!') {
-                                          triggerType =
-                                              FloatingSheetType.deadline;
-                                        } else if (ch == '+') {
-                                          triggerType =
-                                              FloatingSheetType.workType;
-                                        } else if (ch == '*') {
-                                          triggerType =
-                                              FloatingSheetType.remind;
-                                        } else if (ch == '^') {
-                                          triggerType =
-                                              FloatingSheetType.refProject;
-                                        }
+                                        final pickerType = switch (m.symbol) {
+                                          '-' => FloatingSheetType.priority,
+                                          '@' => FloatingSheetType.assign,
+                                          '!' => FloatingSheetType.deadline,
+                                          '*' => FloatingSheetType.remind,
+                                          '+' => FloatingSheetType.workType,
+                                          '#' => FloatingSheetType.clientName,
+                                          '^' => FloatingSheetType.refProject,
+                                          _ => null,
+                                        };
+                                        if (pickerType == null) return;
 
-                                        if (triggerType != null && m == null) {
-                                          if (prev != ' ' && prev != '\n') {
-                                            return;
-                                          }
-
-                                          metadataTokenStart = safeCursor - 1;
-
+                                        if (activeMentionPickerSymbol !=
+                                            m.symbol) {
+                                          activeMentionPickerSymbol = m.symbol;
                                           _showFloatingSheet(
-                                            textFieldCtx,
-                                            triggerType,
-                                            onSelected: (sel) {
-                                              setState(() {
-                                                removeMetadataTokenFromTaskName();
-
-                                                // Sync bottom buttons state
-                                                if (triggerType ==
-                                                    FloatingSheetType
-                                                        .priority) {
-                                                  _setNewTaskMetadata(
-                                                    FloatingSheetType.priority,
-                                                    sel,
-                                                  );
-                                                } else if (triggerType ==
-                                                    FloatingSheetType.remind) {
-                                                  _setNewTaskMetadata(
-                                                    FloatingSheetType.remind,
-                                                    sel,
-                                                  );
-                                                } else if (triggerType ==
-                                                    FloatingSheetType.assign) {
-                                                  final selectedAssignees =
-                                                      (_newTaskAssignee ?? '')
-                                                          .split(',')
-                                                          .map(
-                                                            (name) =>
-                                                                name.trim(),
-                                                          )
-                                                          .where(
-                                                            (name) =>
-                                                                name.isNotEmpty,
-                                                          )
-                                                          .toList();
-                                                  if (!selectedAssignees.any(
-                                                    (name) =>
-                                                        name.toLowerCase() ==
-                                                        sel.toLowerCase(),
-                                                  )) {
-                                                    selectedAssignees.add(sel);
-                                                  }
-                                                  _setNewTaskMetadata(
-                                                    FloatingSheetType.assign,
-                                                    selectedAssignees.join(
-                                                      ', ',
-                                                    ),
-                                                  );
-                                                } else if (triggerType ==
-                                                    FloatingSheetType
-                                                        .deadline) {
-                                                  _setNewTaskMetadata(
-                                                    FloatingSheetType.deadline,
-                                                    sel,
-                                                  );
-                                                } else if (triggerType ==
-                                                    FloatingSheetType
-                                                        .workType) {
-                                                  _setNewTaskMetadata(
-                                                    FloatingSheetType.workType,
-                                                    sel,
-                                                  );
-                                                } else if (triggerType ==
-                                                    FloatingSheetType.folder) {
-                                                  _setNewTaskMetadata(
-                                                    FloatingSheetType.folder,
-                                                    sel,
-                                                  );
-                                                } else if (triggerType ==
-                                                    FloatingSheetType
-                                                        .clientName) {
-                                                  _setNewTaskMetadata(
-                                                    FloatingSheetType
-                                                        .clientName,
-                                                    sel,
-                                                  );
-                                                } else if (triggerType ==
-                                                    FloatingSheetType
-                                                        .refProject) {
-                                                  _setNewTaskMetadata(
-                                                    FloatingSheetType
-                                                        .refProject,
-                                                    sel,
-                                                  );
-                                                }
-                                              });
-                                              setModalState(() {});
+                                            _metadataButtonKeys[pickerType]
+                                                    ?.currentContext ??
+                                                textFieldCtx,
+                                            pickerType,
+                                            shouldShow: () =>
+                                                activeMentionPickerSymbol ==
+                                                m.symbol,
+                                            searchQuery: () =>
+                                                assigneeMentionQuery ?? '',
+                                            closeOnSelect: true,
+                                            multiSelect:
+                                                pickerType ==
+                                                FloatingSheetType.assign,
+                                            selectedValues:
+                                                pickerType ==
+                                                    FloatingSheetType.assign
+                                                ? currentNewTaskAssignees()
+                                                : null,
+                                            onSelected: (option) {
+                                              if (pickerType ==
+                                                  FloatingSheetType.assign) {
+                                                addNewTaskAssignee(
+                                                  option,
+                                                  setModalState,
+                                                );
+                                              } else {
+                                                unawaited(
+                                                  completeMention(
+                                                    option,
+                                                    setModalState,
+                                                    sourceText:
+                                                        assigneeMentionSourceText,
+                                                  ),
+                                                );
+                                              }
+                                            },
+                                            onDone: () {
+                                              activeMentionPickerSymbol = null;
+                                              if (pickerType ==
+                                                  FloatingSheetType.assign) {
+                                                removeAssigneeMention(
+                                                  setModalState,
+                                                );
+                                              }
                                             },
                                           );
+                                        } else {
+                                          _searchQuery = m.query;
+                                          _floatingSheetOverlay
+                                              ?.markNeedsBuild();
                                         }
                                       },
                                       onSubmitted: (_) {
                                         final isMentionActive =
                                             assigneeMentionQuery != null;
+                                        if (isMentionActive) {
+                                          if (assigneeMentionQuery!
+                                              .trim()
+                                              .isNotEmpty) {
+                                            unawaited(
+                                              selectMentionOnEnter(
+                                                setModalState,
+                                              ),
+                                            );
+                                          }
+                                          return;
+                                        }
                                         onFieldSubmitted();
-                                        if (isMentionActive) return;
                                         _handleAddTaskFromSheet().then((added) {
                                           if (added && sheetContext.mounted) {
                                             Navigator.of(sheetContext).pop();
@@ -3061,9 +2990,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             if (_expandedMyWorkSections.contains(topSection)) {
               _expandedMyWorkSections.remove(topSection);
             } else {
-              _expandedMyWorkSections
-                ..clear()
-                ..add(topSection);
+              _expandedMyWorkSections.add(topSection);
             }
           });
         },
@@ -3105,9 +3032,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                       if (isExpanded) {
                                         _expandedMyWorkSections.remove(name);
                                       } else {
-                                        _expandedMyWorkSections
-                                          ..clear()
-                                          ..add(name);
+                                        _expandedMyWorkSections.add(name);
                                       }
                                     }),
                                     onDoubleTap: () => setState(() {
