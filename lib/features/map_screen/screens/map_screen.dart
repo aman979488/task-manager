@@ -17,6 +17,7 @@ import '../../../services/home_screen_shortcut.dart';
 import '../viewmodels/map_screen_viewmodel.dart';
 import '../viewmodels/add_task_viewmodel.dart';
 import '../services/task_share_print_service.dart';
+import 'views/my_day_view.dart';
 import 'views/my_work_view.dart';
 import 'views/calendar_view.dart';
 import 'views/group_by_view.dart';
@@ -91,7 +92,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
     _loadButtonOrder();
   }
 
@@ -612,26 +613,21 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       projects = await _viewModel.loadProjects();
     }
 
-    final BuildContext rootContext = Navigator.of(
-      buttonContext,
-      rootNavigator: true,
-    ).context;
-
     List<String>? assignees;
     if (type == FloatingSheetType.assign) {
       assignees = await _loadAssigneesFromFirestore();
     }
 
+    if (!mounted || !buttonContext.mounted) return;
     if (shouldShow != null && !shouldShow()) return;
 
+    final BuildContext rootContext = Navigator.of(
+      buttonContext,
+      rootNavigator: true,
+    ).context;
     final RenderBox button = buttonContext.findRenderObject() as RenderBox;
     final RenderBox overlay =
         Overlay.of(buttonContext).context.findRenderObject() as RenderBox;
-    final Offset buttonPosition = button.localToGlobal(
-      Offset.zero,
-      ancestor: overlay,
-    );
-    final Size overlaySize = overlay.size;
 
     List<Widget> buildOptions(StateSetter? setOverlayState) {
       List<String> options = [];
@@ -780,165 +776,187 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
 
     const double padding = 8;
-    final double menuWidth = (overlaySize.width - padding * 2).clamp(
-      0.0,
-      240.0,
-    );
-    final desiredMenuHeight = (overlaySize.height - padding * 2)
-        .clamp(0.0, 400.0)
-        .toDouble();
-    final spaceAbove = (buttonPosition.dy - padding).clamp(
-      0.0,
-      desiredMenuHeight,
-    );
-    final spaceBelow =
-        (overlaySize.height - buttonPosition.dy - button.size.height - padding)
-            .clamp(0.0, desiredMenuHeight);
-    final openAbove = spaceAbove >= spaceBelow;
-    final menuMaxHeight = openAbove ? spaceAbove : spaceBelow;
-    final top = openAbove
-        ? buttonPosition.dy - menuMaxHeight
-        : buttonPosition.dy + button.size.height + padding;
+    final compactWeb = kIsWeb && MediaQuery.sizeOf(buttonContext).width < 600;
+    final maxMenuHeight = compactWeb ? 260.0 : 400.0;
 
     _hideFloatingSheet();
     final initialQuery = searchQuery?.call() ?? '';
     _searchQuery = initialQuery;
     _searchController.clear();
     _floatingSheetOverlay = OverlayEntry(
-      builder: (_) => Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: _hideFloatingSheet,
-              behavior: HitTestBehavior.translucent,
-            ),
-          ),
-          Positioned(
-            right: padding,
-            top: top,
-            child: Material(
-              color: Colors.white,
-              elevation: 8,
-              borderRadius: BorderRadius.circular(12),
-              child: SizedBox(
-                width: menuWidth,
-                child: StatefulBuilder(
-                  builder: (context, setOverlayState) {
-                    const showSearch = true;
-                    final optionListHeight =
-                        (menuMaxHeight - 68 - (multiSelect ? 64 : 0))
-                            .clamp(40.0, 250.0)
-                            .toDouble();
-                    final allOptions = buildOptions(setOverlayState);
-                    final filteredOptions =
-                        showSearch && _searchQuery.isNotEmpty
-                        ? allOptions.where((tile) {
-                            final title = ((tile as ListTile).title as Text)
-                                .data!
-                                .toLowerCase();
-                            final query = _searchQuery.toLowerCase();
-                            return searchQuery != null
-                                ? title.startsWith(query)
-                                : title.contains(query);
-                          }).toList()
-                        : allOptions;
+      builder: (_) => LayoutBuilder(
+        builder: (context, constraints) {
+          final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+          final usableHeight = (constraints.maxHeight - keyboardInset)
+              .clamp(0.0, constraints.maxHeight);
+          final currentButtonPosition = button.localToGlobal(
+            Offset.zero,
+            ancestor: overlay,
+          );
+          final desiredMenuHeight = (usableHeight - padding * 2)
+              .clamp(0.0, maxMenuHeight)
+              .toDouble();
+          final spaceAbove = (currentButtonPosition.dy - padding)
+              .clamp(0.0, desiredMenuHeight);
+          final spaceBelow =
+              (usableHeight -
+                      currentButtonPosition.dy -
+                      button.size.height -
+                      padding)
+                  .clamp(0.0, desiredMenuHeight);
+          final openAbove = spaceAbove >= spaceBelow;
+          final menuMaxHeight = openAbove ? spaceAbove : spaceBelow;
+          final top = openAbove
+              ? currentButtonPosition.dy - menuMaxHeight
+              : currentButtonPosition.dy + button.size.height + padding;
+          final menuWidth = (constraints.maxWidth - padding * 2).clamp(
+            0.0,
+            240.0,
+          );
 
-                    return ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: menuMaxHeight),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (showSearch)
-                            Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: TextField(
-                                controller: _searchController,
-                                autofocus: false,
-                                decoration: InputDecoration(
-                                  hintText: 'Search...',
-                                  hintStyle: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey.shade400,
-                                  ),
-                                  prefixIcon: Icon(
-                                    Icons.search,
-                                    size: 18,
-                                    color: Colors.grey.shade50,
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 8,
-                                  ),
-                                  isDense: true,
-                                  filled: true,
-                                  fillColor: Colors.grey.shade100,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                ),
-                                onChanged: (val) {
-                                  _searchQuery = val;
-                                  setOverlayState(() {});
-                                },
-                              ),
-                            ),
-                          ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxHeight: optionListHeight,
-                            ),
-                            child: filteredOptions.isEmpty
-                                ? const Padding(
-                                    padding: EdgeInsets.all(16),
-                                    child: Text(
-                                      'No results',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                  )
-                                : ListView(
-                                    padding: EdgeInsets.zero,
-                                    shrinkWrap: true,
-                                    children: filteredOptions,
-                                  ),
-                          ),
-                          if (multiSelect)
-                            Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: secondaryColor,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  onPressed: () {
-                                    _hideFloatingSheet();
-                                    onDone?.call();
-                                  },
-                                  child: const Text(
-                                    'Done',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: _hideFloatingSheet,
+                  behavior: HitTestBehavior.translucent,
                 ),
               ),
-            ),
-          ),
-        ],
+              Positioned(
+                right: padding,
+                top: top,
+                child: Material(
+                  color: Colors.white,
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    width: menuWidth,
+                    child: StatefulBuilder(
+                      builder: (context, setOverlayState) {
+                        const showSearch = true;
+                        final optionListHeight =
+                            (menuMaxHeight - 68 - (multiSelect ? 64 : 0))
+                                .clamp(0.0, 250.0)
+                                .toDouble();
+                        final allOptions = buildOptions(setOverlayState);
+                        final filteredOptions =
+                            showSearch && _searchQuery.isNotEmpty
+                            ? allOptions.where((tile) {
+                                final title =
+                                    ((tile as ListTile).title as Text).data!
+                                        .toLowerCase();
+                                final query = _searchQuery.toLowerCase();
+                                return searchQuery != null
+                                    ? title.startsWith(query)
+                                    : title.contains(query);
+                              }).toList()
+                            : allOptions;
+
+                        return ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: menuMaxHeight,
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (showSearch)
+                                Padding(
+                                  padding: const EdgeInsets.all(10),
+                                  child: TextField(
+                                    controller: _searchController,
+                                    autofocus:
+                                        compactWeb &&
+                                        type == FloatingSheetType.assign,
+                                    decoration: InputDecoration(
+                                      hintText: 'Search...',
+                                      hintStyle: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey.shade400,
+                                      ),
+                                      prefixIcon: Icon(
+                                        Icons.search,
+                                        size: 18,
+                                        color: Colors.grey.shade50,
+                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 8,
+                                          ),
+                                      isDense: true,
+                                      filled: true,
+                                      fillColor: Colors.grey.shade100,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                    ),
+                                    onChanged: (val) {
+                                      _searchQuery = val;
+                                      setOverlayState(() {});
+                                    },
+                                  ),
+                                ),
+                              ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxHeight: optionListHeight,
+                                ),
+                                child: filteredOptions.isEmpty
+                                    ? const Padding(
+                                        padding: EdgeInsets.all(16),
+                                        child: Text(
+                                          'No results',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      )
+                                    : ListView(
+                                        padding: EdgeInsets.zero,
+                                        shrinkWrap: true,
+                                        children: filteredOptions,
+                                      ),
+                              ),
+                              if (multiSelect)
+                                Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: secondaryColor,
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                      ),
+                                      onPressed: () {
+                                        _hideFloatingSheet();
+                                        onDone?.call();
+                                      },
+                                      child: const Text(
+                                        'Done',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
 
@@ -1361,7 +1379,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
           ];
           final systemNavBar = MediaQuery.of(sheetContext).padding.bottom;
-          final bottomPadding = kIsWeb
+          final isCompactWeb = kIsWeb && screenWidth < 600;
+          final bottomPadding = kIsWeb && !isCompactWeb
               ? 16.0
               : (16.0 + viewInsets.bottom + systemNavBar);
 
@@ -1941,6 +1960,21 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   List<Task> _getMyTasks() =>
       _viewModel.myTasks(Provider.of<AuthViewModel>(context, listen: false));
 
+  List<Task> _getMyDayTasks() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return _getMyTasks().where((task) {
+      if (task.isDone) return false;
+      if (task.priority?.trim().toLowerCase() == 'today') return true;
+
+      final scheduled = _taskScheduledDate(task);
+      return scheduled != null &&
+          scheduled.year == today.year &&
+          scheduled.month == today.month &&
+          scheduled.day == today.day;
+    }).toList();
+  }
+
   Widget _buildTaskPriorityBadge(Task task, {bool compact = false}) {
     final priority = task.priority?.trim();
     final badgeColor = _taskPriorityColor(priority);
@@ -2107,6 +2141,57 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         sections: sections,
         taskResultsBuilder: (tasks) =>
             _buildMyWorkTaskResults(_getVisibleTasks(tasks)),
+      ),
+    );
+  }
+
+  Widget _buildMyDayView() {
+    final myTasks = _getMyTasks();
+    final dayTasks = _getVisibleTasks(_getMyDayTasks());
+    final suggestions = _getVisibleTasks(
+      myTasks.where((task) => !task.isDone).toList(),
+    );
+
+    return MyDayView(
+      tasks: dayTasks,
+      suggestions: suggestions,
+      taskBuilder: (task, index) => _buildTaskItem(task, index),
+      suggestionBuilder: _buildMyDaySuggestion,
+      onRefresh: _refreshTasks,
+    );
+  }
+
+  Widget _buildMyDaySuggestion(Task task, VoidCallback onAdd) {
+    final scheduled = _taskScheduledDate(task);
+    final details = [
+      if (task.priority?.trim().isNotEmpty == true) task.priority!.trim(),
+      if (scheduled != null)
+        MaterialLocalizations.of(context).formatShortDate(scheduled),
+    ];
+
+    return ListTile(
+      leading: Checkbox(
+        value: task.isDone,
+        onChanged: (_) async {
+          setState(() => task.isDone = true);
+          await _updateTaskInFirebase(task);
+          _viewModel.sortTasks();
+        },
+      ),
+      title: Text(
+        task.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        details.isEmpty ? 'Task' : details.join(' • '),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: IconButton(
+        tooltip: 'Add to My Day',
+        onPressed: onAdd,
+        icon: const Icon(Icons.add, color: Color(0xFF526D8A)),
       ),
     );
   }
@@ -2369,7 +2454,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           selected: _groupBy,
           onSelected: (value) {
             setState(() => _groupBy = value);
-            _tabController.animateTo(5);
+            _tabController.animateTo(6);
           },
         );
       case 'view':
@@ -2462,12 +2547,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   List<Task> _tasksForCurrentTab() {
     switch (_tabController.index) {
       case 0:
+        return _getMyDayTasks();
+      case 1:
         return _getMyTasks();
-      case 2:
-        return _getDoneTasks();
       case 3:
-        return _getOverdueTasks();
+        return _getDoneTasks();
       case 4:
+        return _getOverdueTasks();
+      case 5:
         return _getPendingTasks();
       default:
         return tasks;
@@ -2744,6 +2831,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
               labelPadding: const EdgeInsets.symmetric(horizontal: 12),
               tabs: [
+                Tab(text: 'My Day (${_getMyDayTasks().length})'),
                 const Tab(text: 'My Work'),
                 Tab(text: 'All Work (${tasks.length})'),
                 Tab(text: 'Done (${_getDoneTasks().length})'),
@@ -2758,6 +2846,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             child: TabBarView(
               controller: _tabController,
               children: [
+                Builder(
+                  key: const PageStorageKey('my-day-tab'),
+                  builder: (_) => _buildMyDayView(),
+                ),
                 Builder(
                   key: const PageStorageKey('my-work-tab'),
                   builder: (_) => _buildMyWorkView(),
