@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 🚀 NAYA: For SystemChannels keyboard show/hide
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,15 +10,26 @@ import '../models/floating_sheet_type.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../widgets/app_drawer.dart';
 import '../../../viewmodels/auth_viewmodel.dart';
-import '../../../utils/role_permissions.dart';
 import '../../../services/home_screen_shortcut.dart';
-import '../../../services/task_home_widget_service.dart';
+import '../viewmodels/map_screen_viewmodel.dart';
+import '../viewmodels/add_task_viewmodel.dart';
+import '../services/task_share_print_service.dart';
+import 'views/my_work_view.dart';
+import 'views/calendar_view.dart';
+import 'views/group_by_view.dart';
+import 'views/add_task_sheet.dart';
+import 'views/all_work_view.dart';
+import 'views/done_tasks_view.dart';
+import 'views/overdue_tasks_view.dart';
+import 'views/pending_tasks_view.dart';
+import 'views/group_by_assignee_view.dart';
+import 'widgets/task_tile.dart';
+import 'widgets/compact_task_tile.dart';
+import 'widgets/task_grid_card.dart';
+import 'widgets/sheet_option_button.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key, required this.title});
@@ -31,6 +41,10 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
+  final TaskSharePrintService _sharePrintService = TaskSharePrintService();
+  late MapScreenViewModel _viewModel;
+  late AddTaskViewModel _addTaskViewModel;
+  bool _hasBoundViewModel = false;
   final FocusNode _focusNode = FocusNode();
   final TextEditingController taskName = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
@@ -51,21 +65,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   OverlayEntry? _floatingSheetOverlay;
 
-  final List<Task> tasks = [];
+  List<Task> get tasks => _viewModel.tasks;
 
   // selected tasks for multi-select
   final Set<Task> _selected = {};
-
-  // temp selections while creating a new task
-  String? _newTaskPriority;
-  String? _newTaskReminder;
-  String? _newTaskAssignee;
-  String? _newTaskDeadline;
-  String? _newTaskWorkType;
-  String? _newTaskFolder;
-  String? _newTaskClientName;
-  String? _newTaskRefProject; // 🚀 NAYA
-  final List<FloatingSheetType> _newTaskMetadataOrder = [];
 
   // Draggable button order
   final List<FloatingSheetType> _defaultOrder = [
@@ -80,21 +83,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   late List<FloatingSheetType> _buttonOrder = List.from(_defaultOrder);
 
-  // Firestore collection reference -> MAP collection as requested
-  final CollectionReference tasksCollection = FirebaseFirestore.instance
-      .collection('map');
-  StreamSubscription? _tasksSubscription;
-  final Set<Task> _pendingTasks = {};
-
-  bool _isAddingTask = false; // 🚀 NAYA: To prevent double submission
-  List<String>? _clientsCache;
-  List<String>? _projectsCache; // 🚀 NAYA
-
   static const Color primaryColor = Color(0xFFFBE64E);
   static const Color secondaryColor = Color(0xFF6B5800);
 
   late TabController _tabController;
-  final Set<String> _expandedMyWorkSections = {};
   int _selectedTabIndex = 0;
 
   @override
@@ -103,8 +95,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _tabController = TabController(length: 6, vsync: this);
     _tabController.addListener(_handleTabChange);
     _loadButtonOrder();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_hasBoundViewModel) return;
+    _hasBoundViewModel = true;
+    _viewModel = Provider.of<MapScreenViewModel>(context, listen: false);
+    _addTaskViewModel = Provider.of<AddTaskViewModel>(context, listen: false);
+    _viewModel.addListener(_handleViewModelChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _listenForTaskUpdates();
+      if (mounted) _listenForTaskUpdates();
     });
   }
 
@@ -128,69 +130,45 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   String? _newTaskMetadataValue(FloatingSheetType type) {
-    return switch (type) {
-      FloatingSheetType.priority => _newTaskPriority,
-      FloatingSheetType.remind => _newTaskReminder,
-      FloatingSheetType.assign => _newTaskAssignee,
-      FloatingSheetType.deadline => _newTaskDeadline,
-      FloatingSheetType.workType => _newTaskWorkType,
-      FloatingSheetType.folder => _newTaskFolder,
-      FloatingSheetType.clientName => _newTaskClientName,
-      FloatingSheetType.refProject => _newTaskRefProject,
-    };
+    return _addTaskViewModel.valueFor(type);
   }
 
   void _setNewTaskMetadata(FloatingSheetType type, String? value) {
-    final wasSelected = _newTaskMetadataValue(type)?.trim().isNotEmpty ?? false;
-    switch (type) {
-      case FloatingSheetType.priority:
-        _newTaskPriority = value;
-        break;
-      case FloatingSheetType.remind:
-        _newTaskReminder = value;
-        break;
-      case FloatingSheetType.assign:
-        _newTaskAssignee = value;
-        break;
-      case FloatingSheetType.deadline:
-        _newTaskDeadline = value;
-        break;
-      case FloatingSheetType.workType:
-        _newTaskWorkType = value;
-        break;
-      case FloatingSheetType.folder:
-        _newTaskFolder = value;
-        break;
-      case FloatingSheetType.clientName:
-        _newTaskClientName = value;
-        break;
-      case FloatingSheetType.refProject:
-        _newTaskRefProject = value;
-        break;
-    }
-
-    if (value == null || value.trim().isEmpty) {
-      _newTaskMetadataOrder.remove(type);
-    } else {
-      _newTaskMetadataOrder
-        ..remove(type)
-        ..insert(0, type);
-      if (!wasSelected && _newTaskMetadataOrder.length >= 3) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!_metadataButtonsScrollController.hasClients) return;
-          final controller = _metadataButtonsScrollController;
-          final nextOffset = (controller.offset + _metadataButtonScrollStep)
-              .clamp(0.0, controller.position.maxScrollExtent)
-              .toDouble();
-          controller.animateTo(
-            nextOffset,
-            duration: const Duration(milliseconds: 420),
-            curve: Curves.easeInOut,
-          );
-        });
-      }
+    final shouldScroll = _addTaskViewModel.setValue(type, value);
+    if (shouldScroll) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_metadataButtonsScrollController.hasClients) return;
+        final controller = _metadataButtonsScrollController;
+        final nextOffset = (controller.offset + _metadataButtonScrollStep)
+            .clamp(0.0, controller.position.maxScrollExtent)
+            .toDouble();
+        controller.animateTo(
+          nextOffset,
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeInOut,
+        );
+      });
     }
   }
+
+  String? get _newTaskPriority =>
+      _addTaskViewModel.valueFor(FloatingSheetType.priority);
+  String? get _newTaskReminder =>
+      _addTaskViewModel.valueFor(FloatingSheetType.remind);
+  String? get _newTaskAssignee =>
+      _addTaskViewModel.valueFor(FloatingSheetType.assign);
+  String? get _newTaskDeadline =>
+      _addTaskViewModel.valueFor(FloatingSheetType.deadline);
+  String? get _newTaskWorkType =>
+      _addTaskViewModel.valueFor(FloatingSheetType.workType);
+  String? get _newTaskFolder =>
+      _addTaskViewModel.valueFor(FloatingSheetType.folder);
+  String? get _newTaskClientName =>
+      _addTaskViewModel.valueFor(FloatingSheetType.clientName);
+  String? get _newTaskRefProject =>
+      _addTaskViewModel.valueFor(FloatingSheetType.refProject);
+  List<FloatingSheetType> get _newTaskMetadataOrder =>
+      _addTaskViewModel.metadataOrder;
 
   Widget _buildBottomSheetButtonWithState(
     FloatingSheetType type,
@@ -331,208 +309,33 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final bool isSelected = selectedValue != null && selectedValue.isNotEmpty;
     final String displayText = isSelected ? selectedValue : label;
 
-    return Builder(
-      builder: (buttonContext) => AnimatedSize(
-        key: _metadataButtonKeys[type],
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-          width: compact ? 112 : null,
-          decoration: BoxDecoration(
-            color: isSelected
-                ? primaryColor.withValues(alpha: 0.2)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isSelected ? secondaryColor : Colors.grey.shade300,
-              width: isSelected ? 2 : 1,
-            ),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: () {
-                final isMulti = type == FloatingSheetType.assign;
-                List<String> currentSelections = [];
-                if (isMulti && _newTaskAssignee != null) {
-                  currentSelections = _newTaskAssignee!
-                      .split(',')
-                      .map((e) => e.trim())
-                      .toList();
-                }
-
-                _showFloatingSheet(
-                  buttonContext,
-                  type,
-                  onSelected: onSelected,
-                  multiSelect: isMulti,
-                  selectedValues: currentSelections,
-                );
-              },
-              child: Padding(
-                padding: compact
-                    ? const EdgeInsets.symmetric(horizontal: 4, vertical: 4)
-                    : const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
-                child: compact
-                    ? Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                icon,
-                                size: 17,
-                                color: isSelected
-                                    ? secondaryColor
-                                    : Colors.grey.shade700,
-                              ),
-                              if (isSelected)
-                                SizedBox(
-                                  width: 36,
-                                  height: 36,
-                                  child: IconButton(
-                                    tooltip: 'Clear $label',
-                                    onPressed: onClear,
-                                    padding: EdgeInsets.zero,
-                                    icon: const Icon(
-                                      Icons.close,
-                                      size: 18,
-                                      color: secondaryColor,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            displayText,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: isSelected
-                                  ? secondaryColor
-                                  : Colors.grey.shade700,
-                              fontWeight: isSelected
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
-                              fontSize: 12,
-                              height: 1.15,
-                            ),
-                          ),
-                        ],
-                      )
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 300),
-                            transitionBuilder: (child, animation) {
-                              return ScaleTransition(
-                                scale: animation,
-                                child: FadeTransition(
-                                  opacity: animation,
-                                  child: child,
-                                ),
-                              );
-                            },
-                            child: Icon(
-                              icon,
-                              key: ValueKey('icon_$isSelected'),
-                              size: 18,
-                              color: isSelected
-                                  ? secondaryColor
-                                  : Colors.grey.shade700,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 300),
-                            transitionBuilder: (child, animation) {
-                              return SizeTransition(
-                                sizeFactor: animation,
-                                axis: Axis.horizontal,
-                                axisAlignment: -1,
-                                child: FadeTransition(
-                                  opacity: animation,
-                                  child: child,
-                                ),
-                              );
-                            },
-                            child: Text(
-                              displayText,
-                              key: ValueKey('text_$displayText'),
-                              style: TextStyle(
-                                color: isSelected
-                                    ? secondaryColor
-                                    : Colors.grey.shade700,
-                                fontWeight: isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            width: isSelected ? 36 : 0,
-                            child: AnimatedOpacity(
-                              duration: const Duration(milliseconds: 300),
-                              opacity: isSelected ? 1.0 : 0.0,
-                              child: isSelected
-                                  ? IconButton(
-                                      tooltip: 'Clear $label',
-                                      onPressed: onClear,
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(
-                                        minWidth: 36,
-                                        minHeight: 36,
-                                      ),
-                                      icon: const Icon(
-                                        Icons.close,
-                                        size: 18,
-                                        color: secondaryColor,
-                                      ),
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-            ),
-          ),
-        ),
-      ),
+    return SheetOptionButton(
+      key: _metadataButtonKeys[type],
+      icon: icon,
+      label: label,
+      displayText: displayText,
+      selected: isSelected,
+      compact: compact,
+      onClear: onClear,
+      onTap: () {
+        final isMulti = type == FloatingSheetType.assign;
+        final currentSelections = isMulti && _newTaskAssignee != null
+            ? _newTaskAssignee!.split(',').map((value) => value.trim()).toList()
+            : <String>[];
+        _showFloatingSheet(
+          context,
+          type,
+          onSelected: onSelected,
+          multiSelect: isMulti,
+          selectedValues: currentSelections,
+        );
+      },
     );
-  }
-
-  Color _myWorkSectionColor(String section) {
-    switch (section) {
-      case 'Urgent Works':
-        return const Color(0xFF9B5965);
-      case 'IMP Works':
-        return const Color(0xFF526D8A);
-      case 'Today Works':
-      case 'Tomorrow Works':
-        return const Color(0xFF557E9B);
-      case 'Hold Works':
-        return const Color(0xFF99765B);
-      case 'Done Works':
-        return const Color(0xFF708276);
-      default:
-        return const Color(0xFF71808D);
-    }
   }
 
   @override
   void dispose() {
-    _tasksSubscription?.cancel();
+    _viewModel.removeListener(_handleViewModelChanged);
     _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     _hideFloatingSheet();
@@ -710,106 +513,21 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  bool _isTaskVisibleToUser(Task task, AuthViewModel authVM) {
-    if (authVM.appRole == AppRole.superAdmin ||
-        authVM.appRole == AppRole.admin ||
-        authVM.appRole == AppRole.officeStaff) {
-      return true;
-    }
-    final String myUid = authVM.userUid.trim().toLowerCase();
-    final String myEmail = authVM.userEmail.trim().toLowerCase();
-    final String myName = authVM.userName.trim().toLowerCase();
-
-    final cb = task.createdBy;
-    if (cb != null) {
-      final cbUid = (cb['uid'] ?? '').toString().trim().toLowerCase();
-      final cbEmail = (cb['email'] ?? '').toString().trim().toLowerCase();
-      final cbName = (cb['name'] ?? '').toString().trim().toLowerCase();
-      if ((cbUid.isNotEmpty && (cbUid == myUid || myUid.contains(cbUid))) ||
-          (cbEmail.isNotEmpty &&
-              (cbEmail == myEmail || myEmail.contains(cbEmail))) ||
-          (cbName.isNotEmpty &&
-              (cbName == myName || myName.contains(cbName)))) {
-        return true;
-      }
-    }
-
-    final assignee = (task.assignee ?? '').toString().trim().toLowerCase();
-    if (assignee.isNotEmpty) {
-      if ((myName.isNotEmpty && assignee.contains(myName)) ||
-          (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
-          (myUid.isNotEmpty && assignee.contains(myUid))) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
   Future<void> _loadTasksFromFirebase() async {
     final authVM = Provider.of<AuthViewModel>(context, listen: false);
-    final snapshot = await tasksCollection.get();
-
-    final loaded = snapshot.docs
-        .map((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          return Task.fromMap(doc.id, data);
-        })
-        .where((task) => _isTaskVisibleToUser(task, authVM))
-        .toList();
-
-    if (!mounted) return;
-    _replaceTasks(loaded);
-    await updateTaskHomeWidget(tasks);
+    await _viewModel.refreshTasks(authVM);
   }
 
   void _listenForTaskUpdates() {
-    _tasksSubscription = tasksCollection.snapshots().listen(
-      (snapshot) {
-        if (!mounted) return;
-        final authVM = Provider.of<AuthViewModel>(context, listen: false);
-        final loaded = snapshot.docs
-            .map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              return Task.fromMap(doc.id, data);
-            })
-            .where((task) => _isTaskVisibleToUser(task, authVM))
-            .toList();
-
-        _replaceTasks(loaded);
-        unawaited(_updateTaskHomeWidgetSafely());
-      },
-      onError: (Object error) {
-        debugPrint('Error listening for task updates: $error');
-        if (mounted) {
-          _showMessage('Could not sync tasks. Pull down to refresh.');
-        }
-      },
-    );
+    final authVM = Provider.of<AuthViewModel>(context, listen: false);
+    _viewModel.listenForTasks(authVM);
   }
 
-  void _replaceTasks(List<Task> loaded) {
-    loaded.sort(_taskComparator);
-    final loadedIds = loaded.map((task) => task.id).toSet();
-    final pending = _pendingTasks
-        .where((task) => task.id == null || !loadedIds.contains(task.id))
-        .toList();
-
-    setState(() {
-      tasks
-        ..clear()
-        ..addAll(loaded)
-        ..addAll(pending);
-      _sortTasks();
-    });
-  }
-
-  Future<void> _updateTaskHomeWidgetSafely() async {
-    try {
-      await updateTaskHomeWidget(tasks);
-    } catch (error) {
-      debugPrint('Error updating task home widget: $error');
-    }
+  void _handleViewModelChanged() {
+    if (!mounted) return;
+    setState(() {});
+    final message = _viewModel.takeErrorMessage();
+    if (message != null) _showMessage(message);
   }
 
   void _handleTabChange() {
@@ -823,9 +541,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Future<void> _refreshTasks() async {
     try {
       await _loadTasksFromFirebase();
-    } on FirebaseException catch (error) {
+    } catch (error) {
       if (!mounted) return;
-      _showMessage(error.message ?? 'Could not refresh tasks.');
+      _showMessage('Could not refresh tasks: $error');
     }
   }
 
@@ -834,293 +552,42 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     child: Scrollbar(thumbVisibility: kIsWeb, child: child),
   );
 
-  Map<String, dynamic> _taskData(Task task) {
-    final data = task.toMap();
-    final reminderDate = task.reminder == null
-        ? null
-        : DateTime.tryParse(task.reminder!);
-    final deadlineDate = task.deadline == null
-        ? null
-        : DateTime.tryParse(task.deadline!);
-
-    data['reminderAt'] = reminderDate == null
-        ? null
-        : Timestamp.fromDate(reminderDate);
-    data['deadlineAt'] = deadlineDate == null
-        ? null
-        : Timestamp.fromDate(deadlineDate);
-    return data;
-  }
-
-  Future<void> _addTaskToFirebase(Task task) async {
-    final docRef = tasksCollection.doc();
-    task.id = docRef.id;
-    await docRef.set(_taskData(task));
-  }
-
   Future<void> _updateTaskInFirebase(Task task) async {
-    if (task.id == null) return;
-    await tasksCollection.doc(task.id).update(_taskData(task));
-    await updateTaskHomeWidget(tasks);
+    await _viewModel.updateTask(task);
   }
 
-  Future<void> _deleteTaskFromFirebase(Task task) async {
-    if (task.id == null) return;
-    await tasksCollection.doc(task.id).delete();
-  }
+  Future<void> _deleteTaskFromFirebase(Task task) =>
+      _viewModel.deleteTask(task);
 
   Future<bool> _handleAddTaskFromSheet() async {
-    if (_isAddingTask) return false; // 🚀 NAYA: Prevent multiple triggers
-
     final text = taskName.text.trim();
     if (text.isEmpty) return false;
 
-    setState(() {
-      _isAddingTask = true;
-    });
-
-    // Capture states
-    final priority = _newTaskPriority;
-    final reminder = _newTaskReminder;
-    final assignee = _newTaskAssignee;
-    final deadline = _newTaskDeadline;
-    final workType = _newTaskWorkType;
-    final folder = _newTaskFolder;
-    final clientName = _newTaskClientName;
-    final refProject = _newTaskRefProject;
-
-    // Immediately clear input fields to prevent double entry
-    taskName.clear();
-    setState(() {
-      _newTaskPriority = null;
-      _newTaskReminder = null;
-      _newTaskAssignee = null;
-      _newTaskDeadline = null;
-      _newTaskWorkType = null;
-      _newTaskFolder = null;
-      _newTaskClientName = null;
-      _newTaskRefProject = null;
-      _newTaskMetadataOrder.clear();
-    });
-
     final authVM = Provider.of<AuthViewModel>(context, listen: false);
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-
-    final newTask = Task(
-      text,
-      priority: priority,
-      reminder: reminder,
-      reminderSent: false,
-      deadlineReminderSent: false,
-      assignee: assignee,
-      deadline: deadline,
-      workType: workType,
-      folder: folder,
-      clientName: clientName,
-      refProject: refProject,
-      createdBy: authVM.actorMetadata,
-      assigneeUid: assignee,
-      priorityUpdatedAt: priority != null ? nowMs : null,
+    final added = await _viewModel.addTask(
+      title: text,
+      authViewModel: authVM,
+      priority: _newTaskPriority,
+      reminder: _newTaskReminder,
+      assignee: _newTaskAssignee,
+      deadline: _newTaskDeadline,
+      workType: _newTaskWorkType,
+      folder: _newTaskFolder,
+      clientName: _newTaskClientName,
+      refProject: _newTaskRefProject,
     );
+    if (!added) return false;
 
-    if (_isTaskVisibleToUser(newTask, authVM)) {
-      _pendingTasks.add(newTask);
-      setState(() {
-        tasks.add(newTask);
-        _sortTasks();
-      });
-    }
-
-    if (assignee != null && assignee.trim().isNotEmpty) {
-      unawaited(_sendTaskAssignmentNotification(assignee, text, authVM));
-    }
-    unawaited(_saveNewTask(newTask));
-
-    setState(() {
-      _isAddingTask = false;
-    });
+    taskName.clear();
+    _addTaskViewModel.clear();
     _focusNode.requestFocus();
-    return true;
+    return added;
   }
 
-  Future<void> _saveNewTask(Task task) async {
-    try {
-      await _addTaskToFirebase(task);
-    } catch (error) {
-      debugPrint('Error adding task: $error');
-      if (mounted) {
-        _pendingTasks.remove(task);
-        setState(() {
-          tasks.removeWhere(
-            (existingTask) =>
-                identical(existingTask, task) || existingTask.id == task.id,
-          );
-          _sortTasks();
-        });
-        _showMessage('Could not send "${task.title}". Please try again.');
-      }
-      return;
-    }
+  Future<List<String>> _loadClientsFromFirestore() => _viewModel.loadClients();
 
-    _pendingTasks.remove(task);
-    await _updateTaskHomeWidgetSafely();
-  }
-
-  Future<void> _sendTaskAssignmentNotification(
-    String? assignee,
-    String taskTitle,
-    AuthViewModel authVM,
-  ) async {
-    if (assignee == null ||
-        assignee.trim().isEmpty ||
-        !authVM.allowNotifications) {
-      return;
-    }
-    final String cleanAssignee = assignee.trim().toLowerCase();
-    final String myName = authVM.userName.trim().toLowerCase();
-
-    if (cleanAssignee == myName ||
-        cleanAssignee == authVM.userUid.toLowerCase() ||
-        cleanAssignee == authVM.userEmail.toLowerCase()) {
-      return;
-    }
-
-    try {
-      String? targetFcmToken;
-
-      // Look up FCM token in 'users' collection first
-      final userQuery = await FirebaseFirestore.instance
-          .collection('users')
-          .where('name', isEqualTo: assignee.trim())
-          .limit(1)
-          .get();
-
-      if (userQuery.docs.isNotEmpty) {
-        targetFcmToken = userQuery.docs.first.data()['fcmToken']?.toString();
-      } else {
-        // Fallback: look up in 'cps' collection
-        final cpQuery = await FirebaseFirestore.instance
-            .collection('cps')
-            .where('cpName', isEqualTo: assignee.trim())
-            .limit(1)
-            .get();
-        if (cpQuery.docs.isNotEmpty) {
-          targetFcmToken = cpQuery.docs.first.data()['fcmToken']?.toString();
-        }
-      }
-
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'recipientName': assignee.trim(),
-        'recipientFcmToken':
-            targetFcmToken, // 🚀 NAYA: FCM Token for background push
-        'title': 'New Task Assigned',
-        'body': '${authVM.userName} assigned you a task: "$taskTitle"',
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-        'type': 'task_assigned',
-      });
-    } catch (e) {
-      debugPrint('Error sending notification: $e');
-    }
-  }
-
-  int _priorityOrder(String? p) {
-    switch (p) {
-      case 'U1':
-        return 1;
-      case 'U2':
-        return 2;
-      case 'U3':
-        return 3;
-      case 'Urgent':
-        return 4;
-      case 'IMP':
-        return 5;
-      case 'Today':
-        return 6;
-      case 'Tomorrow':
-        return 7;
-      case 'Day Later':
-        return 8;
-      case 'Later':
-        return 9;
-      case 'Process':
-        return 10;
-      case 'Hold':
-        return 11;
-      case 'Free':
-        return 12;
-      default:
-        return 100;
-    }
-  }
-
-  int _taskComparator(Task a, Task b) {
-    if (a.isDone != b.isDone) {
-      return a.isDone ? 1 : -1;
-    }
-
-    final pa = _priorityOrder(a.priority);
-    final pb = _priorityOrder(b.priority);
-
-    if (pa != pb) {
-      return pa.compareTo(pb);
-    }
-    final ta = a.priorityUpdatedAt ?? 0;
-    final tb = b.priorityUpdatedAt ?? 0;
-
-    return tb.compareTo(ta);
-  }
-
-  void _sortTasks() {
-    tasks.sort(_taskComparator);
-  }
-
-  Future<List<String>> _loadClientsFromFirestore() async {
-    if (_clientsCache != null) return _clientsCache!;
-    final snap = await FirebaseFirestore.instance.collection('leads').get();
-    final values = snap.docs
-        .map((d) {
-          final data = d.data();
-          final name = data['name']?.toString().trim() ?? '';
-          final surname = data['surname']?.toString().trim() ?? '';
-          return surname.isNotEmpty ? '$name $surname' : name;
-        })
-        .where((e) => e.isNotEmpty)
-        .toList();
-    _clientsCache = values;
-    return values;
-  }
-
-  Future<List<String>> _loadAssigneesFromFirestore() async {
-    final snapshots = await Future.wait([
-      FirebaseFirestore.instance.collection('users').get(),
-      FirebaseFirestore.instance.collection('cps').get(),
-    ]);
-    final valuesByName = <String, String>{};
-
-    void addName(Object? value) {
-      final name = value?.toString().trim() ?? '';
-      if (name.isNotEmpty) {
-        valuesByName.putIfAbsent(name.toLowerCase(), () => name);
-      }
-    }
-
-    for (final doc in snapshots[0].docs) {
-      final data = doc.data();
-      addName(data['name'] ?? data['fullName'] ?? data['email']);
-    }
-    for (final doc in snapshots[1].docs) {
-      final data = doc.data();
-      addName(
-        data['cpName'] ?? data['name'] ?? data['fullName'] ?? data['email'],
-      );
-    }
-
-    final values = valuesByName.values.toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    return values;
-  }
+  Future<List<String>> _loadAssigneesFromFirestore() =>
+      _viewModel.loadAssignees();
 
   void _hideFloatingSheet() {
     if (_floatingSheetOverlay != null) {
@@ -1147,16 +614,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }) async {
     if (_floatingSheetOverlay != null) _hideFloatingSheet();
 
-    // ... logic for fetching types ...
     List<String>? workTypes;
     if (type == FloatingSheetType.workType) {
-      final snap = await FirebaseFirestore.instance
-          .collection('WorkType')
-          .get();
-      workTypes = snap.docs
-          .map((d) => d['workType']?.toString() ?? '')
-          .where((e) => e.isNotEmpty)
-          .toList();
+      workTypes = await _viewModel.loadWorkTypes();
     }
     List<String>? clients;
     if (type == FloatingSheetType.clientName) {
@@ -1165,18 +625,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     List<String>? projects;
     if (type == FloatingSheetType.refProject) {
-      if (_projectsCache != null) {
-        projects = _projectsCache;
-      } else {
-        final snap = await FirebaseFirestore.instance
-            .collection('projects')
-            .get();
-        _projectsCache = snap.docs
-            .map((d) => d['projectName']?.toString() ?? '')
-            .where((e) => e.isNotEmpty)
-            .toList();
-        projects = _projectsCache;
-      }
+      projects = await _viewModel.loadProjects();
     }
 
     final BuildContext rootContext = Navigator.of(
@@ -1674,25 +1123,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           case '*':
             return dateOptions;
           case '+':
-            final snapshot = await FirebaseFirestore.instance
-                .collection('WorkType')
-                .get();
-            return snapshot.docs
-                .map((doc) => doc['workType']?.toString() ?? '')
-                .where((value) => value.isNotEmpty)
-                .toList();
+            return _viewModel.loadWorkTypes();
           case '#':
             return _loadClientsFromFirestore();
           case '^':
-            if (_projectsCache != null) return _projectsCache!;
-            final snapshot = await FirebaseFirestore.instance
-                .collection('projects')
-                .get();
-            _projectsCache = snapshot.docs
-                .map((doc) => doc['projectName']?.toString() ?? '')
-                .where((value) => value.isNotEmpty)
-                .toList();
-            return _projectsCache!;
+            return _viewModel.loadProjects();
           default:
             return const <String>[];
         }
@@ -1963,402 +1398,382 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 SystemChannels.textInput.invokeMethod('textInput.hide');
               }
             },
-            child: SingleChildScrollView(
-              physics: const ClampingScrollPhysics(), // 🚀 NAYA: Better for bottom sheets
-              child: Padding(
-                padding: EdgeInsets.only(
-                  left: 16,
-                  right: 16,
-                  top: 16,
-                  bottom: bottomPadding,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Builder(
-                            builder: (textFieldCtx) => Focus(
-                              onKeyEvent: (node, event) {
-                                if (event is KeyDownEvent &&
-                                    (event.logicalKey ==
-                                            LogicalKeyboardKey.enter ||
-                                        event.logicalKey ==
-                                            LogicalKeyboardKey.numpadEnter) &&
-                                    assigneeMentionQuery != null) {
-                                  if (assigneeMentionQuery!.trim().isEmpty) {
-                                    return KeyEventResult.ignored;
-                                  }
-                                  unawaited(
-                                    selectMentionOnEnter(setModalState),
-                                  );
-                                  return KeyEventResult.handled;
-                                }
-
-                                if (event is! KeyDownEvent ||
-                                    event.logicalKey !=
-                                        LogicalKeyboardKey.tab ||
-                                    assigneeMentionQuery == null) {
+            child: AddTaskSheet(
+              bottomPadding: bottomPadding,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Builder(
+                          builder: (textFieldCtx) => Focus(
+                            onKeyEvent: (node, event) {
+                              if (event is KeyDownEvent &&
+                                  (event.logicalKey ==
+                                          LogicalKeyboardKey.enter ||
+                                      event.logicalKey ==
+                                          LogicalKeyboardKey.numpadEnter) &&
+                                  assigneeMentionQuery != null) {
+                                if (assigneeMentionQuery!.trim().isEmpty) {
                                   return KeyEventResult.ignored;
                                 }
-
-                                final query = assigneeMentionQuery!;
-                                final symbol = mentionSymbol;
-                                unawaited(() async {
-                                  try {
-                                    final source = await loadMentionSource(
-                                      symbol,
-                                    );
-                                    final matches = source
-                                        .where(
-                                          (option) => option
-                                              .toLowerCase()
-                                              .startsWith(query.toLowerCase()),
-                                        )
-                                        .toList();
-                                    if (matches.isEmpty) return;
-                                    final index = highlightedAssigneeIndex
-                                        .clamp(0, matches.length - 1)
-                                        .toInt();
-                                    await completeMention(
-                                      matches[index],
-                                      setModalState,
-                                      sourceText: assigneeMentionSourceText,
-                                    );
-                                  } catch (error) {
-                                    if (sheetContext.mounted) {
-                                      ScaffoldMessenger.of(
-                                        sheetContext,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Could not load options: $error',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  }
-                                }());
+                                unawaited(selectMentionOnEnter(setModalState));
                                 return KeyEventResult.handled;
-                              },
-                              child: RawAutocomplete<String>(
-                                textEditingController: taskName,
-                                focusNode: _focusNode,
-                                optionsViewOpenDirection:
-                                    OptionsViewOpenDirection.up,
-                                optionsBuilder: (value) => const <String>[],
-                                onSelected: (opt) => completeMention(
-                                  opt,
-                                  setModalState,
-                                  sourceText: assigneeMentionSourceText,
-                                ),
-                                optionsViewBuilder: (context, onSelected, options) {
-                                  final matches = options.toList();
-                                  final highlightedIndex =
-                                      AutocompleteHighlightedOption.of(context);
-                                  highlightedAssigneeIndex = highlightedIndex;
-                                  return LayoutBuilder(
-                                    builder: (context, constraints) {
-                                      final availableHeight =
-                                          constraints.hasBoundedHeight
-                                          ? constraints.maxHeight
-                                          : 260.0;
-                                      final popupHeight = availableHeight
-                                          .clamp(0.0, 210.0)
-                                          .toDouble();
-                                      const doneAreaHeight = 56.0;
-                                      final showDone =
-                                          popupHeight >= doneAreaHeight;
-                                      final listHeight =
-                                          (popupHeight -
-                                                  (showDone
-                                                      ? doneAreaHeight
-                                                      : 0))
-                                              .clamp(0.0, 154.0)
-                                              .toDouble();
+                              }
 
-                                      return Align(
-                                        alignment: Alignment.bottomRight,
-                                        child: Material(
-                                          elevation: 8,
-                                          borderRadius: BorderRadius.circular(
-                                            12,
+                              if (event is! KeyDownEvent ||
+                                  event.logicalKey != LogicalKeyboardKey.tab ||
+                                  assigneeMentionQuery == null) {
+                                return KeyEventResult.ignored;
+                              }
+
+                              final query = assigneeMentionQuery!;
+                              final symbol = mentionSymbol;
+                              unawaited(() async {
+                                try {
+                                  final source = await loadMentionSource(
+                                    symbol,
+                                  );
+                                  final matches = source
+                                      .where(
+                                        (option) => option
+                                            .toLowerCase()
+                                            .startsWith(query.toLowerCase()),
+                                      )
+                                      .toList();
+                                  if (matches.isEmpty) return;
+                                  final index = highlightedAssigneeIndex
+                                      .clamp(0, matches.length - 1)
+                                      .toInt();
+                                  await completeMention(
+                                    matches[index],
+                                    setModalState,
+                                    sourceText: assigneeMentionSourceText,
+                                  );
+                                } catch (error) {
+                                  if (sheetContext.mounted) {
+                                    ScaffoldMessenger.of(sheetContext)
+                                        .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Could not load options: $error',
+                                            ),
                                           ),
-                                          clipBehavior: Clip.antiAlias,
-                                          child: SizedBox(
-                                            width: 240,
-                                            child: ConstrainedBox(
-                                              constraints: BoxConstraints(
-                                                maxHeight: popupHeight,
-                                              ),
-                                              child: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  ConstrainedBox(
-                                                    constraints: BoxConstraints(
-                                                      maxHeight: listHeight,
-                                                    ),
-                                                    child: ListView.builder(
-                                                      padding: EdgeInsets.zero,
-                                                      shrinkWrap: true,
-                                                      itemCount: matches.length,
-                                                      itemBuilder: (context, index) {
-                                                        final name =
-                                                            matches[index];
-                                                        return ListTile(
-                                                          dense: true,
-                                                          selected:
-                                                              index ==
-                                                              highlightedIndex,
-                                                          selectedTileColor:
-                                                              primaryColor
-                                                                  .withValues(
-                                                                    alpha: 0.45,
-                                                                  ),
-                                                          title: Text(
-                                                            name,
-                                                            style:
-                                                                const TextStyle(
-                                                                  fontSize: 13,
-                                                                ),
-                                                          ),
-                                                          onTap: () =>
-                                                              onSelected(name),
-                                                        );
-                                                      },
-                                                    ),
+                                        );
+                                  }
+                                }
+                              }());
+                              return KeyEventResult.handled;
+                            },
+                            child: RawAutocomplete<String>(
+                              textEditingController: taskName,
+                              focusNode: _focusNode,
+                              optionsViewOpenDirection:
+                                  OptionsViewOpenDirection.up,
+                              optionsBuilder: (value) => const <String>[],
+                              onSelected: (opt) => completeMention(
+                                opt,
+                                setModalState,
+                                sourceText: assigneeMentionSourceText,
+                              ),
+                              optionsViewBuilder: (context, onSelected, options) {
+                                final matches = options.toList();
+                                final highlightedIndex =
+                                    AutocompleteHighlightedOption.of(context);
+                                highlightedAssigneeIndex = highlightedIndex;
+                                return LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final availableHeight =
+                                        constraints.hasBoundedHeight
+                                        ? constraints.maxHeight
+                                        : 260.0;
+                                    final popupHeight = availableHeight
+                                        .clamp(0.0, 210.0)
+                                        .toDouble();
+                                    const doneAreaHeight = 56.0;
+                                    final showDone =
+                                        popupHeight >= doneAreaHeight;
+                                    final listHeight =
+                                        (popupHeight -
+                                                (showDone ? doneAreaHeight : 0))
+                                            .clamp(0.0, 154.0)
+                                            .toDouble();
+
+                                    return Align(
+                                      alignment: Alignment.bottomRight,
+                                      child: Material(
+                                        elevation: 8,
+                                        borderRadius: BorderRadius.circular(12),
+                                        clipBehavior: Clip.antiAlias,
+                                        child: SizedBox(
+                                          width: 240,
+                                          child: ConstrainedBox(
+                                            constraints: BoxConstraints(
+                                              maxHeight: popupHeight,
+                                            ),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                ConstrainedBox(
+                                                  constraints: BoxConstraints(
+                                                    maxHeight: listHeight,
                                                   ),
-                                                  if (showDone)
-                                                    Padding(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                            8,
-                                                          ),
-                                                      child: SizedBox(
-                                                        width: double.infinity,
-                                                        child: ElevatedButton(
-                                                          style: ElevatedButton.styleFrom(
-                                                            backgroundColor:
-                                                                primaryColor,
-                                                            foregroundColor:
-                                                                secondaryColor,
-                                                          ),
-                                                          onPressed: () {
-                                                            final index =
-                                                                highlightedIndex
-                                                                    .clamp(
-                                                                      0,
-                                                                      matches.length -
-                                                                          1,
-                                                                    );
-                                                            onSelected(
-                                                              matches[index],
-                                                            );
-                                                          },
-                                                          child: const Text(
-                                                            'Done',
-                                                          ),
+                                                  child: ListView.builder(
+                                                    padding: EdgeInsets.zero,
+                                                    shrinkWrap: true,
+                                                    itemCount: matches.length,
+                                                    itemBuilder: (context, index) {
+                                                      final name =
+                                                          matches[index];
+                                                      return ListTile(
+                                                        dense: true,
+                                                        selected:
+                                                            index ==
+                                                            highlightedIndex,
+                                                        selectedTileColor:
+                                                            primaryColor
+                                                                .withValues(
+                                                                  alpha: 0.45,
+                                                                ),
+                                                        title: Text(
+                                                          name,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 13,
+                                                              ),
+                                                        ),
+                                                        onTap: () =>
+                                                            onSelected(name),
+                                                      );
+                                                    },
+                                                  ),
+                                                ),
+                                                if (showDone)
+                                                  Padding(
+                                                    padding:
+                                                        const EdgeInsets.all(8),
+                                                    child: SizedBox(
+                                                      width: double.infinity,
+                                                      child: ElevatedButton(
+                                                        style:
+                                                            ElevatedButton.styleFrom(
+                                                              backgroundColor:
+                                                                  primaryColor,
+                                                              foregroundColor:
+                                                                  secondaryColor,
+                                                            ),
+                                                        onPressed: () {
+                                                          final index =
+                                                              highlightedIndex
+                                                                  .clamp(
+                                                                    0,
+                                                                    matches.length -
+                                                                        1,
+                                                                  );
+                                                          onSelected(
+                                                            matches[index],
+                                                          );
+                                                        },
+                                                        child: const Text(
+                                                          'Done',
                                                         ),
                                                       ),
                                                     ),
-                                                ],
-                                              ),
+                                                  ),
+                                              ],
                                             ),
                                           ),
                                         ),
-                                      );
-                                    },
-                                  );
-                                },
-                                fieldViewBuilder:
-                                    (
-                                      context,
-                                      controller,
-                                      focusNode,
-                                      onFieldSubmitted,
-                                    ) => TextField(
-                                      controller: controller,
-                                      focusNode: focusNode,
-                                      autofocus: true,
-                                      onTap: () {
-                                        if (!focusNode.hasFocus) {
-                                          focusNode.requestFocus();
-                                        }
-                                      },
-                                      minLines: 1,
-                                      maxLines: 4,
-
-                                      textInputAction: TextInputAction.done,
-                                      decoration: const InputDecoration(
-                                        hintText: "Add a task",
-                                        border: InputBorder.none,
                                       ),
-                                      onChanged: (val) {
-                                        final cursor =
-                                            controller.selection.baseOffset;
-                                        final safeCursor = cursor
-                                            .clamp(0, val.length)
-                                            .toInt();
-                                        final m = parseMention(val, safeCursor);
+                                    );
+                                  },
+                                );
+                              },
+                              fieldViewBuilder:
+                                  (
+                                    context,
+                                    controller,
+                                    focusNode,
+                                    onFieldSubmitted,
+                                  ) => TextField(
+                                    controller: controller,
+                                    focusNode: focusNode,
+                                    autofocus: true,
+                                    onTap: () {
+                                      if (!focusNode.hasFocus) {
+                                        focusNode.requestFocus();
+                                      }
+                                    },
+                                    minLines: 1,
+                                    maxLines: 4,
 
-                                        assigneeMentionSourceText = val;
-                                        setModalState(() {
-                                          if (m != null) {
-                                            assigneeMentionStart = m.start;
-                                            assigneeMentionEnd = safeCursor;
-                                            assigneeMentionQuery = m.query;
-                                            mentionSymbol = m.symbol;
-                                          } else {
-                                            assigneeMentionQuery = null;
-                                            assigneeMentionStart = -1;
-                                            assigneeMentionEnd = -1;
-                                          }
-                                        });
+                                    textInputAction: TextInputAction.done,
+                                    decoration: const InputDecoration(
+                                      hintText: "Add a task",
+                                      border: InputBorder.none,
+                                    ),
+                                    onChanged: (val) {
+                                      final cursor =
+                                          controller.selection.baseOffset;
+                                      final safeCursor = cursor
+                                          .clamp(0, val.length)
+                                          .toInt();
+                                      final m = parseMention(val, safeCursor);
 
-                                        if (m == null) {
-                                          activeMentionPickerSymbol = null;
-                                          if (_floatingSheetOverlay != null) {
-                                            _hideFloatingSheet();
-                                          }
-                                          return;
+                                      assigneeMentionSourceText = val;
+                                      setModalState(() {
+                                        if (m != null) {
+                                          assigneeMentionStart = m.start;
+                                          assigneeMentionEnd = safeCursor;
+                                          assigneeMentionQuery = m.query;
+                                          mentionSymbol = m.symbol;
+                                        } else {
+                                          assigneeMentionQuery = null;
+                                          assigneeMentionStart = -1;
+                                          assigneeMentionEnd = -1;
                                         }
+                                      });
 
-                                        final pickerType = switch (m.symbol) {
-                                          '-' => FloatingSheetType.priority,
-                                          '@' => FloatingSheetType.assign,
-                                          '!' => FloatingSheetType.deadline,
-                                          '*' => FloatingSheetType.remind,
-                                          '+' => FloatingSheetType.workType,
-                                          '#' => FloatingSheetType.clientName,
-                                          '^' => FloatingSheetType.refProject,
-                                          _ => null,
-                                        };
-                                        if (pickerType == null) return;
+                                      if (m == null) {
+                                        activeMentionPickerSymbol = null;
+                                        if (_floatingSheetOverlay != null) {
+                                          _hideFloatingSheet();
+                                        }
+                                        return;
+                                      }
 
-                                        if (activeMentionPickerSymbol !=
-                                            m.symbol) {
-                                          activeMentionPickerSymbol = m.symbol;
-                                          _showFloatingSheet(
-                                            _metadataButtonKeys[pickerType]
-                                                    ?.currentContext ??
-                                                textFieldCtx,
-                                            pickerType,
-                                            shouldShow: () =>
-                                                activeMentionPickerSymbol ==
-                                                m.symbol,
-                                            searchQuery: () =>
-                                                assigneeMentionQuery ?? '',
-                                            closeOnSelect: true,
-                                            multiSelect:
-                                                pickerType ==
-                                                FloatingSheetType.assign,
-                                            selectedValues:
-                                                pickerType ==
-                                                    FloatingSheetType.assign
-                                                ? currentNewTaskAssignees()
-                                                : null,
-                                            onSelected: (option) {
-                                              if (pickerType ==
-                                                  FloatingSheetType.assign) {
-                                                addNewTaskAssignee(
+                                      final pickerType = switch (m.symbol) {
+                                        '-' => FloatingSheetType.priority,
+                                        '@' => FloatingSheetType.assign,
+                                        '!' => FloatingSheetType.deadline,
+                                        '*' => FloatingSheetType.remind,
+                                        '+' => FloatingSheetType.workType,
+                                        '#' => FloatingSheetType.clientName,
+                                        '^' => FloatingSheetType.refProject,
+                                        _ => null,
+                                      };
+                                      if (pickerType == null) return;
+
+                                      if (activeMentionPickerSymbol !=
+                                          m.symbol) {
+                                        activeMentionPickerSymbol = m.symbol;
+                                        _showFloatingSheet(
+                                          _metadataButtonKeys[pickerType]
+                                                  ?.currentContext ??
+                                              textFieldCtx,
+                                          pickerType,
+                                          shouldShow: () =>
+                                              activeMentionPickerSymbol ==
+                                              m.symbol,
+                                          searchQuery: () =>
+                                              assigneeMentionQuery ?? '',
+                                          closeOnSelect: true,
+                                          multiSelect:
+                                              pickerType ==
+                                              FloatingSheetType.assign,
+                                          selectedValues:
+                                              pickerType ==
+                                                  FloatingSheetType.assign
+                                              ? currentNewTaskAssignees()
+                                              : null,
+                                          onSelected: (option) {
+                                            if (pickerType ==
+                                                FloatingSheetType.assign) {
+                                              addNewTaskAssignee(
+                                                option,
+                                                setModalState,
+                                              );
+                                            } else {
+                                              unawaited(
+                                                completeMention(
                                                   option,
                                                   setModalState,
-                                                );
-                                              } else {
-                                                unawaited(
-                                                  completeMention(
-                                                    option,
-                                                    setModalState,
-                                                    sourceText:
-                                                        assigneeMentionSourceText,
-                                                  ),
-                                                );
-                                              }
-                                            },
-                                            onDone: () {
-                                              activeMentionPickerSymbol = null;
-                                              if (pickerType ==
-                                                  FloatingSheetType.assign) {
-                                                removeAssigneeMention(
-                                                  setModalState,
-                                                );
-                                              }
-                                            },
-                                          );
-                                        } else {
-                                          _searchQuery = m.query;
-                                          _floatingSheetOverlay
-                                              ?.markNeedsBuild();
-                                        }
-                                      },
-                                      onSubmitted: (_) {
-                                        final isMentionActive =
-                                            assigneeMentionQuery != null;
-                                        if (isMentionActive) {
-                                          if (assigneeMentionQuery!
-                                              .trim()
-                                              .isNotEmpty) {
-                                            unawaited(
-                                              selectMentionOnEnter(
+                                                  sourceText:
+                                                      assigneeMentionSourceText,
+                                                ),
+                                              );
+                                            }
+                                          },
+                                          onDone: () {
+                                            activeMentionPickerSymbol = null;
+                                            if (pickerType ==
+                                                FloatingSheetType.assign) {
+                                              removeAssigneeMention(
                                                 setModalState,
-                                              ),
-                                            );
-                                          }
-                                          return;
+                                              );
+                                            }
+                                          },
+                                        );
+                                      } else {
+                                        _searchQuery = m.query;
+                                        _floatingSheetOverlay?.markNeedsBuild();
+                                      }
+                                    },
+                                    onSubmitted: (_) {
+                                      final isMentionActive =
+                                          assigneeMentionQuery != null;
+                                      if (isMentionActive) {
+                                        if (assigneeMentionQuery!
+                                            .trim()
+                                            .isNotEmpty) {
+                                          unawaited(
+                                            selectMentionOnEnter(setModalState),
+                                          );
                                         }
-                                        onFieldSubmitted();
-                                        _handleAddTaskFromSheet().then((added) {
-                                          if (added && sheetContext.mounted) {
-                                            Navigator.of(sheetContext).pop();
-                                          }
-                                        });
-                                      },
-                                    ),
-                              ),
+                                        return;
+                                      }
+                                      onFieldSubmitted();
+                                      _handleAddTaskFromSheet().then((added) {
+                                        if (added && sheetContext.mounted) {
+                                          Navigator.of(sheetContext).pop();
+                                        }
+                                      });
+                                    },
+                                  ),
                             ),
                           ),
                         ),
-                        IconButton(
-                          tooltip: 'Task shortcuts',
-                          onPressed: () => _showTaskSymbolHelp(sheetContext),
-                          icon: const Icon(
-                            Icons.info_outline,
-                            color: secondaryColor,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () async {
-                            final added = await _handleAddTaskFromSheet();
-                            if (added && sheetContext.mounted) {
-                              Navigator.of(sheetContext).pop();
-                            }
-                          },
-                          icon: const Icon(Icons.send, color: secondaryColor),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    SingleChildScrollView(
-                      controller: _metadataButtonsScrollController,
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: availableButtonOrder
-                            .map(
-                              (type) => Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: _buildBottomSheetButtonWithState(
-                                  type,
-                                  setModalState,
-                                  compact: screenWidth < 600,
-                                ),
-                              ),
-                            )
-                            .toList(),
                       ),
+                      IconButton(
+                        tooltip: 'Task shortcuts',
+                        onPressed: () => _showTaskSymbolHelp(sheetContext),
+                        icon: const Icon(
+                          Icons.info_outline,
+                          color: secondaryColor,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () async {
+                          final added = await _handleAddTaskFromSheet();
+                          if (added && sheetContext.mounted) {
+                            Navigator.of(sheetContext).pop();
+                          }
+                        },
+                        icon: const Icon(Icons.send, color: secondaryColor),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SingleChildScrollView(
+                    controller: _metadataButtonsScrollController,
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: availableButtonOrder
+                          .map(
+                            (type) => Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: _buildBottomSheetButtonWithState(
+                                type,
+                                setModalState,
+                                compact: screenWidth < 600,
+                              ),
+                            ),
+                          )
+                          .toList(),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           );
@@ -2377,7 +1792,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Future<void> _openTaskDetail(Task task) async {
     _hideFloatingSheet();
     await context.push<void>('/task', extra: task);
-    if (mounted) await updateTaskHomeWidget(tasks);
+    if (!mounted) return;
+    await _viewModel.refreshTasks(
+      Provider.of<AuthViewModel>(context, listen: false),
+    );
   }
 
   Future<void> _confirmDeleteSelected() async {
@@ -2409,19 +1827,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       final List<Task> toDelete = _selected.toList();
 
       for (final t in toDelete) {
-        if (t.id != null) {
-          try {
-            await _deleteTaskFromFirebase(t);
-          } catch (_) {}
+        try {
+          await _deleteTaskFromFirebase(t);
+        } catch (error) {
+          if (mounted) _showMessage('Could not delete "${t.title}": $error');
         }
-        tasks.remove(t);
       }
 
       setState(() {
         _selected.clear();
-        _sortTasks();
       });
-      await updateTaskHomeWidget(tasks);
+      _viewModel.sortTasks();
     }
   }
 
@@ -2457,355 +1873,85 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         task.steps.add(TaskStep(title: result.trim()));
       });
       await _updateTaskInFirebase(task);
-      setState(() {
-        _sortTasks();
-      });
+      _viewModel.sortTasks();
     }
   }
 
-  Widget _buildTaskTile(Task task, int index) {
+  Widget _buildTaskTile(Task task) {
     final isSelected = _selected.contains(task);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      child: InkWell(
-        onLongPress: () {
-          setState(() {
-            if (_selected.contains(task)) {
-              _selected.remove(task);
-            } else {
-              _selected.add(task);
-            }
-          });
-        },
-        onTap: () async {
-          if (_selected.isNotEmpty) {
-            setState(() {
-              if (_selected.contains(task)) {
-                _selected.remove(task);
-              } else {
-                _selected.add(task);
-              }
-            });
-            return;
-          }
-          _openTaskDetail(task);
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            color: isSelected
-                ? primaryColor.withValues(alpha: 0.1)
-                : Colors.white,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              GestureDetector(
-                onTap: () async {
-                  setState(() {
-                    task.isDone = !task.isDone;
-                  });
-                  await _updateTaskInFirebase(task);
-                  setState(() {
-                    _sortTasks();
-                  });
-                },
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 14.0),
-                  child: isSelected
-                      ? const Icon(
-                          Icons.check_circle,
-                          size: 28,
-                          color: secondaryColor,
-                        )
-                      : Icon(
-                          task.isDone
-                              ? Icons.check_circle
-                              : Icons.radio_button_unchecked,
-                          size: 28,
-                          color: task.isDone ? Colors.green : Colors.black54,
-                        ),
+    return TaskTile(
+      task: task,
+      isSelected: isSelected,
+      taskName: _taskListName(task),
+      description: _taskListDescription(task),
+      priorityWidget: Builder(
+        builder: (badgeContext) {
+          final priority = task.priority;
+          return GestureDetector(
+            onTap: () => _showFloatingSheet(
+              badgeContext,
+              FloatingSheetType.priority,
+              onSelected: (value) async {
+                setState(() {
+                  task.priority = value;
+                  task.priorityUpdatedAt =
+                      DateTime.now().millisecondsSinceEpoch;
+                });
+                _viewModel.sortTasks();
+                await _updateTaskInFirebase(task);
+              },
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: priority == null || priority.isEmpty
+                      ? Colors.grey.shade300
+                      : secondaryColor,
                 ),
               ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      _taskListName(task),
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF26364A),
-                        decoration: task.isDone
-                            ? TextDecoration.lineThrough
-                            : TextDecoration.none,
-                        decorationColor: Colors.blueGrey.shade400,
-                      ),
-                    ),
-                    if (_taskListDescription(task)?.isNotEmpty == true)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 3),
-                        child: Text(
-                          _taskListDescription(task)!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            height: 1.25,
-                            color: task.isDone
-                                ? Colors.grey.shade500
-                                : Colors.blueGrey.shade500,
-                          ),
-                        ),
-                      ),
-                    if (task.workType != null && task.workType!.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 3.0),
-                        child: Text(
-                          task.workType!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: task.isDone
-                                ? Colors.grey.shade500
-                                : Colors.blueGrey.shade500,
-                          ),
-                        ),
-                      ),
-                  ],
+              child: Text(
+                priority == null || priority.isEmpty ? 'None' : priority,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: priority == null || priority.isEmpty
+                      ? Colors.grey.shade600
+                      : secondaryColor,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(width: 10),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Builder(
-                        builder: (badgeContext) {
-                          final p = task.priority;
-                          if (p == null || p.isEmpty) {
-                            return GestureDetector(
-                              onTap: () {
-                                _showFloatingSheet(
-                                  badgeContext,
-                                  FloatingSheetType.priority,
-                                  onSelected: (value) async {
-                                    setState(() {
-                                      task.priority = value;
-                                      task.priorityUpdatedAt =
-                                          DateTime.now().millisecondsSinceEpoch;
-                                    });
-                                    _sortTasks();
-                                    await _updateTaskInFirebase(task);
-                                  },
-                                );
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: Colors.grey.shade300,
-                                  ),
-                                ),
-                                child: Text(
-                                  'None',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
-
-                          return GestureDetector(
-                            onTap: () {
-                              _showFloatingSheet(
-                                badgeContext,
-                                FloatingSheetType.priority,
-                                onSelected: (value) async {
-                                  setState(() {
-                                    task.priority = value;
-                                    task.priorityUpdatedAt =
-                                        DateTime.now().millisecondsSinceEpoch;
-                                  });
-                                  _sortTasks();
-                                  await _updateTaskInFirebase(task);
-                                },
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: secondaryColor),
-                              ),
-                              child: Text(
-                                p,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: secondaryColor,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      InkWell(
-                        onTap: () => _promptAddSubstep(task),
-                        borderRadius: BorderRadius.circular(20),
-                        child: const Padding(
-                          padding: EdgeInsets.all(6.0),
-                          child: Icon(
-                            Icons.add_circle_outline,
-                            size: 24,
-                            color: secondaryColor,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                ],
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
+      onToggleDone: () async {
+        setState(() => task.isDone = !task.isDone);
+        await _updateTaskInFirebase(task);
+        _viewModel.sortTasks();
+      },
+      onToggleSelection: () => setState(() {
+        if (!_selected.add(task)) _selected.remove(task);
+      }),
+      onOpen: () {
+        if (_selected.isEmpty) {
+          _openTaskDetail(task);
+          return;
+        }
+        setState(() {
+          if (!_selected.add(task)) _selected.remove(task);
+        });
+      },
+      onAddSubtask: () => _promptAddSubstep(task),
     );
   }
 
-  bool _isOverdue(Task task) {
-    if (task.isDone) return false;
-    final dStr = task.deadline ?? task.reminder;
-    if (dStr == null || dStr.isEmpty) return false;
-    try {
-      final dt = DateTime.parse(dStr);
-      return dt.isBefore(DateTime.now());
-    } catch (_) {
-      return false;
-    }
-  }
+  List<Task> _getOverdueTasks() => _viewModel.overdueTasks();
+  List<Task> _getPendingTasks() => _viewModel.pendingTasks();
+  List<Task> _getDoneTasks() => _viewModel.doneTasks();
 
-  List<Task> _getOverdueTasks() => tasks.where((t) => _isOverdue(t)).toList();
-  List<Task> _getPendingTasks() =>
-      tasks.where((t) => !t.isDone && !_isOverdue(t)).toList();
-  List<Task> _getDoneTasks() => tasks.where((t) => t.isDone).toList();
-
-  List<Task> _getMyTasks() {
-    final authVM = Provider.of<AuthViewModel>(context, listen: false);
-    final String myUid = authVM.userUid.trim().toLowerCase();
-    final String myEmail = authVM.userEmail.trim().toLowerCase();
-    final String myName = authVM.userName.trim().toLowerCase();
-
-    return tasks.where((task) {
-      final cb = task.createdBy;
-      bool isCreator = false;
-      if (cb != null) {
-        final cbUid = (cb['uid'] ?? '').toString().trim().toLowerCase();
-        final cbEmail = (cb['email'] ?? '').toString().trim().toLowerCase();
-        final cbName = (cb['name'] ?? '').toString().trim().toLowerCase();
-        if ((cbUid.isNotEmpty && (cbUid == myUid || myUid.contains(cbUid))) ||
-            (cbEmail.isNotEmpty &&
-                (cbEmail == myEmail || myEmail.contains(cbEmail))) ||
-            (cbName.isNotEmpty &&
-                (cbName == myName || myName.contains(cbName)))) {
-          isCreator = true;
-        }
-      }
-
-      final assignee = (task.assignee ?? '').toString().trim().toLowerCase();
-      final isAssignee =
-          assignee.isNotEmpty &&
-          ((myName.isNotEmpty && assignee.contains(myName)) ||
-              (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
-              (myUid.isNotEmpty && assignee.contains(myUid)));
-
-      return isCreator || isAssignee;
-    }).toList();
-  }
-
-  DateTime? _myWorkDeadline(Task task) =>
-      DateTime.tryParse(task.deadline ?? '');
-
-  bool _isTomorrow(DateTime date, DateTime now) {
-    final tomorrow = DateTime(now.year, now.month, now.day + 1);
-    return date.year == tomorrow.year &&
-        date.month == tomorrow.month &&
-        date.day == tomorrow.day;
-  }
-
-  Map<String, List<Task>> _myWorkSections(List<Task> myTasks) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final pendingTasks = myTasks.where((task) => !task.isDone);
-    final doneTasks = myTasks.where((task) => task.isDone).toList();
-    final scheduledTasks = pendingTasks
-        .where((task) => task.priority?.trim().isEmpty ?? true)
-        .map((task) => (task: task, date: _myWorkDeadline(task)))
-        .where((entry) => entry.date != null)
-        .toList();
-    final todayWorks = <Task>{
-      ...scheduledTasks
-          .where(
-            (entry) =>
-                entry.date!.year == today.year &&
-                entry.date!.month == today.month &&
-                entry.date!.day == today.day,
-          )
-          .map((entry) => entry.task),
-      ...pendingTasks.where(
-        (task) => task.priority?.trim().toLowerCase() == 'today',
-      ),
-    }.toList();
-    final tomorrowWorks = <Task>{
-      ...scheduledTasks
-          .where((entry) => _isTomorrow(entry.date!, now))
-          .map((entry) => entry.task),
-      ...pendingTasks.where(
-        (task) => task.priority?.trim().toLowerCase() == 'tomorrow',
-      ),
-    }.toList();
-    List<Task> tasksWithPriority(String priority) => pendingTasks
-        .where((task) => task.priority?.trim().toLowerCase() == priority)
-        .toList();
-
-    return {
-      'Urgent Works': pendingTasks
-          .where(
-            (task) => const {
-              'u1',
-              'u2',
-              'u3',
-              'urgent',
-            }.contains(task.priority?.trim().toLowerCase()),
-          )
-          .toList(),
-      'IMP Works': tasksWithPriority('imp'),
-      'Today Works': todayWorks,
-      'Tomorrow Works': tomorrowWorks,
-      'Day Later Works': tasksWithPriority('day later'),
-      'Later Works': tasksWithPriority('later'),
-      'Process Works': tasksWithPriority('process'),
-      'Hold Works': tasksWithPriority('hold'),
-      'Done Works': doneTasks,
-    };
-  }
+  List<Task> _getMyTasks() =>
+      _viewModel.myTasks(Provider.of<AuthViewModel>(context, listen: false));
 
   Widget _buildTaskPriorityBadge(Task task, {bool compact = false}) {
     final priority = task.priority?.trim();
@@ -2820,7 +1966,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               task.priority = value;
               task.priorityUpdatedAt = DateTime.now().millisecondsSinceEpoch;
             });
-            _sortTasks();
+            _viewModel.sortTasks();
             await _updateTaskInFirebase(task);
           },
         );
@@ -2908,7 +2054,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ...dayTasks.asMap().entries.map(
               (entry) => Column(
                 children: [
-                  _buildTaskTile(entry.value, entry.key),
+                  _buildTaskTile(entry.value),
                   _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
                 ],
               ),
@@ -2955,7 +2101,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 }
                 return Column(
                   children: [
-                    _buildTaskTile(entry.value, entry.key),
+                    _buildTaskTile(entry.value),
                     _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
                   ],
                 );
@@ -2965,232 +2111,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildMyWorkView() {
-    final sections = _myWorkSections(_getMyTasks());
-    const sectionNames = [
-      'Urgent Works',
-      'IMP Works',
-      'Today Works',
-      'Tomorrow Works',
-      'Day Later Works',
-      'Later Works',
-      'Process Works',
-      'Hold Works',
-      'Done Works',
-    ];
-    final populatedSectionNames = sectionNames
-        .where((name) => sections[name]?.isNotEmpty ?? false)
-        .toList();
-    Widget buildBlankArea({double? height}) {
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          if (populatedSectionNames.isEmpty) return;
-          final topSection = populatedSectionNames.first;
-          setState(() {
-            if (_expandedMyWorkSections.contains(topSection)) {
-              _expandedMyWorkSections.remove(topSection);
-            } else {
-              _expandedMyWorkSections.add(topSection);
-            }
-          });
-        },
-        child: SizedBox(height: height, width: double.infinity),
-      );
-    }
-
+    final sections = _viewModel.myWorkSections(_getMyTasks());
     return _refreshableScrollView(
-      CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          SliverPadding(
-            padding: EdgeInsets.zero,
-            sliver: SliverList(
-              delegate: SliverChildListDelegate(
-                populatedSectionNames.isEmpty
-                    ? const [
-                        Padding(
-                          padding: EdgeInsets.fromLTRB(16, 20, 16, 20),
-                          child: Text(
-                            'No tasks in My Work.',
-                            style: TextStyle(color: Colors.blueGrey),
-                          ),
-                        ),
-                      ]
-                    : [
-                        for (final name in populatedSectionNames) ...[
-                          Builder(
-                            builder: (context) {
-                              final count = sections[name]?.length ?? 0;
-                              final isExpanded = _expandedMyWorkSections
-                                  .contains(name);
-                              final countBadgeColor = _myWorkSectionColor(name);
-
-                              return Column(
-                                children: [
-                                  InkWell(
-                                    onTap: () => setState(() {
-                                      if (isExpanded) {
-                                        _expandedMyWorkSections.remove(name);
-                                      } else {
-                                        _expandedMyWorkSections.add(name);
-                                      }
-                                    }),
-                                    onDoubleTap: () => setState(() {
-                                      if (_expandedMyWorkSections.length ==
-                                          populatedSectionNames.length) {
-                                        _expandedMyWorkSections.clear();
-                                      } else {
-                                        _expandedMyWorkSections
-                                          ..clear()
-                                          ..addAll(populatedSectionNames);
-                                      }
-                                    }),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 14,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Text(
-                                            name
-                                                .replaceFirst(
-                                                  RegExp(r' Works$'),
-                                                  '',
-                                                )
-                                                .toUpperCase(),
-                                            style: TextStyle(
-                                              color: countBadgeColor,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w700,
-                                              letterSpacing: 0.4,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Container(
-                                            constraints: const BoxConstraints(
-                                              minWidth: 28,
-                                            ),
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 7,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: countBadgeColor.withValues(
-                                                alpha: 0.12,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-                                            ),
-                                            child: Text(
-                                              '$count',
-                                              textAlign: TextAlign.center,
-                                              style: TextStyle(
-                                                color: countBadgeColor,
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          Icon(
-                                            isExpanded
-                                                ? Icons.keyboard_arrow_up
-                                                : Icons.keyboard_arrow_down,
-                                            color: countBadgeColor,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  if (isExpanded)
-                                    Container(
-                                      margin: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                      ),
-                                      constraints: BoxConstraints(
-                                        maxHeight:
-                                            MediaQuery.of(context).size.height *
-                                            0.4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: countBadgeColor.withValues(
-                                            alpha: 0.25,
-                                          ),
-                                        ),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      clipBehavior: Clip.antiAlias,
-                                      child: SingleChildScrollView(
-                                        child: _buildMyWorkTaskResults(
-                                          _getVisibleTasks(
-                                            sections[name] ?? const <Task>[],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              );
-                            },
-                          ),
-                        ],
-                      ],
-                addAutomaticKeepAlives: false,
-              ),
-            ),
-          ),
-          if (populatedSectionNames.isNotEmpty)
-            SliverToBoxAdapter(child: buildBlankArea(height: 100)),
-          if (populatedSectionNames.isNotEmpty)
-            SliverFillRemaining(hasScrollBody: false, child: buildBlankArea()),
-        ],
+      MyWorkView(
+        sections: sections,
+        taskResultsBuilder: (tasks) =>
+            _buildMyWorkTaskResults(_getVisibleTasks(tasks)),
       ),
     );
   }
 
   List<Task> _getVisibleTasks(List<Task> source) {
-    final query = _taskSearchQuery.trim().toLowerCase();
-    final result = source
-        .where(
-          (task) =>
-              query.isEmpty ||
-              task.title.toLowerCase().contains(query) ||
-              task.note.toLowerCase().contains(query) ||
-              (task.assignee ?? '').toLowerCase().contains(query) ||
-              (task.workType ?? '').toLowerCase().contains(query) ||
-              (task.priority ?? '').toLowerCase().contains(query),
-        )
-        .toList();
-
-    int compareDates(String? a, String? b) {
-      final first = DateTime.tryParse(a ?? '');
-      final second = DateTime.tryParse(b ?? '');
-      if (first == null) return second == null ? 0 : 1;
-      if (second == null) return -1;
-      return first.compareTo(second);
-    }
-
-    switch (_sortBy) {
-      case 'Title':
-        result.sort(
-          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
-        );
-      case 'Due date':
-        result.sort(
-          (a, b) =>
-              compareDates(a.deadline ?? a.reminder, b.deadline ?? b.reminder),
-        );
-      case 'Status':
-        result.sort(
-          (a, b) => a.isDone == b.isDone
-              ? a.title.toLowerCase().compareTo(b.title.toLowerCase())
-              : (a.isDone ? 1 : -1),
-        );
-      default:
-        result.sort(_taskComparator);
-    }
-    return result;
+    return _viewModel.visibleTasks(
+      source: source,
+      query: _taskSearchQuery,
+      sortBy: _sortBy,
+    );
   }
 
   int _upcomingTaskNotificationCount() {
@@ -3240,281 +2176,107 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Widget _buildCompactTaskTile(Task task) {
     final isSelected = _selected.contains(task);
-    final description = _taskListDescription(task);
-    final workType = task.workType?.trim() ?? '';
-    return ListTile(
-      dense: true,
-      selected: isSelected,
-      leading: Checkbox(
-        value: task.isDone,
-        activeColor: secondaryColor,
-        onChanged: (_) async {
-          setState(() => task.isDone = !task.isDone);
-          await _updateTaskInFirebase(task);
-          if (mounted) _sortTasks();
-        },
-      ),
-      title: Text(
-        _taskListName(task),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: const Color(0xFF26364A),
-          decoration: task.isDone ? TextDecoration.lineThrough : null,
-          decorationColor: Colors.blueGrey.shade400,
-        ),
-      ),
-      subtitle: (description?.isNotEmpty ?? false) || workType.isNotEmpty
-          ? Text(
-              [
-                if (description?.isNotEmpty == true) description!,
-                if (workType.isNotEmpty) workType,
-              ].join(' • '),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.blueGrey.shade500,
-                height: 1.25,
-              ),
-            )
-          : null,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildTaskPriorityBadge(task, compact: true),
-          IconButton(
-            tooltip: 'Add subtask',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => _promptAddSubstep(task),
-            icon: const Icon(
-              Icons.add_circle_outline,
-              color: Color(0xFF526D8A),
-              size: 21,
-            ),
-          ),
-        ],
-      ),
-      onLongPress: () => setState(() {
-        if (isSelected) {
-          _selected.remove(task);
-        } else {
-          _selected.add(task);
-        }
-      }),
-      onTap: () {
-        if (_selected.isNotEmpty) {
-          setState(() {
-            if (isSelected) {
-              _selected.remove(task);
-            } else {
-              _selected.add(task);
-            }
-          });
-        } else {
-          _openTaskDetail(task);
-        }
+    return CompactTaskTile(
+      task: task,
+      taskName: _taskListName(task),
+      description: _taskListDescription(task),
+      isSelected: isSelected,
+      priorityBadge: _buildTaskPriorityBadge(task, compact: true),
+      onToggleDone: () async {
+        setState(() => task.isDone = !task.isDone);
+        await _updateTaskInFirebase(task);
+        if (mounted) _viewModel.sortTasks();
       },
+      onAddSubtask: () => _promptAddSubstep(task),
+      onToggleSelection: () => _toggleTaskSelection(task),
+      onOpen: () => _openOrToggleTask(task),
     );
   }
 
   Widget _buildGridTaskCard(Task task) {
-    final isSelected = _selected.contains(task);
-    return Card(
-      color: isSelected ? primaryColor.withValues(alpha: 0.15) : Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onLongPress: () => setState(() {
-          if (isSelected) {
-            _selected.remove(task);
-          } else {
-            _selected.add(task);
-          }
-        }),
-        onTap: () {
-          if (_selected.isNotEmpty) {
-            setState(() {
-              if (isSelected) {
-                _selected.remove(task);
-              } else {
-                _selected.add(task);
-              }
-            });
-          } else {
-            _openTaskDetail(task);
-          }
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    task.isDone
-                        ? Icons.check_circle
-                        : Icons.radio_button_unchecked,
-                    color: task.isDone ? Colors.green : Colors.grey,
-                    size: 20,
-                  ),
-                  const SizedBox(height: 8),
-                  if (task.priority?.isNotEmpty == true)
-                    Text(
-                      task.priority!,
-                      style: const TextStyle(
-                        color: secondaryColor,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                _taskListName(task),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  decoration: task.isDone ? TextDecoration.lineThrough : null,
-                ),
-              ),
-              const Spacer(),
-              if (_taskListDescription(task)?.isNotEmpty == true)
-                Text(
-                  _taskListDescription(task)!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-            ],
-          ),
-        ),
-      ),
+    return TaskGridCard(
+      task: task,
+      taskName: _taskListName(task),
+      description: _taskListDescription(task),
+      isSelected: _selected.contains(task),
+      onToggleSelection: () => _toggleTaskSelection(task),
+      onOpen: () => _openOrToggleTask(task),
     );
   }
 
-  Widget _buildTaskList(List<Task> list) {
-    final visibleTasks = _getVisibleTasks(list);
-    if (_viewType == 'Calendar') {
-      return _buildCalendarView(visibleTasks);
-    }
-    if (visibleTasks.isEmpty) {
-      return _refreshableScrollView(
-        ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(
-              height: 240,
-              child: Center(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text(
-                    'No tasks found in this category.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-    return _refreshableScrollView(
-      MediaQuery(
-        data: MediaQuery.of(context)
-            .copyWith(textScaler: TextScaler.linear(_zoom)),
-        child: _viewType == 'Grid'
-            ? GridView.builder(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
-                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 260,
-                  mainAxisExtent: 150 + (80 * (_zoom - 1)),
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                ),
-                itemCount: visibleTasks.length,
-                itemBuilder: (context, index) =>
-                    _buildGridTaskCard(visibleTasks[index]),
-              )
-            : ListView.builder(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
-                itemCount: visibleTasks.length,
-                itemBuilder: (context, index) => _viewType == 'List'
-                    ? _buildCompactTaskTile(visibleTasks[index])
-                    : Column(
-                        children: [
-                          _buildTaskTile(visibleTasks[index], index),
-                          _thinHairline(
-                            indent: 15,
-                            endIndent: 15,
-                            opacity: 0.05,
-                          ),
-                        ],
-                      ),
-              ),
-      ),
-    );
+  void _toggleTaskSelection(Task task) {
+    setState(() {
+      if (!_selected.add(task)) _selected.remove(task);
+    });
   }
+
+  void _openOrToggleTask(Task task) {
+    if (_selected.isEmpty) {
+      _openTaskDetail(task);
+    } else {
+      _toggleTaskSelection(task);
+    }
+  }
+
+  Widget _buildTaskItem(Task task, int index) => _viewType == 'Grid'
+      ? _buildGridTaskCard(task)
+      : _viewType == 'List'
+      ? _buildCompactTaskTile(task)
+      : Column(
+          children: [
+            _buildTaskTile(task),
+            _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
+          ],
+        );
+
+  Widget _buildAllWorkTab() => AllWorkView(
+    tasks: _getVisibleTasks(tasks),
+    viewType: _viewType,
+    zoom: _zoom,
+    taskBuilder: _buildTaskItem,
+    calendarBuilder: _buildCalendarView,
+    refreshable: _refreshableScrollView,
+  );
+
+  Widget _buildDoneTasksTab() => DoneTasksView(
+    tasks: _getVisibleTasks(_getDoneTasks()),
+    viewType: _viewType,
+    zoom: _zoom,
+    taskBuilder: _buildTaskItem,
+    calendarBuilder: _buildCalendarView,
+    refreshable: _refreshableScrollView,
+  );
+
+  Widget _buildOverdueTasksTab() => OverdueTasksView(
+    tasks: _getVisibleTasks(_getOverdueTasks()),
+    viewType: _viewType,
+    zoom: _zoom,
+    taskBuilder: _buildTaskItem,
+    calendarBuilder: _buildCalendarView,
+    refreshable: _refreshableScrollView,
+  );
+
+  Widget _buildPendingTasksTab() => PendingTasksView(
+    tasks: _getVisibleTasks(_getPendingTasks()),
+    viewType: _viewType,
+    zoom: _zoom,
+    taskBuilder: _buildTaskItem,
+    calendarBuilder: _buildCalendarView,
+    refreshable: _refreshableScrollView,
+  );
 
   Widget _buildCalendarView(List<Task> visibleTasks) {
-    final selectedDay = DateTime(
-      _calendarDate.year,
-      _calendarDate.month,
-      _calendarDate.day,
-    );
-    final dayTasks = visibleTasks.where((task) {
-      final scheduled = _taskScheduledDate(task);
-      return scheduled != null &&
-          scheduled.year == selectedDay.year &&
-          scheduled.month == selectedDay.month &&
-          scheduled.day == selectedDay.day;
-    }).toList();
-
-    return _refreshableScrollView(
-      SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 100),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CalendarDatePicker(
-              initialDate: _calendarDate,
-              firstDate: DateTime(2000),
-              lastDate: DateTime(2100),
-              onDateChanged: (date) => setState(() => _calendarDate = date),
-            ),
-            const Divider(height: 1),
-            if (dayTasks.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'No tasks scheduled for this day.',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              )
-            else
-              ...dayTasks.asMap().entries.map(
-                (entry) => Column(
-                  children: [
-                    _buildTaskTile(entry.value, entry.key),
-                    _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
-                  ],
-                ),
-              ),
-          ],
-        ),
+    return CalendarView(
+      tasks: visibleTasks,
+      selectedDate: _calendarDate,
+      onDateChanged: (date) => setState(() => _calendarDate = date),
+      scheduledDate: _taskScheduledDate,
+      refreshable: _refreshableScrollView,
+      taskBuilder: (task, index) => Column(
+        children: [
+          _buildTaskTile(task),
+          _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
+        ],
       ),
     );
   }
@@ -3524,105 +2286,20 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     for (final task in _getVisibleTasks(tasks)) {
       grouped.putIfAbsent(_groupValue(task), () => []).add(task);
     }
-
-    if (grouped.isEmpty) {
-      return _refreshableScrollView(
-        ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(
-              height: 240,
-              child: Center(
-                child: Text(
-                  'No tasks to group.',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-            ),
-          ],
-        ),
+    if (_groupBy == 'Assignee') {
+      return GroupByAssigneeView(
+        groups: grouped,
+        refreshable: _refreshableScrollView,
+        onOpenAssignee: _showAssigneeTasksModal,
+        onOpenTask: _openTaskDetail,
       );
     }
-
-    final groups = grouped.keys.toList()..sort();
-
-    return _refreshableScrollView(
-      ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-        itemCount: groups.length,
-        itemBuilder: (context, index) {
-          final groupName = groups[index];
-          final groupTasks = grouped[groupName]!;
-          final completedCount = groupTasks.where((t) => t.isDone).length;
-          final pendingCount = groupTasks.length - completedCount;
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: ExpansionTile(
-              leading: CircleAvatar(
-                backgroundColor: primaryColor.withValues(alpha: 0.3),
-                child: Text(
-                  groupName.isNotEmpty ? groupName[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: secondaryColor,
-                  ),
-                ),
-              ),
-              title: Text(
-                groupName,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                  color: Colors.black87,
-                ),
-              ),
-              subtitle: Text(
-                'Total: ${groupTasks.length} • Pending: $pendingCount • Done: $completedCount',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-              children: [
-                if (_groupBy == 'Assignee')
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: () =>
-                          _showAssigneeTasksModal(groupName, groupTasks),
-                      icon: const Icon(Icons.open_in_new, size: 18),
-                      label: const Text('Open assignee task view'),
-                    ),
-                  ),
-                ...groupTasks.map(
-                  (task) => ListTile(
-                    dense: true,
-                    leading: Icon(
-                      task.isDone
-                          ? Icons.check_circle_outline
-                          : Icons.radio_button_unchecked,
-                      color: task.isDone ? Colors.green : Colors.grey,
-                    ),
-                    title: Text(task.title),
-                    onTap: () => _openTaskDetail(task),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+    return GroupByView(
+      groups: grouped,
+      groupBy: _groupBy,
+      refreshable: _refreshableScrollView,
+      onOpenAssignee: _showAssigneeTasksModal,
+      onOpenTask: _openTaskDetail,
     );
   }
 
@@ -3809,49 +2486,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Future<void> _shareTaskList() async {
     final items = _getVisibleTasks(_tasksForCurrentTab());
-    final contents = items.isEmpty
-        ? 'No tasks in this list.'
-        : items
-              .map(
-                (task) =>
-                    '${task.isDone ? '[Done]' : '[Pending]'} ${task.title}'
-                    '${task.assignee?.isNotEmpty == true ? ' — ${task.assignee}' : ''}'
-                    '${task.deadline?.isNotEmpty == true ? ' (Due: ${task.deadline})' : ''}',
-              )
-              .join('\n');
-    await SharePlus.instance.share(
-      ShareParams(subject: 'Task list', text: '${widget.title}\n\n$contents'),
-    );
+    await _sharePrintService.shareTasks(widget.title, items);
   }
 
   Future<void> _printTaskList() async {
     final items = _getVisibleTasks(_tasksForCurrentTab());
-    final document = pw.Document();
-    document.addPage(
-      pw.MultiPage(
-        build: (context) => [
-          pw.Text(
-            '${widget.title} - Task list',
-            style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
-          ),
-          pw.SizedBox(height: 16),
-          if (items.isEmpty)
-            pw.Text('No tasks in this list.')
-          else
-            ...items.map(
-              (task) => pw.Padding(
-                padding: const pw.EdgeInsets.only(bottom: 10),
-                child: pw.Text(
-                  '${task.isDone ? '[Done]' : '[Pending]'} ${task.title}'
-                  '${task.assignee?.isNotEmpty == true ? ' - ${task.assignee}' : ''}'
-                  '${task.deadline?.isNotEmpty == true ? ' (Due: ${task.deadline})' : ''}',
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-    await Printing.layoutPdf(onLayout: (_) async => document.save());
+    await _sharePrintService.printTasks(widget.title, items);
   }
 
   Future<void> _showNotifications() async {
@@ -3965,7 +2605,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
-
   @override
   Widget build(BuildContext context) {
     final bool selectionActive = _selected.isNotEmpty;
@@ -4129,10 +2768,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               controller: _tabController,
               children: [
                 _buildMyWorkView(),
-                _buildTaskList(tasks),
-                _buildTaskList(_getDoneTasks()),
-                _buildTaskList(_getOverdueTasks()),
-                _buildTaskList(_getPendingTasks()),
+                _buildAllWorkTab(),
+                _buildDoneTasksTab(),
+                _buildOverdueTasksTab(),
+                _buildPendingTasksTab(),
                 _buildGroupByAssignView(),
               ],
             ),

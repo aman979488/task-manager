@@ -1,0 +1,418 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
+import '../../../services/task_home_widget_service.dart';
+import '../../../utils/role_permissions.dart';
+import '../../../viewmodels/auth_viewmodel.dart';
+import '../models/task.dart';
+import '../repositories/task_repository.dart';
+import '../services/task_assignment_notification_service.dart';
+
+class MapScreenViewModel extends ChangeNotifier {
+  MapScreenViewModel({
+    TaskRepository? repository,
+    TaskAssignmentNotificationService? assignmentNotificationService,
+  }) : _repository = repository ?? TaskRepository(),
+       _assignmentNotificationService =
+           assignmentNotificationService ?? TaskAssignmentNotificationService();
+
+  final TaskRepository _repository;
+  final TaskAssignmentNotificationService _assignmentNotificationService;
+  final List<Task> _tasks = [];
+  final Set<Task> _pendingTasks = {};
+  StreamSubscription<List<Task>>? _tasksSubscription;
+  bool _isAddingTask = false;
+  String? _lastErrorMessage;
+
+  List<Task> get tasks => List.unmodifiable(_tasks);
+  bool get isAddingTask => _isAddingTask;
+
+  String? takeErrorMessage() {
+    final message = _lastErrorMessage;
+    _lastErrorMessage = null;
+    return message;
+  }
+
+  void listenForTasks(AuthViewModel authViewModel) {
+    _tasksSubscription?.cancel();
+    _tasksSubscription = _repository.watchTasks().listen(
+      (loaded) {
+        _replaceTasks(
+          loaded
+              .where((task) => isTaskVisibleToUser(task, authViewModel))
+              .toList(),
+        );
+        _updateHomeWidgetSafely();
+      },
+      onError: (Object error) {
+        debugPrint('Error listening for task updates: $error');
+        _lastErrorMessage = 'Could not sync tasks. Pull down to refresh.';
+        notifyListeners();
+      },
+    );
+  }
+
+  Future<void> refreshTasks(AuthViewModel authViewModel) async {
+    final loaded = await _repository.fetchTasks();
+    _replaceTasks(
+      loaded
+          .where((task) => isTaskVisibleToUser(task, authViewModel))
+          .toList(),
+    );
+    await _updateHomeWidgetSafely();
+  }
+
+  bool isTaskVisibleToUser(Task task, AuthViewModel authViewModel) {
+    if (authViewModel.appRole == AppRole.superAdmin ||
+        authViewModel.appRole == AppRole.admin ||
+        authViewModel.appRole == AppRole.officeStaff) {
+      return true;
+    }
+    final myUid = authViewModel.userUid.trim().toLowerCase();
+    final myEmail = authViewModel.userEmail.trim().toLowerCase();
+    final myName = authViewModel.userName.trim().toLowerCase();
+    final creator = task.createdBy;
+    if (creator != null) {
+      final creatorUid = (creator['uid'] ?? '').toString().trim().toLowerCase();
+      final creatorEmail = (creator['email'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      final creatorName = (creator['name'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      if ((creatorUid.isNotEmpty &&
+              (creatorUid == myUid || myUid.contains(creatorUid))) ||
+          (creatorEmail.isNotEmpty &&
+              (creatorEmail == myEmail || myEmail.contains(creatorEmail))) ||
+          (creatorName.isNotEmpty &&
+              (creatorName == myName || myName.contains(creatorName)))) {
+        return true;
+      }
+    }
+
+    final assignee = (task.assignee ?? '').trim().toLowerCase();
+    return assignee.isNotEmpty &&
+        ((myName.isNotEmpty && assignee.contains(myName)) ||
+            (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
+            (myUid.isNotEmpty && assignee.contains(myUid)));
+  }
+
+  Future<bool> addTask({
+    required String title,
+    required AuthViewModel authViewModel,
+    String? priority,
+    String? reminder,
+    String? assignee,
+    String? deadline,
+    String? workType,
+    String? folder,
+    String? clientName,
+    String? refProject,
+  }) async {
+    if (_isAddingTask) return false;
+    final cleanTitle = title.trim();
+    if (cleanTitle.isEmpty) return false;
+
+    _isAddingTask = true;
+    notifyListeners();
+    final task = Task(
+      cleanTitle,
+      priority: priority,
+      reminder: reminder,
+      reminderSent: false,
+      deadlineReminderSent: false,
+      assignee: assignee,
+      deadline: deadline,
+      workType: workType,
+      folder: folder,
+      clientName: clientName,
+      refProject: refProject,
+      createdBy: authViewModel.actorMetadata,
+      assigneeUid: assignee,
+      priorityUpdatedAt: priority == null
+          ? null
+          : DateTime.now().millisecondsSinceEpoch,
+    );
+
+    if (isTaskVisibleToUser(task, authViewModel)) {
+      _pendingTasks.add(task);
+      _tasks.add(task);
+      sortTasks();
+      notifyListeners();
+    }
+    if (assignee != null && assignee.trim().isNotEmpty) {
+      unawaited(_sendAssignmentNotification(assignee, cleanTitle, authViewModel));
+    }
+    unawaited(_saveNewTask(task));
+    _isAddingTask = false;
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> updateTask(Task task) async {
+    await _repository.updateTask(task);
+    await _updateHomeWidgetSafely();
+  }
+
+  Future<void> deleteTask(Task task) async {
+    await _repository.deleteTask(task);
+    _tasks.remove(task);
+    notifyListeners();
+    await _updateHomeWidgetSafely();
+  }
+
+  Future<List<String>> loadClients() => _repository.loadClients();
+  Future<List<String>> loadAssignees() => _repository.loadAssignees();
+  Future<List<String>> loadWorkTypes() => _repository.loadWorkTypes();
+  Future<List<String>> loadProjects() => _repository.loadProjects();
+
+  void sortTasks() {
+    _tasks.sort(compareTasks);
+    notifyListeners();
+  }
+
+  int compareTasks(Task first, Task second) {
+    if (first.isDone != second.isDone) return first.isDone ? 1 : -1;
+    final firstPriority = _priorityOrder(first.priority);
+    final secondPriority = _priorityOrder(second.priority);
+    if (firstPriority != secondPriority) {
+      return firstPriority.compareTo(secondPriority);
+    }
+    return (second.priorityUpdatedAt ?? 0).compareTo(
+      first.priorityUpdatedAt ?? 0,
+    );
+  }
+
+  List<Task> overdueTasks() => _tasks.where(isOverdue).toList();
+
+  List<Task> pendingTasks() =>
+      _tasks.where((task) => !task.isDone && !isOverdue(task)).toList();
+
+  List<Task> doneTasks() => _tasks.where((task) => task.isDone).toList();
+
+  bool isOverdue(Task task) {
+    if (task.isDone) return false;
+    final date = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
+    return date != null && date.isBefore(DateTime.now());
+  }
+
+  List<Task> myTasks(AuthViewModel authViewModel) {
+    final myUid = authViewModel.userUid.trim().toLowerCase();
+    final myEmail = authViewModel.userEmail.trim().toLowerCase();
+    final myName = authViewModel.userName.trim().toLowerCase();
+    return _tasks.where((task) {
+      final creator = task.createdBy;
+      var isCreator = false;
+      if (creator != null) {
+        final uid = (creator['uid'] ?? '').toString().trim().toLowerCase();
+        final email = (creator['email'] ?? '').toString().trim().toLowerCase();
+        final name = (creator['name'] ?? '').toString().trim().toLowerCase();
+        isCreator =
+            (uid.isNotEmpty && (uid == myUid || myUid.contains(uid))) ||
+            (email.isNotEmpty &&
+                (email == myEmail || myEmail.contains(email))) ||
+            (name.isNotEmpty && (name == myName || myName.contains(name)));
+      }
+      final assignee = (task.assignee ?? '').trim().toLowerCase();
+      final isAssignee =
+          assignee.isNotEmpty &&
+          ((myName.isNotEmpty && assignee.contains(myName)) ||
+              (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
+              (myUid.isNotEmpty && assignee.contains(myUid)));
+      return isCreator || isAssignee;
+    }).toList();
+  }
+
+  Map<String, List<Task>> myWorkSections(List<Task> myTasks) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final pending = myTasks.where((task) => !task.isDone);
+    final done = myTasks.where((task) => task.isDone).toList();
+    final scheduled = pending
+        .where((task) => task.priority?.trim().isEmpty ?? true)
+        .map((task) => (task: task, date: DateTime.tryParse(task.deadline ?? '')))
+        .where((entry) => entry.date != null)
+        .toList();
+    final todayWorks = <Task>{
+      ...scheduled
+          .where(
+            (entry) =>
+                entry.date!.year == today.year &&
+                entry.date!.month == today.month &&
+                entry.date!.day == today.day,
+          )
+          .map((entry) => entry.task),
+      ...pending.where(
+        (task) => task.priority?.trim().toLowerCase() == 'today',
+      ),
+    }.toList();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final tomorrowWorks = <Task>{
+      ...scheduled
+          .where(
+            (entry) =>
+                entry.date!.year == tomorrow.year &&
+                entry.date!.month == tomorrow.month &&
+                entry.date!.day == tomorrow.day,
+          )
+          .map((entry) => entry.task),
+      ...pending.where(
+        (task) => task.priority?.trim().toLowerCase() == 'tomorrow',
+      ),
+    }.toList();
+    List<Task> withPriority(String priority) => pending
+        .where((task) => task.priority?.trim().toLowerCase() == priority)
+        .toList();
+    return {
+      'Urgent Works': pending
+          .where(
+            (task) => const {'u1', 'u2', 'u3', 'urgent'}.contains(
+              task.priority?.trim().toLowerCase(),
+            ),
+          )
+          .toList(),
+      'IMP Works': withPriority('imp'),
+      'Today Works': todayWorks,
+      'Tomorrow Works': tomorrowWorks,
+      'Day Later Works': withPriority('day later'),
+      'Later Works': withPriority('later'),
+      'Process Works': withPriority('process'),
+      'Hold Works': withPriority('hold'),
+      'Done Works': done,
+    };
+  }
+
+  List<Task> visibleTasks({
+    List<Task>? source,
+    required String query,
+    required String sortBy,
+  }) {
+    final normalizedQuery = query.trim().toLowerCase();
+    final result = (source ?? _tasks)
+        .where(
+          (task) =>
+              normalizedQuery.isEmpty ||
+              task.title.toLowerCase().contains(normalizedQuery) ||
+              task.note.toLowerCase().contains(normalizedQuery) ||
+              (task.assignee ?? '').toLowerCase().contains(normalizedQuery) ||
+              (task.workType ?? '').toLowerCase().contains(normalizedQuery) ||
+              (task.priority ?? '').toLowerCase().contains(normalizedQuery),
+        )
+        .toList();
+    int compareDates(String? first, String? second) {
+      final firstDate = DateTime.tryParse(first ?? '');
+      final secondDate = DateTime.tryParse(second ?? '');
+      if (firstDate == null) return secondDate == null ? 0 : 1;
+      if (secondDate == null) return -1;
+      return firstDate.compareTo(secondDate);
+    }
+
+    switch (sortBy) {
+      case 'Title':
+        result.sort(
+          (first, second) =>
+              first.title.toLowerCase().compareTo(second.title.toLowerCase()),
+        );
+      case 'Due date':
+        result.sort(
+          (first, second) => compareDates(
+            first.deadline ?? first.reminder,
+            second.deadline ?? second.reminder,
+          ),
+        );
+      case 'Status':
+        result.sort(
+          (first, second) => first.isDone == second.isDone
+              ? first.title.toLowerCase().compareTo(second.title.toLowerCase())
+              : (first.isDone ? 1 : -1),
+        );
+      default:
+        result.sort(compareTasks);
+    }
+    return result;
+  }
+
+  Future<void> _saveNewTask(Task task) async {
+    try {
+      await _repository.addTask(task);
+      _pendingTasks.remove(task);
+      await _updateHomeWidgetSafely();
+    } catch (error) {
+      debugPrint('Error adding task: $error');
+      _pendingTasks.remove(task);
+      _tasks.removeWhere(
+        (existing) =>
+            identical(existing, task) ||
+            (task.id != null && existing.id == task.id),
+      );
+      _lastErrorMessage = 'Could not send "${task.title}". Please try again.';
+      notifyListeners();
+    }
+  }
+
+  Future<void> _sendAssignmentNotification(
+    String assignee,
+    String title,
+    AuthViewModel authViewModel,
+  ) async {
+    try {
+      await _assignmentNotificationService.sendAssignmentNotification(
+        assignee: assignee,
+        taskTitle: title,
+        senderName: authViewModel.userName,
+        senderUid: authViewModel.userUid,
+        senderEmail: authViewModel.userEmail,
+        notificationsEnabled: authViewModel.allowNotifications,
+      );
+    } catch (error) {
+      debugPrint('Error sending notification: $error');
+    }
+  }
+
+  void _replaceTasks(List<Task> loaded) {
+    loaded.sort(compareTasks);
+    final loadedIds = loaded.map((task) => task.id).toSet();
+    final pending = _pendingTasks
+        .where((task) => task.id == null || !loadedIds.contains(task.id))
+        .toList();
+    _tasks
+      ..clear()
+      ..addAll(loaded)
+      ..addAll(pending)
+      ..sort(compareTasks);
+    notifyListeners();
+  }
+
+  Future<void> _updateHomeWidgetSafely() async {
+    try {
+      await updateTaskHomeWidget(_tasks);
+    } catch (error) {
+      debugPrint('Error updating task home widget: $error');
+    }
+  }
+
+  int _priorityOrder(String? priority) => switch (priority) {
+    'U1' => 1,
+    'U2' => 2,
+    'U3' => 3,
+    'Urgent' => 4,
+    'IMP' => 5,
+    'Today' => 6,
+    'Tomorrow' => 7,
+    'Day Later' => 8,
+    'Later' => 9,
+    'Process' => 10,
+    'Hold' => 11,
+    'Free' => 12,
+    _ => 100,
+  };
+
+  @override
+  void dispose() {
+    _tasksSubscription?.cancel();
+    super.dispose();
+  }
+}

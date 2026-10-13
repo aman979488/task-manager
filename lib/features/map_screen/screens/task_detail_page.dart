@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 
 import '../../../viewmodels/auth_viewmodel.dart';
+import '../services/task_assignment_notification_service.dart';
 
 class TaskDetailPage extends StatefulWidget {
   final Task task;
@@ -31,6 +32,8 @@ class TaskDetailPage extends StatefulWidget {
 }
 
 class _TaskDetailPageState extends State<TaskDetailPage> {
+  final TaskAssignmentNotificationService _assignmentNotificationService =
+      TaskAssignmentNotificationService();
   OverlayEntry? _overlayEntry;
   late TextEditingController _noteController;
   final TextEditingController _searchController = TextEditingController();
@@ -269,50 +272,15 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   ) async {
     if (assignee == null || assignee.trim().isEmpty) return;
     final authVM = Provider.of<AuthViewModel>(ctx, listen: false);
-    if (!authVM.allowNotifications) return;
-    final String cleanAssignee = assignee.trim().toLowerCase();
-    final String myName = authVM.userName.trim().toLowerCase();
-
-    if (cleanAssignee == myName ||
-        cleanAssignee == authVM.userUid.toLowerCase() ||
-        cleanAssignee == authVM.userEmail.toLowerCase()) {
-      return;
-    }
-
     try {
-      String? targetFcmToken;
-
-      // Look up FCM token in 'users' collection first
-      final userQuery = await FirebaseFirestore.instance
-          .collection('users')
-          .where('name', isEqualTo: assignee.trim())
-          .limit(1)
-          .get();
-
-      if (userQuery.docs.isNotEmpty) {
-        targetFcmToken = userQuery.docs.first.data()['fcmToken']?.toString();
-      } else {
-        // Fallback: look up in 'cps' collection
-        final cpQuery = await FirebaseFirestore.instance
-            .collection('cps')
-            .where('cpName', isEqualTo: assignee.trim())
-            .limit(1)
-            .get();
-        if (cpQuery.docs.isNotEmpty) {
-          targetFcmToken = cpQuery.docs.first.data()['fcmToken']?.toString();
-        }
-      }
-
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'recipientName': assignee.trim(),
-        'recipientFcmToken':
-            targetFcmToken, // 🚀 NAYA: FCM Token for background push
-        'title': 'New Task Assigned',
-        'body': '${authVM.userName} assigned you a task: "$taskTitle"',
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-        'type': 'task_assigned',
-      });
+      await _assignmentNotificationService.sendAssignmentNotification(
+        assignee: assignee,
+        taskTitle: taskTitle,
+        senderName: authVM.userName,
+        senderUid: authVM.userUid,
+        senderEmail: authVM.userEmail,
+        notificationsEnabled: authVM.allowNotifications,
+      );
     } catch (e) {
       debugPrint('Error sending notification: $e');
     }
