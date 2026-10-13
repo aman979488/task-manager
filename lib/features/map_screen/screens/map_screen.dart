@@ -87,13 +87,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   static const Color secondaryColor = Color(0xFF6B5800);
 
   late TabController _tabController;
-  int _selectedTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 6, vsync: this);
-    _tabController.addListener(_handleTabChange);
     _loadButtonOrder();
   }
 
@@ -131,10 +129,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  String? _newTaskMetadataValue(FloatingSheetType type) {
-    return _addTaskViewModel.valueFor(type);
-  }
-
   void _setNewTaskMetadata(FloatingSheetType type, String? value) {
     final shouldScroll = _addTaskViewModel.setValue(type, value);
     if (shouldScroll) {
@@ -146,8 +140,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             .toDouble();
         controller.animateTo(
           nextOffset,
-          duration: const Duration(milliseconds: 420),
-          curve: Curves.easeInOut,
+          duration: const Duration(milliseconds: 900),
+          curve: Curves.easeInOutCubic,
         );
       });
     }
@@ -169,9 +163,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _addTaskViewModel.valueFor(FloatingSheetType.clientName);
   String? get _newTaskRefProject =>
       _addTaskViewModel.valueFor(FloatingSheetType.refProject);
-  List<FloatingSheetType> get _newTaskMetadataOrder =>
-      _addTaskViewModel.metadataOrder;
-
   Widget _buildBottomSheetButtonWithState(
     FloatingSheetType type,
     StateSetter setModalState, {
@@ -338,7 +329,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _viewModel.removeListener(_handleViewModelChanged);
-    _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     _hideFloatingSheet();
     _focusNode.dispose();
@@ -530,14 +520,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     setState(() {});
     final message = _viewModel.takeErrorMessage();
     if (message != null) _showMessage(message);
-  }
-
-  void _handleTabChange() {
-    if (_tabController.indexIsChanging ||
-        _selectedTabIndex == _tabController.index) {
-      return;
-    }
-    setState(() => _selectedTabIndex = _tabController.index);
   }
 
   Future<void> _refreshTasks() async {
@@ -1364,10 +1346,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
             FloatingSheetType.refProject,
           ];
-          final selectedButtonOrder = _newTaskMetadataOrder.where((type) {
-            final value = _newTaskMetadataValue(type);
-            return value != null && value.isNotEmpty;
-          }).toList();
+          final selectedButtonOrder = _addTaskViewModel.metadataOrder
+              .where(
+                (type) =>
+                    mobileButtonOrder.contains(type) &&
+                    (_addTaskViewModel.valueFor(type)?.trim().isNotEmpty ??
+                        false),
+              )
+              .toList();
           final availableButtonOrder = [
             ...selectedButtonOrder,
             ...mobileButtonOrder.where(
@@ -1974,14 +1960,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         );
       },
       child: Container(
-        constraints: compact ? const BoxConstraints(maxWidth: 76) : null,
+        constraints: compact
+            ? const BoxConstraints(maxWidth: 60, maxHeight: 22)
+            : null,
         padding: EdgeInsets.symmetric(
-          horizontal: compact ? 8 : 10,
-          vertical: compact ? 4 : 6,
+          horizontal: compact ? 6 : 10,
+          vertical: compact ? 2 : 6,
         ),
         decoration: BoxDecoration(
           color: badgeColor.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(compact ? 10 : 14),
           border: Border.all(color: badgeColor.withValues(alpha: 0.42)),
         ),
         child: Text(
@@ -1989,7 +1977,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: compact ? 11 : 13,
+            fontSize: compact ? 10 : 13,
             color: badgeColor,
             fontWeight: FontWeight.w700,
           ),
@@ -2607,6 +2595,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
+
   @override
   Widget build(BuildContext context) {
     final bool selectionActive = _selected.isNotEmpty;
@@ -2769,12 +2758,30 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildMyWorkView(),
-                _buildAllWorkTab(),
-                _buildDoneTasksTab(),
-                _buildOverdueTasksTab(),
-                _buildPendingTasksTab(),
-                _buildGroupByAssignView(),
+                Builder(
+                  key: const PageStorageKey('my-work-tab'),
+                  builder: (_) => _buildMyWorkView(),
+                ),
+                Builder(
+                  key: const PageStorageKey('all-work-tab'),
+                  builder: (_) => _buildAllWorkTab(),
+                ),
+                Builder(
+                  key: const PageStorageKey('done-tasks-tab'),
+                  builder: (_) => _buildDoneTasksTab(),
+                ),
+                Builder(
+                  key: const PageStorageKey('overdue-tasks-tab'),
+                  builder: (_) => _buildOverdueTasksTab(),
+                ),
+                Builder(
+                  key: const PageStorageKey('pending-tasks-tab'),
+                  builder: (_) => _buildPendingTasksTab(),
+                ),
+                Builder(
+                  key: const PageStorageKey('group-by-tab'),
+                  builder: (_) => _buildGroupByAssignView(),
+                ),
               ],
             ),
           ),

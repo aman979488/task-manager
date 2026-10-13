@@ -22,7 +22,7 @@ class AddTaskViewModel extends ChangeNotifier {
         ..insert(0, type);
     }
     notifyListeners();
-    return !wasSelected && value != null && _metadataOrder.length >= 3;
+    return !wasSelected && value != null && _metadataOrder.length == 3;
   }
 
   void clear() {
