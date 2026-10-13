@@ -118,12 +118,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       final tomorrow = today.add(const Duration(days: 1));
       final date = DateTime(dt.year, dt.month, dt.day);
 
-      final timeStr =
-          '${dt.hour % 12 == 0 ? 12 : dt.hour % 12}:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
+      final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final time = dt.minute == 0
+          ? '$hour${dt.hour >= 12 ? 'p' : 'a'}'
+          : '$hour:${dt.minute.toString().padLeft(2, '0')}${dt.hour >= 12 ? 'p' : 'a'}';
 
-      if (date == today) return 'Today $timeStr';
-      if (date == tomorrow) return 'Tomorrow $timeStr';
-      return '${dt.day}/${dt.month} $timeStr';
+      if (date == today) return 'Today $time';
+      if (date == tomorrow) return 'Tmrw $time';
+      return '${dt.day}/${dt.month} $time';
     } catch (_) {
       return 'Set';
     }
@@ -323,7 +325,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ? _newTaskAssignee!.split(',').map((value) => value.trim()).toList()
             : <String>[];
         _showFloatingSheet(
-          context,
+          _metadataButtonKeys[type]?.currentContext ?? context,
           type,
           onSelected: onSelected,
           multiSelect: isMulti,
@@ -1403,6 +1405,25 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  SingleChildScrollView(
+                    controller: _metadataButtonsScrollController,
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: availableButtonOrder
+                          .map(
+                            (type) => Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: _buildBottomSheetButtonWithState(
+                                type,
+                                setModalState,
+                                compact: screenWidth < 600,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Expanded(
@@ -1753,25 +1774,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         icon: const Icon(Icons.send, color: secondaryColor),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 6),
-                  SingleChildScrollView(
-                    controller: _metadataButtonsScrollController,
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: availableButtonOrder
-                          .map(
-                            (type) => Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: _buildBottomSheetButtonWithState(
-                                type,
-                                setModalState,
-                                compact: screenWidth < 600,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                    ),
                   ),
                 ],
               ),

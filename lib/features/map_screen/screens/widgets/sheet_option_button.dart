@@ -28,11 +28,12 @@ class SheetOptionButton extends StatelessWidget {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       width: compact ? 112 : null,
+      height: compact ? 40 : null,
       decoration: BoxDecoration(
         color: selected
             ? const Color(0xFFFBE64E).withValues(alpha: 0.2)
             : Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(compact ? 10 : 20),
         border: Border.all(
           color: selected ? const Color(0xFF6B5800) : Colors.grey.shade300,
           width: selected ? 2 : 1,
@@ -41,58 +42,58 @@ class SheetOptionButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(compact ? 10 : 20),
           onTap: onTap,
           child: Padding(
             padding: compact
                 ? const EdgeInsets.symmetric(horizontal: 4, vertical: 4)
                 : const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
             child: compact
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
+                ? Row(
                     children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            icon,
-                            size: 17,
+                      Icon(
+                        icon,
+                        size: 16,
+                        color: selected
+                            ? const Color(0xFF6B5800)
+                            : Colors.grey.shade700,
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          displayText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
                             color: selected
                                 ? const Color(0xFF6B5800)
                                 : Colors.grey.shade700,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                            fontSize: 11,
                           ),
-                          if (selected)
-                            SizedBox(
-                              width: 36,
-                              height: 36,
-                              child: IconButton(
+                        ),
+                      ),
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: selected
+                            ? IconButton(
                                 tooltip: 'Clear $label',
                                 onPressed: onClear,
                                 padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints.tightFor(
+                                  width: 20,
+                                  height: 20,
+                                ),
                                 icon: const Icon(
                                   Icons.close,
-                                  size: 18,
+                                  size: 14,
                                   color: Color(0xFF6B5800),
                                 ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        displayText,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: selected
-                              ? const Color(0xFF6B5800)
-                              : Colors.grey.shade700,
-                          fontWeight:
-                              selected ? FontWeight.w600 : FontWeight.normal,
-                          fontSize: 12,
-                          height: 1.15,
-                        ),
+                              )
+                            : null,
                       ),
                     ],
                   )
@@ -115,8 +116,9 @@ class SheetOptionButton extends StatelessWidget {
                             color: selected
                                 ? const Color(0xFF6B5800)
                                 : Colors.grey.shade700,
-                            fontWeight:
-                                selected ? FontWeight.w600 : FontWeight.normal,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
                             fontSize: 14,
                           ),
                         ),
