@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 
 import '../../models/task.dart';
 
@@ -17,6 +18,7 @@ class MyWorkView extends StatefulWidget {
 }
 
 class _MyWorkViewState extends State<MyWorkView> {
+  static const double _sectionHeaderHeight = 56;
   static const _sectionNames = [
     'Urgent Works',
     'IMP Works',
@@ -30,6 +32,43 @@ class _MyWorkViewState extends State<MyWorkView> {
   ];
 
   final Set<String> _expandedSections = {};
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _viewportKey = GlobalKey();
+  final Map<String, GlobalKey> _sectionHeaderKeys = {};
+  List<String> _pinnedSections = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_updatePinnedSections);
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_updatePinnedSections)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _updatePinnedSections() {
+    final viewport = _viewportKey.currentContext?.findRenderObject();
+    if (viewport is! RenderBox || !viewport.hasSize) return;
+
+    final pinned = <String>[];
+    for (final name in _sectionNames.take(3)) {
+      final header = _sectionHeaderKeys[name]?.currentContext
+          ?.findRenderObject();
+      if (header is! RenderBox || !header.hasSize) continue;
+
+      final top = header.localToGlobal(Offset.zero, ancestor: viewport).dy;
+      if (top > pinned.length * _sectionHeaderHeight) break;
+      pinned.add(name);
+    }
+
+    if (listEquals(_pinnedSections, pinned)) return;
+    setState(() => _pinnedSections = pinned);
+  }
 
   Color _sectionColor(String section) {
     switch (section) {
@@ -56,7 +95,7 @@ class _MyWorkViewState extends State<MyWorkView> {
         .toList();
     Widget blankArea({double? height}) => GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () {
+      onDoubleTap: () {
         if (populatedNames.isEmpty) return;
         setState(() {
           final first = populatedNames.first;
@@ -66,32 +105,66 @@ class _MyWorkViewState extends State<MyWorkView> {
       child: SizedBox(height: height, width: double.infinity),
     );
 
-    return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        SliverList(
-          delegate: SliverChildListDelegate(
-            populatedNames.isEmpty
-                ? const [
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(16, 20, 16, 20),
-                      child: Text(
-                        'No tasks in My Work.',
-                        style: TextStyle(color: Colors.blueGrey),
-                      ),
-                    ),
-                  ]
-                : [
-                    for (final name in populatedNames)
-                      _buildSection(name, populatedNames),
-                  ],
-            addAutomaticKeepAlives: false,
-          ),
+    final stickySectionNames = _sectionNames
+        .take(3)
+        .where(populatedNames.contains)
+        .toList();
+    _sectionHeaderKeys.removeWhere(
+      (name, _) => !stickySectionNames.contains(name),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updatePinnedSections();
+    });
+
+    return Stack(
+      children: [
+        CustomScrollView(
+          key: _viewportKey,
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverList(
+              delegate: SliverChildListDelegate(
+                populatedNames.isEmpty
+                    ? const [
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(16, 20, 16, 20),
+                          child: Text(
+                            'No tasks in My Work.',
+                            style: TextStyle(color: Colors.blueGrey),
+                          ),
+                        ),
+                      ]
+                    : [
+                        for (final name in populatedNames)
+                          _buildSection(name, populatedNames),
+                      ],
+                addAutomaticKeepAlives: false,
+              ),
+            ),
+            if (populatedNames.isNotEmpty)
+              SliverToBoxAdapter(child: blankArea(height: 100)),
+            if (populatedNames.isNotEmpty)
+              SliverFillRemaining(hasScrollBody: false, child: blankArea()),
+          ],
         ),
-        if (populatedNames.isNotEmpty)
-          SliverToBoxAdapter(child: blankArea(height: 100)),
-        if (populatedNames.isNotEmpty)
-          SliverFillRemaining(hasScrollBody: false, child: blankArea()),
+        if (_pinnedSections.isNotEmpty)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Material(
+              color: Colors.white,
+              elevation: 2,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final name in _pinnedSections)
+                    _buildSectionHeader(name, populatedNames),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -102,84 +175,94 @@ class _MyWorkViewState extends State<MyWorkView> {
     final color = _sectionColor(name);
     return Column(
       children: [
-        InkWell(
-          onTap: () => setState(() {
-            if (isExpanded) {
-              _expandedSections.remove(name);
-            } else {
-              _expandedSections.add(name);
-            }
-          }),
-          onDoubleTap: () => setState(() {
-            if (_expandedSections.length == populatedNames.length) {
-              _expandedSections.clear();
-            } else {
-              _expandedSections
-                ..clear()
-                ..addAll(populatedNames);
-            }
-          }),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
-              children: [
-                Text(
-                  name.replaceFirst(RegExp(r' Works$'), '').toUpperCase(),
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  constraints: const BoxConstraints(minWidth: 28),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${tasks.length}',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 11,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                Icon(
-                  isExpanded
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                  color: color,
-                ),
-              ],
-            ),
-          ),
+        KeyedSubtree(
+          key: _sectionHeaderKeys.putIfAbsent(name, GlobalKey.new),
+          child: _buildSectionHeader(name, populatedNames),
         ),
         if (isExpanded)
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12),
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.4,
-            ),
-            decoration: BoxDecoration(
-              border: Border.all(color: color.withValues(alpha: 0.25)),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: SingleChildScrollView(
-              child: widget.taskResultsBuilder(tasks),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: color.withValues(alpha: 0.25)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: widget.taskResultsBuilder(tasks),
+              ),
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildSectionHeader(String name, List<String> populatedNames) {
+    final tasks = widget.sections[name] ?? const <Task>[];
+    final isExpanded = _expandedSections.contains(name);
+    final color = _sectionColor(name);
+
+    return SizedBox(
+      height: _sectionHeaderHeight,
+      child: InkWell(
+        onTap: () => setState(() {
+          if (isExpanded) {
+            _expandedSections.remove(name);
+          } else {
+            _expandedSections.add(name);
+          }
+        }),
+        onDoubleTap: () => setState(() {
+          if (_expandedSections.length == populatedNames.length) {
+            _expandedSections.clear();
+          } else {
+            _expandedSections
+              ..clear()
+              ..addAll(populatedNames);
+          }
+        }),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Text(
+                name.replaceFirst(RegExp(r' Works$'), '').toUpperCase(),
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                constraints: const BoxConstraints(minWidth: 28),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${tasks.length}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Icon(
+                isExpanded
+                    ? Icons.keyboard_arrow_up
+                    : Icons.keyboard_arrow_down,
+                color: color,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

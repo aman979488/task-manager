@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
+import 'task_metadata_badges.dart';
 
 class TaskGridCard extends StatelessWidget {
   const TaskGridCard({
@@ -77,6 +78,12 @@ class TaskGridCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+            if (task.workType?.trim().isNotEmpty == true ||
+                task.clientName?.trim().isNotEmpty == true)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: TaskMetadataBadges(task: task, compact: true),
               ),
           ],
         ),

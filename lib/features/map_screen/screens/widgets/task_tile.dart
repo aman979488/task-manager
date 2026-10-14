@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
+import 'task_metadata_badges.dart';
 
 class TaskTile extends StatelessWidget {
   const TaskTile({
@@ -95,20 +96,11 @@ class TaskTile extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (task.workType?.isNotEmpty == true)
+                  if (task.workType?.trim().isNotEmpty == true ||
+                      task.clientName?.trim().isNotEmpty == true)
                     Padding(
                       padding: const EdgeInsets.only(top: 3),
-                      child: Text(
-                        task.workType!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: task.isDone
-                              ? Colors.grey.shade500
-                              : Colors.blueGrey.shade500,
-                        ),
-                      ),
+                      child: TaskMetadataBadges(task: task, compact: true),
                     ),
                 ],
               ),

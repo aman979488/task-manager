@@ -17,6 +17,7 @@ import '../../../services/home_screen_shortcut.dart';
 import '../viewmodels/map_screen_viewmodel.dart';
 import '../viewmodels/add_task_viewmodel.dart';
 import '../services/task_share_print_service.dart';
+import '../utils/quick_date_time_options.dart';
 import 'views/my_day_view.dart';
 import 'views/my_work_view.dart';
 import 'views/calendar_view.dart';
@@ -67,6 +68,26 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   OverlayEntry? _floatingSheetOverlay;
 
   List<Task> get tasks => _viewModel.tasks;
+
+  bool _matchesSearchQuery(String option, String query) {
+    final normalizedOption = option.toLowerCase();
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isEmpty) return true;
+    if (normalizedOption.contains(normalizedQuery)) return true;
+
+    var queryIndex = 0;
+    for (
+      var optionIndex = 0;
+      optionIndex < normalizedOption.length;
+      optionIndex++
+    ) {
+      if (normalizedOption[optionIndex] == normalizedQuery[queryIndex]) {
+        queryIndex++;
+        if (queryIndex == normalizedQuery.length) return true;
+      }
+    }
+    return false;
+  }
 
   // selected tasks for multi-select
   final Set<Task> _selected = {};
@@ -657,13 +678,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           break;
         case FloatingSheetType.remind:
         case FloatingSheetType.deadline:
-          options = [
-            "Today (1 hour)",
-            "Today (3 hour)",
-            "Today (6 hour)",
-            "Tomorrow (12 pm)",
-            "Custom",
-          ];
+          options = QuickDateTimeOptions.labels();
           break;
         case FloatingSheetType.assign:
           options = assignees ?? [];
@@ -696,7 +711,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       final matchingOptions = typedQuery.isEmpty
           ? const <String>[]
           : options
-                .where((option) => option.toLowerCase().contains(typedQuery))
+                .where((option) => _matchesSearchQuery(option, typedQuery))
                 .toList();
       final highlightedOption = matchingOptions.firstWhere(
         (option) => option.toLowerCase() == typedQuery,
@@ -747,24 +762,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               if (lower.contains('custom')) {
                 if (!multiSelect) _hideFloatingSheet();
                 computed = await pickDateTimeWithTabs(rootContext);
-              } else if (lower.contains('1 hour'))
-                computed = now.add(const Duration(hours: 1));
-              else if (lower.contains('3 hour'))
-                computed = now.add(const Duration(hours: 3));
-              else if (lower.contains('6 hour'))
-                computed = now.add(const Duration(hours: 6));
-              else if (lower.contains('tomorrow')) {
-                final t = DateTime(
-                  now.year,
-                  now.month,
-                  now.day,
-                ).add(const Duration(days: 1));
-                computed = DateTime(t.year, t.month, t.day, 12, 0);
+              } else {
+                computed = QuickDateTimeOptions.resolve(opt, now: now);
               }
               if (computed != null) {
                 finalVal = computed.toIso8601String();
-              } else if (lower.contains('custom'))
-                return; // Cancelled
+              } else {
+                return;
+              }
             }
 
             if (onSelected != null) onSelected(finalVal);
@@ -832,7 +837,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             0.0,
             220.0,
           );
-
           return Stack(
             children: [
               Positioned.fill(
@@ -857,11 +861,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         final filteredOptions =
                             showSearch && _searchQuery.isNotEmpty
                             ? allOptions.where((tile) {
-                                final title = ((tile as ListTile).title as Text)
-                                    .data!
-                                    .toLowerCase();
-                                final query = _searchQuery.toLowerCase();
-                                return title.contains(query);
+                                final title =
+                                    ((tile as ListTile).title as Text).data!;
+                                return _matchesSearchQuery(title, _searchQuery);
                               }).toList()
                             : allOptions;
                         final maxOptionListHeight =
@@ -1120,13 +1122,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     List<String>? assigneeOptions;
     Future<List<String>>? assigneeOptionsFuture;
     final shortcutOptionsFutures = <String, Future<List<String>>>{};
-    const dateOptions = [
-      'Today (1 hour)',
-      'Today (3 hour)',
-      'Today (6 hour)',
-      'Tomorrow (12 pm)',
-      'Custom',
-    ];
+    final dateOptions = QuickDateTimeOptions.labels();
 
     ({int start, String symbol, String query})? parseMention(
       String text,
@@ -1196,26 +1192,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         if (selectedDate == null && lower.contains('custom')) {
           selectedDate = await pickDateTimeWithTabs(context);
         } else if (selectedDate == null) {
-          final now = DateTime.now();
-          if (lower.contains('1 hour')) {
-            selectedDate = now.add(const Duration(hours: 1));
-          } else if (lower.contains('3 hour')) {
-            selectedDate = now.add(const Duration(hours: 3));
-          } else if (lower.contains('6 hour')) {
-            selectedDate = now.add(const Duration(hours: 6));
-          } else if (lower.contains('tomorrow')) {
-            final tomorrow = DateTime(
-              now.year,
-              now.month,
-              now.day,
-            ).add(const Duration(days: 1));
-            selectedDate = DateTime(
-              tomorrow.year,
-              tomorrow.month,
-              tomorrow.day,
-              12,
-            );
-          }
+          selectedDate = QuickDateTimeOptions.resolve(opt);
         }
         if (selectedDate == null) return;
         selectedValue = selectedDate.toIso8601String();
@@ -1353,7 +1330,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         }
         final normalizedQuery = query.toLowerCase();
         final matches = options
-            .where((option) => option.toLowerCase().contains(normalizedQuery))
+            .where((option) => _matchesSearchQuery(option, normalizedQuery))
             .toList();
         if (matches.isEmpty) return;
 
@@ -1389,7 +1366,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       ),
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setModalState) {
-          final viewInsets = MediaQuery.of(sheetContext).viewInsets;
           final screenWidth = MediaQuery.of(sheetContext).size.width;
           _metadataButtonScrollStep = screenWidth < 600 ? 118 : 156;
           final mobileButtonOrder = [
@@ -1413,10 +1389,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
           ];
           final systemNavBar = MediaQuery.of(sheetContext).padding.bottom;
-          final isCompactWeb = kIsWeb && screenWidth < 600;
-          final bottomPadding = kIsWeb && !isCompactWeb
-              ? 16.0
-              : (16.0 + viewInsets.bottom + systemNavBar);
+          final bottomPadding = 16.0 + (kIsWeb ? 0.0 : systemNavBar);
 
           if (!initialComposerFocusScheduled) {
             initialComposerFocusScheduled = true;
@@ -1497,9 +1470,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   );
                                   final matches = source
                                       .where(
-                                        (option) => option
-                                            .toLowerCase()
-                                            .contains(query.toLowerCase()),
+                                        (option) =>
+                                            _matchesSearchQuery(option, query),
                                       )
                                       .toList();
                                   if (matches.isEmpty) return;
@@ -1656,7 +1628,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   ) => TextField(
                                     controller: controller,
                                     focusNode: focusNode,
-                                    autofocus: true,
                                     onTap: () {
                                       if (!focusNode.hasFocus) {
                                         focusNode.requestFocus();
@@ -2263,18 +2234,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       DateTime.tryParse(task.deadline ?? task.reminder ?? '');
 
   String _taskListName(Task task) {
-    final assignee = task.assignee?.trim();
-    return assignee != null && assignee.isNotEmpty ? assignee : task.title;
+    return task.title;
   }
 
   String? _taskListDescription(Task task) {
     final assignee = task.assignee?.trim();
-    if (assignee == null || assignee.isEmpty) {
-      final note = task.note.trim();
-      return note.isEmpty ? null : note;
-    }
-    final title = task.title.trim();
-    return title.isEmpty ? null : title;
+    if (assignee != null && assignee.isNotEmpty) return assignee;
+
+    final note = task.note.trim();
+    return note.isEmpty ? null : note;
   }
 
   Widget _buildCompactTaskTile(Task task) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
+import 'task_metadata_badges.dart';
 
 class CompactTaskTile extends StatelessWidget {
   const CompactTaskTile({
@@ -28,11 +29,9 @@ class CompactTaskTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final workType = task.workType?.trim() ?? '';
-    final subtitleParts = [
-      if (description?.isNotEmpty == true) description!,
-      if (workType.isNotEmpty) workType,
-    ];
+    final hasMetadata =
+        task.workType?.trim().isNotEmpty == true ||
+        task.clientName?.trim().isNotEmpty == true;
     return ListTile(
       dense: true,
       selected: isSelected,
@@ -53,17 +52,28 @@ class CompactTaskTile extends StatelessWidget {
           decorationColor: Colors.blueGrey.shade400,
         ),
       ),
-      subtitle: subtitleParts.isEmpty
+      subtitle: description?.isNotEmpty != true && !hasMetadata
           ? null
-          : Text(
-              subtitleParts.join(' • '),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.blueGrey.shade500,
-                height: 1.25,
-              ),
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (description?.isNotEmpty == true)
+                  Text(
+                    description!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.blueGrey.shade500,
+                      height: 1.25,
+                    ),
+                  ),
+                if (hasMetadata)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: TaskMetadataBadges(task: task, compact: true),
+                  ),
+              ],
             ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,

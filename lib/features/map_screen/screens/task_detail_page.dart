@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 
 import '../../../viewmodels/auth_viewmodel.dart';
 import '../services/task_assignment_notification_service.dart';
+import '../utils/quick_date_time_options.dart';
 
 class TaskDetailPage extends StatefulWidget {
   final Task task;
@@ -422,24 +423,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ];
         case 'reminder':
         case 'deadline':
-          return const [
-            ListTile(
-              leading: Icon(Icons.access_time),
-              title: Text("Today (1 hour)"),
+          return [
+            ...QuickDateTimeOptions.options().map(
+              (option) => ListTile(
+                leading: const Icon(Icons.access_time),
+                title: Text(option.label),
+              ),
             ),
-            ListTile(
-              leading: Icon(Icons.access_time),
-              title: Text("Today (3 hour)"),
-            ),
-            ListTile(
-              leading: Icon(Icons.access_time),
-              title: Text("Today (6 hour)"),
-            ),
-            ListTile(
-              leading: Icon(Icons.access_time),
-              title: Text("Tomorrow (12 pm)"),
-            ),
-            ListTile(
+            const ListTile(
               leading: Icon(Icons.calendar_month),
               title: Text("Custom"),
             ),
@@ -600,46 +591,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                                       context,
                                                     );
                                               } else {
-                                                final now = DateTime.now();
-                                                final lower = label
-                                                    .toLowerCase();
-                                                if (lower.contains(
-                                                  'today (1 hour)',
-                                                )) {
-                                                  computed = now.add(
-                                                    const Duration(hours: 1),
-                                                  );
-                                                } else if (lower.contains(
-                                                  'today (3 hour)',
-                                                )) {
-                                                  computed = now.add(
-                                                    const Duration(hours: 3),
-                                                  );
-                                                } else if (lower.contains(
-                                                  'today (6 hour)',
-                                                )) {
-                                                  computed = now.add(
-                                                    const Duration(hours: 6),
-                                                  );
-                                                } else if (lower.contains(
-                                                  'tomorrow (12 pm)',
-                                                )) {
-                                                  final tomorrow =
-                                                      DateTime(
-                                                        now.year,
-                                                        now.month,
-                                                        now.day,
-                                                      ).add(
-                                                        const Duration(days: 1),
-                                                      );
-                                                  computed = DateTime(
-                                                    tomorrow.year,
-                                                    tomorrow.month,
-                                                    tomorrow.day,
-                                                    12,
-                                                    0,
-                                                  );
-                                                }
+                                                computed =
+                                                    QuickDateTimeOptions.resolve(
+                                                      label,
+                                                    );
                                               }
 
                                               if (computed != null) {
