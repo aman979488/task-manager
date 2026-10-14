@@ -626,6 +626,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     List<String>? selectedValues,
   }) async {
     if (_floatingSheetOverlay != null) _hideFloatingSheet();
+    final keepKeyboardOpen =
+        type == FloatingSheetType.assign &&
+        (_focusNode.hasFocus ||
+            MediaQuery.viewInsetsOf(buttonContext).bottom > 0 ||
+            MediaQuery.viewInsetsOf(context).bottom > 0);
 
     List<String>? workTypes;
     if (type == FloatingSheetType.workType) {
@@ -995,6 +1000,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
 
     Overlay.of(buttonContext).insert(_floatingSheetOverlay!);
+    if (keepKeyboardOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_focusNode.canRequestFocus) return;
+        if (!_focusNode.hasFocus) _focusNode.requestFocus();
+        SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+      });
+    }
   }
 
   Widget _thinHairline({
@@ -1214,7 +1226,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         assigneeMentionStart = -1;
         assigneeMentionEnd = -1;
       });
-      _focusNode.requestFocus();
+      if (!_focusNode.hasFocus) _focusNode.requestFocus();
 
       final hasTextBefore = beforeMention.isNotEmpty;
       final hasTextAfter = afterMention.isNotEmpty;
@@ -1313,7 +1325,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         assigneeMentionEnd = -1;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _focusNode.requestFocus();
+        if (mounted && !_focusNode.hasFocus) _focusNode.requestFocus();
       });
     }
 
@@ -1413,7 +1425,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               }
             },
             child: AddTaskSheet(
-              bottomPadding: bottomPadding,
+              bottomPadding:
+                  bottomPadding + MediaQuery.viewInsetsOf(sheetContext).bottom,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1636,7 +1649,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                     minLines: 1,
                                     maxLines: 4,
 
-                                    textInputAction: TextInputAction.done,
+                                    textInputAction:
+                                        assigneeMentionQuery == null
+                                        ? TextInputAction.done
+                                        : TextInputAction.search,
                                     decoration: const InputDecoration(
                                       hintText: "Add a task",
                                       border: InputBorder.none,
