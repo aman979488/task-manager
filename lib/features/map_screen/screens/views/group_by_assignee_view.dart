@@ -7,12 +7,14 @@ class GroupByAssigneeView extends StatelessWidget {
   const GroupByAssigneeView({
     super.key,
     required this.groups,
+    required this.pageStorageId,
     required this.onOpenAssignee,
     required this.onOpenTask,
     required this.refreshable,
   });
 
   final Map<String, List<Task>> groups;
+  final String pageStorageId;
   final void Function(String name, List<Task> tasks) onOpenAssignee;
   final ValueChanged<Task> onOpenTask;
   final Widget Function(Widget child) refreshable;
@@ -21,6 +23,7 @@ class GroupByAssigneeView extends StatelessWidget {
   Widget build(BuildContext context) => GroupByView(
     groups: groups,
     groupBy: 'Assignee',
+    pageStorageId: pageStorageId,
     onOpenAssignee: onOpenAssignee,
     onOpenTask: onOpenTask,
     refreshable: refreshable,

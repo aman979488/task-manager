@@ -1,0 +1,89 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:task_manager/features/map_screen/models/task.dart';
+import 'package:task_manager/features/map_screen/viewmodels/map_screen_viewmodel.dart';
+
+void main() {
+  final now = DateTime(2026, 10, 14, 13);
+
+  test('My Day includes today-priority and tasks scheduled today', () {
+    final todayByPriority = Task('Today priority', priority: ' TODAY ');
+    final todayByDeadline = Task(
+      'Today deadline',
+      deadline: DateTime(2026, 10, 14, 22).toIso8601String(),
+    );
+    final todayByReminder = Task(
+      'Today reminder',
+      reminder: DateTime(2026, 10, 14, 9).toIso8601String(),
+    );
+
+    expect(
+      MapScreenViewModel.myDayTasks([
+        todayByPriority,
+        todayByDeadline,
+        todayByReminder,
+      ], now: now),
+      [todayByPriority, todayByDeadline, todayByReminder],
+    );
+  });
+
+  test('My Day excludes completed and other-day tasks', () {
+    final completedToday = Task(
+      'Completed today',
+      isDone: true,
+      deadline: DateTime(2026, 10, 14, 12).toIso8601String(),
+    );
+    final tomorrow = Task(
+      'Tomorrow',
+      deadline: DateTime(2026, 10, 15, 9).toIso8601String(),
+    );
+    final malformedDate = Task('Invalid date', reminder: 'not-a-date');
+
+    expect(
+      MapScreenViewModel.myDayTasks([
+        completedToday,
+        tomorrow,
+        malformedDate,
+      ], now: now),
+      isEmpty,
+    );
+  });
+
+  test('grouping uses trimmed values and meaningful fallbacks', () {
+    final urgent = Task('Urgent', priority: '  U1  ');
+    final missingPriority = Task('No priority');
+    final unassigned = Task('Unassigned');
+    final assigned = Task('Assigned', assignee: '  Aman ');
+
+    expect(
+      MapScreenViewModel.groupTasks([urgent, missingPriority], 'Priority'),
+      {
+        'U1': [urgent],
+        'No priority': [missingPriority],
+      },
+    );
+    expect(MapScreenViewModel.groupTasks([unassigned, assigned], 'Assignee'), {
+      'Unassigned': [unassigned],
+      'Aman': [assigned],
+    });
+  });
+
+  test('assigned tasks are grouped by name and unassigned tasks are skipped', () {
+    final amanTask1 = Task('Aman task 1', assignee: ' Aman ');
+    final amanTask2 = Task('Aman task 2', assignee: 'Aman');
+    final otherTask = Task('Other task', assignee: 'Riya');
+    final unassignedTask = Task('Unassigned task');
+
+    expect(
+      MapScreenViewModel.assignedTasksByName([
+        amanTask1,
+        amanTask2,
+        otherTask,
+        unassignedTask,
+      ]),
+      {
+        'Aman': [amanTask1, amanTask2],
+        'Riya': [otherTask],
+      },
+    );
+  });
+}

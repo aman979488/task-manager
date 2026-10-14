@@ -56,9 +56,7 @@ class MapScreenViewModel extends ChangeNotifier {
   Future<void> refreshTasks(AuthViewModel authViewModel) async {
     final loaded = await _repository.fetchTasks();
     _replaceTasks(
-      loaded
-          .where((task) => isTaskVisibleToUser(task, authViewModel))
-          .toList(),
+      loaded.where((task) => isTaskVisibleToUser(task, authViewModel)).toList(),
     );
     await _updateHomeWidgetSafely();
   }
@@ -144,7 +142,9 @@ class MapScreenViewModel extends ChangeNotifier {
       notifyListeners();
     }
     if (assignee != null && assignee.trim().isNotEmpty) {
-      unawaited(_sendAssignmentNotification(assignee, cleanTitle, authViewModel));
+      unawaited(
+        _sendAssignmentNotification(assignee, cleanTitle, authViewModel),
+      );
     }
     unawaited(_saveNewTask(task));
     _isAddingTask = false;
@@ -193,6 +193,58 @@ class MapScreenViewModel extends ChangeNotifier {
 
   List<Task> doneTasks() => _tasks.where((task) => task.isDone).toList();
 
+  static Map<String, List<Task>> groupTasks(List<Task> tasks, String groupBy) {
+    final groups = <String, List<Task>>{};
+    for (final task in tasks) {
+      final value = switch (groupBy) {
+        'Priority' =>
+          task.priority?.trim().isNotEmpty == true
+              ? task.priority!.trim()
+              : 'No priority',
+        'Work type' =>
+          task.workType?.trim().isNotEmpty == true
+              ? task.workType!.trim()
+              : 'No work type',
+        'Status' => task.isDone ? 'Done' : 'Pending',
+        _ =>
+          task.assignee?.trim().isNotEmpty == true
+              ? task.assignee!.trim()
+              : 'Unassigned',
+      };
+      groups.putIfAbsent(value, () => []).add(task);
+    }
+    return groups;
+  }
+
+  static Map<String, List<Task>> assignedTasksByName(List<Task> tasks) {
+    final groups = <String, List<Task>>{};
+    for (final task in tasks) {
+      final assignee = task.assignee?.trim();
+      if (assignee == null || assignee.isEmpty) continue;
+      groups.putIfAbsent(assignee, () => []).add(task);
+    }
+    return groups;
+  }
+
+  static List<Task> myDayTasks(List<Task> source, {DateTime? now}) {
+    final currentDate = now ?? DateTime.now();
+    final today = DateTime(
+      currentDate.year,
+      currentDate.month,
+      currentDate.day,
+    );
+    return source.where((task) {
+      if (task.isDone) return false;
+      if (task.priority?.trim().toLowerCase() == 'today') return true;
+
+      final scheduled = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
+      return scheduled != null &&
+          scheduled.year == today.year &&
+          scheduled.month == today.month &&
+          scheduled.day == today.day;
+    }).toList();
+  }
+
   bool isOverdue(Task task) {
     if (task.isDone) return false;
     final date = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
@@ -230,10 +282,11 @@ class MapScreenViewModel extends ChangeNotifier {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final pending = myTasks.where((task) => !task.isDone);
-    final done = myTasks.where((task) => task.isDone).toList();
     final scheduled = pending
         .where((task) => task.priority?.trim().isEmpty ?? true)
-        .map((task) => (task: task, date: DateTime.tryParse(task.deadline ?? '')))
+        .map(
+          (task) => (task: task, date: DateTime.tryParse(task.deadline ?? '')),
+        )
         .where((entry) => entry.date != null)
         .toList();
     final todayWorks = <Task>{
@@ -269,9 +322,12 @@ class MapScreenViewModel extends ChangeNotifier {
     return {
       'Urgent Works': pending
           .where(
-            (task) => const {'u1', 'u2', 'u3', 'urgent'}.contains(
-              task.priority?.trim().toLowerCase(),
-            ),
+            (task) => const {
+              'u1',
+              'u2',
+              'u3',
+              'urgent',
+            }.contains(task.priority?.trim().toLowerCase()),
           )
           .toList(),
       'IMP Works': withPriority('imp'),
@@ -281,7 +337,6 @@ class MapScreenViewModel extends ChangeNotifier {
       'Later Works': withPriority('later'),
       'Process Works': withPriority('process'),
       'Hold Works': withPriority('hold'),
-      'Done Works': done,
     };
   }
 

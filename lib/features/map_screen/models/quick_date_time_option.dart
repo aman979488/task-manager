@@ -19,15 +19,7 @@ class QuickDateTimeOption {
 class QuickDateTimeOptions {
   QuickDateTimeOptions._();
 
-  static const _weekdays = [
-    'Mon',
-    'Tue',
-    'Wed',
-    'Thu',
-    'Fri',
-    'Sat',
-    'Sun',
-  ];
+  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   static const _months = [
     'Jan',
     'Feb',

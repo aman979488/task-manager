@@ -1,0 +1,149 @@
+import 'package:flutter/material.dart';
+
+import '../../models/task.dart';
+import 'compact_task_tile.dart';
+import 'task_grid_card.dart';
+import 'task_tile.dart';
+
+class MapTaskListItem extends StatelessWidget {
+  const MapTaskListItem({
+    super.key,
+    required this.task,
+    required this.viewType,
+    this.dense = false,
+    required this.isSelected,
+    required this.taskName,
+    required this.description,
+    required this.onEditPriority,
+    required this.onToggleDone,
+    required this.onToggleSelection,
+    required this.onOpen,
+    required this.onAddSubtask,
+  });
+
+  final Task task;
+  final String viewType;
+  final bool dense;
+  final bool isSelected;
+  final String taskName;
+  final String? description;
+  final ValueChanged<BuildContext> onEditPriority;
+  final VoidCallback onToggleDone;
+  final VoidCallback onToggleSelection;
+  final VoidCallback onOpen;
+  final VoidCallback onAddSubtask;
+
+  @override
+  Widget build(BuildContext context) {
+    if (viewType == 'Grid') {
+      return TaskGridCard(
+        task: task,
+        taskName: taskName,
+        description: description,
+        isSelected: isSelected,
+        dense: dense,
+        onToggleSelection: onToggleSelection,
+        onOpen: onOpen,
+      );
+    }
+
+    if (viewType == 'List') {
+      return CompactTaskTile(
+        task: task,
+        taskName: taskName,
+        description: description,
+        isSelected: isSelected,
+        dense: dense,
+        priorityBadge: _priorityBadge(
+          compact: true,
+          onTap: () => onEditPriority(context),
+        ),
+        onToggleDone: onToggleDone,
+        onAddSubtask: onAddSubtask,
+        onToggleSelection: onToggleSelection,
+        onOpen: onOpen,
+      );
+    }
+
+    return TaskTile(
+      task: task,
+      isSelected: isSelected,
+      dense: dense,
+      taskName: taskName,
+      description: description,
+      priorityWidget: Builder(
+        builder: (badgeContext) => _priorityBadge(
+          compact: dense,
+          onTap: () => onEditPriority(badgeContext),
+        ),
+      ),
+      onToggleDone: onToggleDone,
+      onToggleSelection: onToggleSelection,
+      onOpen: onOpen,
+      onAddSubtask: onAddSubtask,
+    );
+  }
+
+  Widget _priorityBadge({required bool compact, required VoidCallback onTap}) {
+    final priority = task.priority?.trim();
+    final color = _priorityColor(priority);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        constraints: compact
+            ? const BoxConstraints(maxWidth: 60, maxHeight: 22)
+            : null,
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 6 : 10,
+          vertical: compact ? 2 : 6,
+        ),
+        decoration: BoxDecoration(
+          color: compact ? color.withValues(alpha: 0.07) : null,
+          borderRadius: BorderRadius.circular(compact ? 10 : 12),
+          border: Border.all(
+            color: compact
+                ? color.withValues(alpha: 0.42)
+                : priority == null || priority.isEmpty
+                ? Colors.grey.shade300
+                : const Color(0xFF6B5800),
+          ),
+        ),
+        child: Text(
+          priority != null && priority.isNotEmpty ? priority : 'None',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: compact ? 10 : 13,
+            color: compact
+                ? color
+                : priority == null || priority.isEmpty
+                ? Colors.grey.shade600
+                : const Color(0xFF6B5800),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _priorityColor(String? priority) {
+    switch (priority?.trim().toLowerCase()) {
+      case 'u1':
+      case 'u2':
+      case 'u3':
+      case 'urgent':
+        return const Color(0xFF9B5965);
+      case 'imp':
+        return const Color(0xFF526D8A);
+      case 'today':
+      case 'tomorrow':
+        return const Color(0xFF557E9B);
+      case 'hold':
+        return const Color(0xFF99765B);
+      case 'process':
+        return const Color(0xFF667F89);
+      default:
+        return const Color(0xFF71808D);
+    }
+  }
+}

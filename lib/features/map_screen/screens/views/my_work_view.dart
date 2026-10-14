@@ -18,7 +18,7 @@ class MyWorkView extends StatefulWidget {
 }
 
 class _MyWorkViewState extends State<MyWorkView> {
-  static const double _sectionHeaderHeight = 56;
+  static const double _sectionHeaderHeight = 48;
   static const _sectionNames = [
     'Urgent Works',
     'IMP Works',
@@ -28,7 +28,6 @@ class _MyWorkViewState extends State<MyWorkView> {
     'Later Works',
     'Process Works',
     'Hold Works',
-    'Done Works',
   ];
 
   final Set<String> _expandedSections = {};
@@ -81,8 +80,6 @@ class _MyWorkViewState extends State<MyWorkView> {
         return const Color(0xFF557E9B);
       case 'Hold Works':
         return const Color(0xFF99765B);
-      case 'Done Works':
-        return const Color(0xFF708276);
       default:
         return const Color(0xFF71808D);
     }
@@ -155,7 +152,6 @@ class _MyWorkViewState extends State<MyWorkView> {
             right: 0,
             child: Material(
               color: Colors.white,
-              elevation: 2,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -229,7 +225,7 @@ class _MyWorkViewState extends State<MyWorkView> {
                 name.replaceFirst(RegExp(r' Works$'), '').toUpperCase(),
                 style: TextStyle(
                   color: color,
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.4,
                 ),
@@ -248,7 +244,7 @@ class _MyWorkViewState extends State<MyWorkView> {
                   style: TextStyle(
                     color: color,
                     fontWeight: FontWeight.w700,
-                    fontSize: 11,
+                    fontSize: 10,
                   ),
                 ),
               ),

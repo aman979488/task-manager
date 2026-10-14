@@ -29,5 +29,6 @@ class AllWorkView extends StatelessWidget {
     taskBuilder: taskBuilder,
     calendarBuilder: calendarBuilder,
     refreshable: refreshable,
+    compactLayout: true,
   );
 }

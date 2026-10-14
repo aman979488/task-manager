@@ -11,6 +11,7 @@ class TaskListView extends StatelessWidget {
     required this.taskBuilder,
     required this.calendarBuilder,
     required this.refreshable,
+    this.compactLayout = false,
   });
 
   final List<Task> tasks;
@@ -19,6 +20,7 @@ class TaskListView extends StatelessWidget {
   final Widget Function(Task task, int index) taskBuilder;
   final Widget Function(List<Task> tasks) calendarBuilder;
   final Widget Function(Widget child) refreshable;
+  final bool compactLayout;
 
   @override
   Widget build(BuildContext context) {
@@ -47,18 +49,24 @@ class TaskListView extends StatelessWidget {
     }
     return refreshable(
       MediaQuery(
-        data: MediaQuery.of(
-          context,
-        ).copyWith(textScaler: TextScaler.linear(zoom)),
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(zoom)),
         child: viewType == 'Grid'
             ? GridView.builder(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+                padding: EdgeInsets.fromLTRB(
+                  compactLayout ? 8 : 12,
+                  compactLayout ? 4 : 8,
+                  compactLayout ? 8 : 12,
+                  100,
+                ),
                 gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 260,
-                  mainAxisExtent: 150 + (80 * (zoom - 1)),
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
+                  mainAxisExtent:
+                      (compactLayout ? 132 : 150) +
+                      ((compactLayout ? 65 : 80) * (zoom - 1)),
+                  crossAxisSpacing: compactLayout ? 8 : 10,
+                  mainAxisSpacing: compactLayout ? 8 : 10,
                 ),
                 itemCount: tasks.length,
                 itemBuilder: (context, index) =>
@@ -66,7 +74,7 @@ class TaskListView extends StatelessWidget {
               )
             : ListView.builder(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
+                padding: EdgeInsets.fromLTRB(0, compactLayout ? 4 : 8, 0, 100),
                 itemCount: tasks.length,
                 itemBuilder: (context, index) =>
                     taskBuilder(tasks[index], index),

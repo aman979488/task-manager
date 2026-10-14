@@ -10,6 +10,7 @@ class CompactTaskTile extends StatelessWidget {
     required this.taskName,
     required this.description,
     required this.isSelected,
+    this.dense = false,
     required this.priorityBadge,
     required this.onToggleDone,
     required this.onAddSubtask,
@@ -21,6 +22,7 @@ class CompactTaskTile extends StatelessWidget {
   final String taskName;
   final String? description;
   final bool isSelected;
+  final bool dense;
   final Widget priorityBadge;
   final VoidCallback onToggleDone;
   final VoidCallback onAddSubtask;
@@ -34,6 +36,10 @@ class CompactTaskTile extends StatelessWidget {
         task.clientName?.trim().isNotEmpty == true;
     return ListTile(
       dense: true,
+      visualDensity: dense
+          ? const VisualDensity(horizontal: -1, vertical: -1)
+          : VisualDensity.standard,
+      contentPadding: EdgeInsets.symmetric(horizontal: dense ? 8 : 16),
       selected: isSelected,
       leading: Checkbox(
         value: task.isDone,
@@ -45,7 +51,7 @@ class CompactTaskTile extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: 15,
+          fontSize: dense ? 13 : 15,
           fontWeight: FontWeight.w600,
           color: const Color(0xFF26364A),
           decoration: task.isDone ? TextDecoration.lineThrough : null,
@@ -63,14 +69,14 @@ class CompactTaskTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: dense ? 10 : 12,
                       color: Colors.blueGrey.shade500,
                       height: 1.25,
                     ),
                   ),
                 if (hasMetadata)
                   Padding(
-                    padding: const EdgeInsets.only(top: 3),
+                    padding: EdgeInsets.only(top: dense ? 1 : 3),
                     child: TaskMetadataBadges(task: task, compact: true),
                   ),
               ],
@@ -83,10 +89,10 @@ class CompactTaskTile extends StatelessWidget {
             tooltip: 'Add subtask',
             visualDensity: VisualDensity.compact,
             onPressed: onAddSubtask,
-            icon: const Icon(
+            icon: Icon(
               Icons.add_circle_outline,
               color: Color(0xFF526D8A),
-              size: 21,
+              size: dense ? 19 : 21,
             ),
           ),
         ],

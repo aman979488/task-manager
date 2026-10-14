@@ -8,6 +8,7 @@ class TaskTile extends StatelessWidget {
     super.key,
     required this.task,
     required this.isSelected,
+    this.dense = false,
     required this.taskName,
     required this.description,
     required this.priorityWidget,
@@ -19,6 +20,7 @@ class TaskTile extends StatelessWidget {
 
   final Task task;
   final bool isSelected;
+  final bool dense;
   final String taskName;
   final String? description;
   final Widget priorityWidget;
@@ -29,7 +31,10 @@ class TaskTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+    padding: EdgeInsets.symmetric(
+      horizontal: dense ? 8 : 12,
+      vertical: dense ? 0 : 2,
+    ),
     child: InkWell(
       onLongPress: onToggleSelection,
       onTap: onOpen,
@@ -40,25 +45,28 @@ class TaskTile extends StatelessWidget {
               : Colors.white,
           borderRadius: BorderRadius.circular(8),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        padding: EdgeInsets.symmetric(
+          horizontal: 8,
+          vertical: dense ? 5 : 8,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             GestureDetector(
               onTap: onToggleDone,
               child: Padding(
-                padding: const EdgeInsets.only(right: 14),
+                padding: EdgeInsets.only(right: dense ? 8 : 14),
                 child: isSelected
-                    ? const Icon(
+                    ? Icon(
                         Icons.check_circle,
-                        size: 28,
+                        size: dense ? 23 : 28,
                         color: Color(0xFF6B5800),
                       )
                     : Icon(
                         task.isDone
                             ? Icons.check_circle
                             : Icons.radio_button_unchecked,
-                        size: 28,
+                        size: dense ? 23 : 28,
                         color: task.isDone ? Colors.green : Colors.black54,
                       ),
               ),
@@ -71,7 +79,7 @@ class TaskTile extends StatelessWidget {
                   Text(
                     taskName,
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: dense ? 13 : 15,
                       fontWeight: FontWeight.w600,
                       color: const Color(0xFF26364A),
                       decoration: task.isDone
@@ -82,13 +90,13 @@ class TaskTile extends StatelessWidget {
                   ),
                   if (description?.isNotEmpty == true)
                     Padding(
-                      padding: const EdgeInsets.only(top: 3),
+                      padding: EdgeInsets.only(top: dense ? 1 : 3),
                       child: Text(
                         description!,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: dense ? 10 : 12,
                           height: 1.25,
                           color: task.isDone
                               ? Colors.grey.shade500
@@ -99,28 +107,28 @@ class TaskTile extends StatelessWidget {
                   if (task.workType?.trim().isNotEmpty == true ||
                       task.clientName?.trim().isNotEmpty == true)
                     Padding(
-                      padding: const EdgeInsets.only(top: 3),
+                      padding: EdgeInsets.only(top: dense ? 1 : 3),
                       child: TaskMetadataBadges(task: task, compact: true),
                     ),
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: dense ? 6 : 10),
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   children: [
                     priorityWidget,
-                    const SizedBox(width: 8),
+                    SizedBox(width: dense ? 4 : 8),
                     InkWell(
                       onTap: onAddSubtask,
                       borderRadius: BorderRadius.circular(20),
-                      child: const Padding(
-                        padding: EdgeInsets.all(6),
+                      child: Padding(
+                        padding: EdgeInsets.all(dense ? 4 : 6),
                         child: Icon(
                           Icons.add_circle_outline,
-                          size: 24,
+                          size: dense ? 20 : 24,
                           color: Color(0xFF6B5800),
                         ),
                       ),

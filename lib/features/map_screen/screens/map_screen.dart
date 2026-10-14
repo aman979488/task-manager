@@ -17,8 +17,12 @@ import '../../../services/home_screen_shortcut.dart';
 import '../viewmodels/map_screen_viewmodel.dart';
 import '../viewmodels/add_task_viewmodel.dart';
 import '../services/task_share_print_service.dart';
-import '../utils/quick_date_time_options.dart';
+import '../models/quick_date_time_option.dart';
+import 'views/date_time_picker_dialog.dart';
+import 'views/task_completion_confirmation_dialog.dart';
+import 'views/add_task_metadata_bar.dart';
 import 'views/my_day_view.dart';
+import 'views/my_work_task_results_view.dart';
 import 'views/my_work_view.dart';
 import 'views/calendar_view.dart';
 import 'views/group_by_view.dart';
@@ -28,9 +32,7 @@ import 'views/done_tasks_view.dart';
 import 'views/overdue_tasks_view.dart';
 import 'views/pending_tasks_view.dart';
 import 'views/group_by_assignee_view.dart';
-import 'widgets/task_tile.dart';
-import 'widgets/compact_task_tile.dart';
-import 'widgets/task_grid_card.dart';
+import 'widgets/map_task_list_item.dart';
 import 'widgets/sheet_option_button.dart';
 
 class MapScreen extends StatefulWidget {
@@ -113,7 +115,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 7, vsync: this);
+    _tabController = TabController(length: 8, vsync: this);
     _loadButtonOrder();
   }
 
@@ -385,155 +387,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
-  Future<DateTime?> pickDateTimeWithTabs(
-    BuildContext context, {
-    DateTime? initial,
-  }) async {
-    DateTime selectedDate = initial ?? DateTime.now();
-    TimeOfDay selectedTime = TimeOfDay.fromDateTime(initial ?? DateTime.now());
-
-    int tabIndex = 0;
-
-    return showDialog<DateTime>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(context).height * 0.85,
-                ),
-                child: SingleChildScrollView(
-                  child: SizedBox(
-                    height: 430,
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            _tabButton(
-                              title: "DATE",
-                              selected: tabIndex == 0,
-                              onTap: () => setState(() => tabIndex = 0),
-                            ),
-                            _tabButton(
-                              title: "TIME",
-                              selected: tabIndex == 1,
-                              onTap: () async {
-                                final picked = await showTimePicker(
-                                  context: context,
-                                  initialTime: selectedTime,
-                                );
-                                if (picked != null) {
-                                  selectedTime = picked;
-                                  setState(() => tabIndex = 1);
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                        Expanded(
-                          child: tabIndex == 0
-                              ? CalendarDatePicker(
-                                  initialDate: selectedDate,
-                                  firstDate: DateTime(2000),
-                                  lastDate: DateTime(2100),
-                                  onDateChanged: (date) {
-                                    selectedDate = date;
-                                  },
-                                )
-                              : Center(
-                                  child: Text(
-                                    selectedTime.format(context),
-                                    style: const TextStyle(
-                                      fontSize: 40,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text("CANCEL"),
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: primaryColor,
-                                ),
-                                onPressed: () {
-                                  final result = DateTime(
-                                    selectedDate.year,
-                                    selectedDate.month,
-                                    selectedDate.day,
-                                    selectedTime.hour,
-                                    selectedTime.minute,
-                                  );
-                                  Navigator.pop(context, result);
-                                },
-                                child: const Text(
-                                  "SAVE",
-                                  style: TextStyle(color: secondaryColor),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _tabButton({
-    required String title,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: selected ? secondaryColor : Colors.transparent,
-                width: 2,
-              ),
-            ),
-          ),
-          child: Center(
-            child: Text(
-              title,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: selected ? secondaryColor : Colors.black54,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _loadTasksFromFirebase() async {
     final authVM = Provider.of<AuthViewModel>(context, listen: false);
     await _viewModel.refreshTasks(authVM);
@@ -766,7 +619,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               DateTime? computed;
               if (lower.contains('custom')) {
                 if (!multiSelect) _hideFloatingSheet();
-                computed = await pickDateTimeWithTabs(rootContext);
+                computed = await showDateTimePickerWithTabs(rootContext);
               } else {
                 computed = QuickDateTimeOptions.resolve(opt, now: now);
               }
@@ -1202,7 +1055,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         final lower = opt.toLowerCase();
         DateTime? selectedDate = DateTime.tryParse(opt);
         if (selectedDate == null && lower.contains('custom')) {
-          selectedDate = await pickDateTimeWithTabs(context);
+          selectedDate = await showDateTimePickerWithTabs(context);
         } else if (selectedDate == null) {
           selectedDate = QuickDateTimeOptions.resolve(opt);
         }
@@ -1386,20 +1239,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
             FloatingSheetType.refProject,
           ];
-          final selectedButtonOrder = _addTaskViewModel.metadataOrder
-              .where(
-                (type) =>
-                    mobileButtonOrder.contains(type) &&
-                    (_addTaskViewModel.valueFor(type)?.trim().isNotEmpty ??
-                        false),
-              )
-              .toList();
-          final availableButtonOrder = [
-            ...selectedButtonOrder,
-            ...mobileButtonOrder.where(
-              (type) => !selectedButtonOrder.contains(type),
-            ),
-          ];
           final systemNavBar = MediaQuery.of(sheetContext).padding.bottom;
           final bottomPadding = 16.0 + (kIsWeb ? 0.0 : systemNavBar);
 
@@ -1430,23 +1269,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SingleChildScrollView(
-                    controller: _metadataButtonsScrollController,
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: availableButtonOrder
-                          .map(
-                            (type) => Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: _buildBottomSheetButtonWithState(
-                                type,
-                                setModalState,
-                                compact: screenWidth < 600,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                    ),
+                  AddTaskMetadataBar(
+                    buttonOrder: mobileButtonOrder,
+                    metadataOrder: _addTaskViewModel.metadataOrder,
+                    scrollController: _metadataButtonsScrollController,
+                    compact: screenWidth < 600,
+                    buttonBuilder: (type, compact) =>
+                        _buildBottomSheetButtonWithState(
+                          type,
+                          setModalState,
+                          compact: compact,
+                        ),
                   ),
                   const SizedBox(height: 6),
                   Row(
@@ -1903,74 +1736,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  Widget _buildTaskTile(Task task) {
-    final isSelected = _selected.contains(task);
-    return TaskTile(
-      task: task,
-      isSelected: isSelected,
-      taskName: _taskListName(task),
-      description: _taskListDescription(task),
-      priorityWidget: Builder(
-        builder: (badgeContext) {
-          final priority = task.priority;
-          return GestureDetector(
-            onTap: () => _showFloatingSheet(
-              badgeContext,
-              FloatingSheetType.priority,
-              onSelected: (value) async {
-                setState(() {
-                  task.priority = value;
-                  task.priorityUpdatedAt =
-                      DateTime.now().millisecondsSinceEpoch;
-                });
-                _viewModel.sortTasks();
-                await _updateTaskInFirebase(task);
-              },
-            ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: priority == null || priority.isEmpty
-                      ? Colors.grey.shade300
-                      : secondaryColor,
-                ),
-              ),
-              child: Text(
-                priority == null || priority.isEmpty ? 'None' : priority,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: priority == null || priority.isEmpty
-                      ? Colors.grey.shade600
-                      : secondaryColor,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-      onToggleDone: () async {
-        setState(() => task.isDone = !task.isDone);
-        await _updateTaskInFirebase(task);
-        _viewModel.sortTasks();
-      },
-      onToggleSelection: () => setState(() {
-        if (!_selected.add(task)) _selected.remove(task);
-      }),
-      onOpen: () {
-        if (_selected.isEmpty) {
-          _openTaskDetail(task);
-          return;
-        }
-        setState(() {
-          if (!_selected.add(task)) _selected.remove(task);
-        });
-      },
-      onAddSubtask: () => _promptAddSubstep(task),
-    );
-  }
+  Widget _buildTaskTile(Task task) => _buildMapTaskListItem(
+    task,
+    viewType: 'Detailed list',
+    dense: true,
+  );
 
   List<Task> _getOverdueTasks() => _viewModel.overdueTasks();
   List<Task> _getPendingTasks() => _viewModel.pendingTasks();
@@ -1979,188 +1749,57 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   List<Task> _getMyTasks() =>
       _viewModel.myTasks(Provider.of<AuthViewModel>(context, listen: false));
 
-  List<Task> _getMyDayTasks() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    return _getMyTasks().where((task) {
-      if (task.isDone) return false;
-      if (task.priority?.trim().toLowerCase() == 'today') return true;
+  List<Task> _getMyDayTasks() =>
+      MapScreenViewModel.myDayTasks(_getMyTasks());
 
-      final scheduled = _taskScheduledDate(task);
-      return scheduled != null &&
-          scheduled.year == today.year &&
-          scheduled.month == today.month &&
-          scheduled.day == today.day;
-    }).toList();
-  }
-
-  Widget _buildTaskPriorityBadge(Task task, {bool compact = false}) {
-    final priority = task.priority?.trim();
-    final badgeColor = _taskPriorityColor(priority);
-    return GestureDetector(
-      onTap: () {
-        _showFloatingSheet(
-          context,
-          FloatingSheetType.priority,
-          onSelected: (value) async {
-            setState(() {
-              task.priority = value;
-              task.priorityUpdatedAt = DateTime.now().millisecondsSinceEpoch;
-            });
-            _viewModel.sortTasks();
-            await _updateTaskInFirebase(task);
-          },
-        );
-      },
-      child: Container(
-        constraints: compact
-            ? const BoxConstraints(maxWidth: 60, maxHeight: 22)
-            : null,
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 6 : 10,
-          vertical: compact ? 2 : 6,
-        ),
-        decoration: BoxDecoration(
-          color: badgeColor.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(compact ? 10 : 14),
-          border: Border.all(color: badgeColor.withValues(alpha: 0.42)),
-        ),
-        child: Text(
-          priority != null && priority.isNotEmpty ? priority : 'None',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: compact ? 10 : 13,
-            color: badgeColor,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Color _taskPriorityColor(String? priority) {
-    switch (priority?.trim().toLowerCase()) {
-      case 'u1':
-      case 'u2':
-      case 'u3':
-      case 'urgent':
-        return const Color(0xFF9B5965);
-      case 'imp':
-        return const Color(0xFF526D8A);
-      case 'today':
-      case 'tomorrow':
-        return const Color(0xFF557E9B);
-      case 'hold':
-        return const Color(0xFF99765B);
-      case 'process':
-        return const Color(0xFF667F89);
-      default:
-        return const Color(0xFF71808D);
-    }
-  }
-
-  Widget _buildMyWorkTaskResults(List<Task> visibleTasks) {
-    if (_viewType == 'Calendar') {
-      final selectedDay = DateTime(
-        _calendarDate.year,
-        _calendarDate.month,
-        _calendarDate.day,
-      );
-      final dayTasks = visibleTasks.where((task) {
-        final scheduled = _taskScheduledDate(task);
-        return scheduled != null &&
-            scheduled.year == selectedDay.year &&
-            scheduled.month == selectedDay.month &&
-            scheduled.day == selectedDay.day;
-      }).toList();
-
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CalendarDatePicker(
-            initialDate: _calendarDate,
-            firstDate: DateTime(2000),
-            lastDate: DateTime(2100),
-            onDateChanged: (date) => setState(() => _calendarDate = date),
-          ),
-          const Divider(height: 1),
-          if (dayTasks.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'No tasks scheduled for this day.',
-                style: TextStyle(color: Colors.grey),
-              ),
-            )
-          else
-            ...dayTasks.asMap().entries.map(
-              (entry) => Column(
-                children: [
-                  _buildTaskTile(entry.value),
-                  _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
-                ],
-              ),
+  Widget _buildMyWorkTaskResults(List<Task> visibleTasks) =>
+      MyWorkTaskResultsView(
+        tasks: visibleTasks,
+        viewType: _viewType,
+        zoom: _zoom,
+        selectedDate: _calendarDate,
+        onDateChanged: (date) => setState(() => _calendarDate = date),
+        scheduledDate: _taskScheduledDate,
+        taskBuilder: (task, index) =>
+            _buildTaskItem(
+              task,
+              index,
+              dense: true,
+              confirmCompletion: true,
             ),
-        ],
-      );
-    }
-
-    if (visibleTasks.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.fromLTRB(24, 8, 24, 20),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            'No tasks in this section.',
-            style: TextStyle(color: Colors.grey),
-          ),
+        detailedTaskBuilder: (task) => Column(
+          children: [
+            _buildMapTaskListItem(
+              task,
+              viewType: 'Detailed list',
+              dense: true,
+              confirmCompletion: true,
+            ),
+            _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
+          ],
         ),
       );
-    }
-
-    return MediaQuery(
-      data: MediaQuery.of(context)
-          .copyWith(textScaler: TextScaler.linear(_zoom)),
-      child: _viewType == 'Grid'
-          ? GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 260,
-                mainAxisExtent: 150 + (80 * (_zoom - 1)),
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: visibleTasks.length,
-              itemBuilder: (context, index) =>
-                  _buildGridTaskCard(visibleTasks[index]),
-            )
-          : Column(
-              children: visibleTasks.asMap().entries.map((entry) {
-                if (_viewType == 'List') {
-                  return _buildCompactTaskTile(entry.value);
-                }
-                return Column(
-                  children: [
-                    _buildTaskTile(entry.value),
-                    _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
-                  ],
-                );
-              }).toList(),
-            ),
-    );
-  }
 
   Widget _buildMyWorkView() {
-    final sections = _viewModel.myWorkSections(_getMyTasks());
     return _refreshableScrollView(
       MyWorkView(
-        sections: sections,
+        sections: _viewModel.myWorkSections(_getMyTasks()),
         taskResultsBuilder: (tasks) =>
             _buildMyWorkTaskResults(_getVisibleTasks(tasks)),
       ),
+    );
+  }
+
+  Widget _buildAssignTab() {
+    final groups = MapScreenViewModel.assignedTasksByName(
+      _getVisibleTasks(tasks),
+    );
+    return GroupByAssigneeView(
+      groups: groups,
+      pageStorageId: 'assign-tab',
+      refreshable: _refreshableScrollView,
+      onOpenAssignee: _showAssigneeTasksModal,
+      onOpenTask: _openTaskDetail,
     );
   }
 
@@ -2174,7 +1813,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return MyDayView(
       tasks: dayTasks,
       suggestions: suggestions,
-      taskBuilder: (task, index) => _buildTaskItem(task, index),
+      taskBuilder: _buildTaskItem,
       suggestionBuilder: _buildMyDaySuggestion,
       onRefresh: _refreshTasks,
     );
@@ -2197,11 +1836,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           _viewModel.sortTasks();
         },
       ),
-      title: Text(task.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Text(
+        task.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 13),
+      ),
       subtitle: Text(
         details.isEmpty ? 'Task' : details.join(' • '),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 11),
       ),
       trailing: IconButton(
         tooltip: 'Add to My Day',
@@ -2227,31 +1872,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }).length;
   }
 
-  String _groupValue(Task task) {
-    switch (_groupBy) {
-      case 'Priority':
-        return task.priority?.trim().isNotEmpty == true
-            ? task.priority!.trim()
-            : 'No priority';
-      case 'Work type':
-        return task.workType?.trim().isNotEmpty == true
-            ? task.workType!.trim()
-            : 'No work type';
-      case 'Status':
-        return task.isDone ? 'Done' : 'Pending';
-      default:
-        return task.assignee?.trim().isNotEmpty == true
-            ? task.assignee!.trim()
-            : 'Unassigned';
-    }
-  }
-
   DateTime? _taskScheduledDate(Task task) =>
       DateTime.tryParse(task.deadline ?? task.reminder ?? '');
-
-  String _taskListName(Task task) {
-    return task.title;
-  }
 
   String? _taskListDescription(Task task) {
     final assignee = task.assignee?.trim();
@@ -2261,31 +1883,36 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return note.isEmpty ? null : note;
   }
 
-  Widget _buildCompactTaskTile(Task task) {
-    final isSelected = _selected.contains(task);
-    return CompactTaskTile(
+  Widget _buildMapTaskListItem(
+    Task task, {
+    String? viewType,
+    bool dense = false,
+    bool confirmCompletion = false,
+  }) {
+    return MapTaskListItem(
       task: task,
-      taskName: _taskListName(task),
-      description: _taskListDescription(task),
-      isSelected: isSelected,
-      priorityBadge: _buildTaskPriorityBadge(task, compact: true),
-      onToggleDone: () async {
-        setState(() => task.isDone = !task.isDone);
-        await _updateTaskInFirebase(task);
-        if (mounted) _viewModel.sortTasks();
-      },
-      onAddSubtask: () => _promptAddSubstep(task),
-      onToggleSelection: () => _toggleTaskSelection(task),
-      onOpen: () => _openOrToggleTask(task),
-    );
-  }
-
-  Widget _buildGridTaskCard(Task task) {
-    return TaskGridCard(
-      task: task,
-      taskName: _taskListName(task),
+      viewType: viewType ?? _viewType,
+      dense: dense,
+      taskName: task.title,
       description: _taskListDescription(task),
       isSelected: _selected.contains(task),
+      onEditPriority: (badgeContext) => _showFloatingSheet(
+        badgeContext,
+        FloatingSheetType.priority,
+        onSelected: (value) async {
+          setState(() {
+            task.priority = value;
+            task.priorityUpdatedAt = DateTime.now().millisecondsSinceEpoch;
+          });
+          _viewModel.sortTasks();
+          await _updateTaskInFirebase(task);
+        },
+      ),
+      onToggleDone: () => _toggleTaskDone(
+        task,
+        confirmCompletion: confirmCompletion,
+      ),
+      onAddSubtask: () => _promptAddSubstep(task),
       onToggleSelection: () => _toggleTaskSelection(task),
       onOpen: () => _openOrToggleTask(task),
     );
@@ -2305,22 +1932,51 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  Widget _buildTaskItem(Task task, int index) => _viewType == 'Grid'
-      ? _buildGridTaskCard(task)
-      : _viewType == 'List'
-      ? _buildCompactTaskTile(task)
-      : Column(
+  Widget _buildTaskItem(
+    Task task,
+    int index, {
+    bool dense = true,
+    bool confirmCompletion = false,
+  }) =>
+      _viewType == 'Detailed list'
+      ? Column(
           children: [
-            _buildTaskTile(task),
+            _buildMapTaskListItem(
+              task,
+              dense: dense,
+              confirmCompletion: confirmCompletion,
+            ),
             _thinHairline(indent: 15, endIndent: 15, opacity: 0.05),
           ],
+        )
+      : _buildMapTaskListItem(
+          task,
+          dense: dense,
+          confirmCompletion: confirmCompletion,
         );
+
+  Future<void> _toggleTaskDone(
+    Task task, {
+    bool confirmCompletion = false,
+  }) async {
+    if (confirmCompletion && !task.isDone) {
+      final confirmed = await showTaskCompletionConfirmation(
+        context,
+        task.title,
+      );
+      if (!confirmed || !mounted) return;
+    }
+
+    setState(() => task.isDone = !task.isDone);
+    await _updateTaskInFirebase(task);
+    if (mounted) _viewModel.sortTasks();
+  }
 
   Widget _buildAllWorkTab() => AllWorkView(
     tasks: _getVisibleTasks(tasks),
     viewType: _viewType,
     zoom: _zoom,
-    taskBuilder: _buildTaskItem,
+    taskBuilder: (task, index) => _buildTaskItem(task, index, dense: true),
     calendarBuilder: _buildCalendarView,
     refreshable: _refreshableScrollView,
   );
@@ -2369,13 +2025,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildGroupByAssignView() {
-    final Map<String, List<Task>> grouped = {};
-    for (final task in _getVisibleTasks(tasks)) {
-      grouped.putIfAbsent(_groupValue(task), () => []).add(task);
-    }
+    final grouped = MapScreenViewModel.groupTasks(
+      _getVisibleTasks(tasks),
+      _groupBy,
+    );
     if (_groupBy == 'Assignee') {
       return GroupByAssigneeView(
         groups: grouped,
+        pageStorageId: 'group-by-$_groupBy-tab',
         refreshable: _refreshableScrollView,
         onOpenAssignee: _showAssigneeTasksModal,
         onOpenTask: _openTaskDetail,
@@ -2384,6 +2041,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return GroupByView(
       groups: grouped,
       groupBy: _groupBy,
+      pageStorageId: 'group-by-$_groupBy-tab',
       refreshable: _refreshableScrollView,
       onOpenAssignee: _showAssigneeTasksModal,
       onOpenTask: _openTaskDetail,
@@ -2845,17 +2503,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               labelColor: Colors.black,
               labelStyle: const TextStyle(
                 fontWeight: FontWeight.w900,
-                fontSize: 12,
+                fontSize: 11,
               ),
               unselectedLabelColor: Colors.grey.shade500,
               unselectedLabelStyle: const TextStyle(
                 fontWeight: FontWeight.w600,
-                fontSize: 12,
+                fontSize: 11,
               ),
               labelPadding: const EdgeInsets.symmetric(horizontal: 12),
               tabs: [
                 Tab(text: 'My Day (${_getMyDayTasks().length})'),
                 const Tab(text: 'My Work'),
+                const Tab(text: 'Assign'),
                 Tab(text: 'All Work (${tasks.length})'),
                 Tab(text: 'Done (${_getDoneTasks().length})'),
                 Tab(text: 'Overdue (${_getOverdueTasks().length})'),
@@ -2876,6 +2535,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 Builder(
                   key: const PageStorageKey('my-work-tab'),
                   builder: (_) => _buildMyWorkView(),
+                ),
+                Builder(
+                  key: const PageStorageKey('assign-tab'),
+                  builder: (_) => _buildAssignTab(),
                 ),
                 Builder(
                   key: const PageStorageKey('all-work-tab'),
