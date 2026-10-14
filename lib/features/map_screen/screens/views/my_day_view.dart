@@ -261,90 +261,120 @@ class _MyDayViewState extends State<MyDayView> {
       context,
     ).formatFullDate(DateTime.now());
 
-    return Column(
+    return Stack(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-          child: Row(
-            children: [
-              const Icon(Icons.wb_sunny_outlined, color: Color(0xFF6B5800)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'My Day',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      today,
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                '${dayTasks.length} tasks',
-                style: TextStyle(
-                  color: Colors.blueGrey.shade600,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: widget.onRefresh,
-            child: dayTasks.isEmpty
-                ? ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      SizedBox(
-                        height: 220,
-                        child: Center(
-                          child: Text(
-                            'No tasks planned for today yet.',
-                            style: TextStyle(color: Colors.grey.shade600),
+        Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.wb_sunny_outlined,
+                    color: Color(0xFF6B5800),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'My Day',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
                           ),
+                        ),
+                        Text(
+                          today,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    '${dayTasks.length} tasks',
+                    style: TextStyle(
+                      color: Colors.blueGrey.shade600,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: widget.onRefresh,
+                child: dayTasks.isEmpty
+                    ? ListView(
+                        padding: const EdgeInsets.only(bottom: 76),
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(
+                            height: 220,
+                            child: Center(
+                              child: Text(
+                                'No tasks planned for today yet.',
+                                style: TextStyle(color: Colors.grey.shade600),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.only(bottom: 76),
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount: dayTasks.length,
+                        itemBuilder: (context, index) =>
+                            widget.taskBuilder(dayTasks[index], index),
+                      ),
+              ),
+            ),
+          ],
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 32 + MediaQuery.paddingOf(context).bottom,
+          child: Center(
+            child: Material(
+              color: const Color(0xFF526D8A),
+              elevation: 6,
+              borderRadius: BorderRadius.circular(24),
+              child: InkWell(
+                onTap: suggestions.isEmpty
+                    ? null
+                    : () => _showSuggestions(suggestions),
+                borderRadius: BorderRadius.circular(24),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.lightbulb_outline,
+                        size: 19,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        'Suggestions',
+                        style: TextStyle(
+                          color: suggestions.isEmpty
+                              ? Colors.white60
+                              : Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
                         ),
                       ),
                     ],
-                  )
-                : ListView.builder(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: dayTasks.length,
-                    itemBuilder: (context, index) =>
-                        widget.taskBuilder(dayTasks[index], index),
-                  ),
-          ),
-        ),
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: suggestions.isEmpty
-                    ? null
-                    : () => _showSuggestions(suggestions),
-                icon: const Icon(Icons.lightbulb_outline),
-                label: Text('Suggestions (${suggestions.length})'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF526D8A),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  side: BorderSide(color: Colors.blueGrey.shade200),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
               ),

@@ -382,89 +382,96 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: SizedBox(
-                height: 430,
-                child: Column(
-                  children: [
-                    Row(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+                ),
+                child: SingleChildScrollView(
+                  child: SizedBox(
+                    height: 430,
+                    child: Column(
                       children: [
-                        _tabButton(
-                          title: "DATE",
-                          selected: tabIndex == 0,
-                          onTap: () => setState(() => tabIndex = 0),
+                        Row(
+                          children: [
+                            _tabButton(
+                              title: "DATE",
+                              selected: tabIndex == 0,
+                              onTap: () => setState(() => tabIndex = 0),
+                            ),
+                            _tabButton(
+                              title: "TIME",
+                              selected: tabIndex == 1,
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: selectedTime,
+                                );
+                                if (picked != null) {
+                                  selectedTime = picked;
+                                  setState(() => tabIndex = 1);
+                                }
+                              },
+                            ),
+                          ],
                         ),
-                        _tabButton(
-                          title: "TIME",
-                          selected: tabIndex == 1,
-                          onTap: () async {
-                            final picked = await showTimePicker(
-                              context: context,
-                              initialTime: selectedTime,
-                            );
-                            if (picked != null) {
-                              selectedTime = picked;
-                              setState(() => tabIndex = 1);
-                            }
-                          },
+                        Expanded(
+                          child: tabIndex == 0
+                              ? CalendarDatePicker(
+                                  initialDate: selectedDate,
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime(2100),
+                                  onDateChanged: (date) {
+                                    selectedDate = date;
+                                  },
+                                )
+                              : Center(
+                                  child: Text(
+                                    selectedTime.format(context),
+                                    style: const TextStyle(
+                                      fontSize: 40,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text("CANCEL"),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: primaryColor,
+                                ),
+                                onPressed: () {
+                                  final result = DateTime(
+                                    selectedDate.year,
+                                    selectedDate.month,
+                                    selectedDate.day,
+                                    selectedTime.hour,
+                                    selectedTime.minute,
+                                  );
+                                  Navigator.pop(context, result);
+                                },
+                                child: const Text(
+                                  "SAVE",
+                                  style: TextStyle(color: secondaryColor),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                    Expanded(
-                      child: tabIndex == 0
-                          ? CalendarDatePicker(
-                              initialDate: selectedDate,
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                              onDateChanged: (date) {
-                                selectedDate = date;
-                              },
-                            )
-                          : Center(
-                              child: Text(
-                                selectedTime.format(context),
-                                style: const TextStyle(
-                                  fontSize: 40,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text("CANCEL"),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryColor,
-                            ),
-                            onPressed: () {
-                              final result = DateTime(
-                                selectedDate.year,
-                                selectedDate.month,
-                                selectedDate.day,
-                                selectedTime.hour,
-                                selectedTime.minute,
-                              );
-                              Navigator.pop(context, result);
-                            },
-                            child: const Text(
-                              "SAVE",
-                              style: TextStyle(color: secondaryColor),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             );
@@ -689,7 +696,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       final matchingOptions = typedQuery.isEmpty
           ? const <String>[]
           : options
-                .where((option) => option.toLowerCase().startsWith(typedQuery))
+                .where((option) => option.toLowerCase().contains(typedQuery))
                 .toList();
       final highlightedOption = matchingOptions.firstWhere(
         (option) => option.toLowerCase() == typedQuery,
@@ -776,8 +783,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
 
     const double padding = 8;
+    const double searchAreaHeight = 60;
+    const double optionRowHeight = 48;
+    const double doneAreaHeight = 56;
     final compactWeb = kIsWeb && MediaQuery.sizeOf(buttonContext).width < 600;
-    final maxMenuHeight = compactWeb ? 260.0 : 400.0;
+    final maxMenuHeight =
+        (searchAreaHeight +
+                optionRowHeight * 3 +
+                (multiSelect ? doneAreaHeight : 0))
+            .clamp(0.0, compactWeb ? 260.0 : 400.0)
+            .toDouble();
 
     _hideFloatingSheet();
     final initialQuery = searchQuery?.call() ?? '';
@@ -787,8 +802,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       builder: (_) => LayoutBuilder(
         builder: (context, constraints) {
           final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-          final usableHeight = (constraints.maxHeight - keyboardInset)
-              .clamp(0.0, constraints.maxHeight);
+          final usableHeight = (constraints.maxHeight - keyboardInset).clamp(
+            0.0,
+            constraints.maxHeight,
+          );
           final currentButtonPosition = button.localToGlobal(
             Offset.zero,
             ancestor: overlay,
@@ -796,8 +813,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           final desiredMenuHeight = (usableHeight - padding * 2)
               .clamp(0.0, maxMenuHeight)
               .toDouble();
-          final spaceAbove = (currentButtonPosition.dy - padding)
-              .clamp(0.0, desiredMenuHeight);
+          final spaceAbove = (currentButtonPosition.dy - padding).clamp(
+            0.0,
+            desiredMenuHeight,
+          );
           final spaceBelow =
               (usableHeight -
                       currentButtonPosition.dy -
@@ -811,7 +830,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               : currentButtonPosition.dy + button.size.height + padding;
           final menuWidth = (constraints.maxWidth - padding * 2).clamp(
             0.0,
-            240.0,
+            220.0,
           );
 
           return Stack(
@@ -834,81 +853,91 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     child: StatefulBuilder(
                       builder: (context, setOverlayState) {
                         const showSearch = true;
-                        final optionListHeight =
-                            (menuMaxHeight - 68 - (multiSelect ? 64 : 0))
-                                .clamp(0.0, 250.0)
-                                .toDouble();
                         final allOptions = buildOptions(setOverlayState);
                         final filteredOptions =
                             showSearch && _searchQuery.isNotEmpty
                             ? allOptions.where((tile) {
-                                final title =
-                                    ((tile as ListTile).title as Text).data!
-                                        .toLowerCase();
+                                final title = ((tile as ListTile).title as Text)
+                                    .data!
+                                    .toLowerCase();
                                 final query = _searchQuery.toLowerCase();
-                                return searchQuery != null
-                                    ? title.startsWith(query)
-                                    : title.contains(query);
+                                return title.contains(query);
                               }).toList()
                             : allOptions;
+                        final maxOptionListHeight =
+                            (menuMaxHeight -
+                                    searchAreaHeight -
+                                    (multiSelect ? doneAreaHeight : 0))
+                                .clamp(0.0, optionRowHeight * 3)
+                                .toDouble();
+                        final visibleOptionCount = filteredOptions.isEmpty
+                            ? 1
+                            : filteredOptions.length.clamp(1, 3);
+                        final optionListHeight =
+                            (visibleOptionCount * optionRowHeight)
+                                .clamp(0.0, maxOptionListHeight)
+                                .toDouble();
 
                         return ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: menuMaxHeight,
-                          ),
+                          constraints: BoxConstraints(maxHeight: menuMaxHeight),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               if (showSearch)
-                                Padding(
-                                  padding: const EdgeInsets.all(10),
-                                  child: TextField(
-                                    controller: _searchController,
-                                    autofocus:
-                                        compactWeb &&
-                                        type == FloatingSheetType.assign,
-                                    decoration: InputDecoration(
-                                      hintText: 'Search...',
-                                      hintStyle: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.grey.shade400,
-                                      ),
-                                      prefixIcon: Icon(
-                                        Icons.search,
-                                        size: 18,
-                                        color: Colors.grey.shade50,
-                                      ),
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 8,
+                                SizedBox(
+                                  height: searchAreaHeight,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(10),
+                                    child: TextField(
+                                      controller: _searchController,
+                                      autofocus:
+                                          compactWeb &&
+                                          type == FloatingSheetType.assign,
+                                      decoration: InputDecoration(
+                                        hintText: 'Search...',
+                                        hintStyle: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey.shade400,
+                                        ),
+                                        prefixIcon: Icon(
+                                          Icons.search,
+                                          size: 18,
+                                          color: Colors.grey.shade50,
+                                        ),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 8,
+                                            ),
+                                        isDense: true,
+                                        filled: true,
+                                        fillColor: Colors.grey.shade100,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
                                           ),
-                                      isDense: true,
-                                      filled: true,
-                                      fillColor: Colors.grey.shade100,
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide.none,
+                                          borderSide: BorderSide.none,
+                                        ),
                                       ),
+                                      onChanged: (val) {
+                                        _searchQuery = val;
+                                        setOverlayState(() {});
+                                      },
                                     ),
-                                    onChanged: (val) {
-                                      _searchQuery = val;
-                                      setOverlayState(() {});
-                                    },
                                   ),
                                 ),
-                              ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxHeight: optionListHeight,
-                                ),
+                              SizedBox(
+                                height: optionListHeight,
                                 child: filteredOptions.isEmpty
                                     ? const Padding(
                                         padding: EdgeInsets.all(16),
-                                        child: Text(
-                                          'No results',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: Colors.grey,
+                                        child: Center(
+                                          child: Text(
+                                            'No results',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.grey,
+                                            ),
                                           ),
                                         ),
                                       )
@@ -919,28 +948,31 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                       ),
                               ),
                               if (multiSelect)
-                                Padding(
-                                  padding: const EdgeInsets.all(8.0),
-                                  child: SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: secondaryColor,
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
+                                SizedBox(
+                                  height: doneAreaHeight,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: secondaryColor,
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      onPressed: () {
-                                        _hideFloatingSheet();
-                                        onDone?.call();
-                                      },
-                                      child: const Text(
-                                        'Done',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
+                                        onPressed: () {
+                                          _hideFloatingSheet();
+                                          onDone?.call();
+                                        },
+                                        child: const Text(
+                                          'Done',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -1003,7 +1035,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         content: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: 360,
-            maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.42,
+            maxHeight: (MediaQuery.sizeOf(dialogContext).height * 0.42)
+                .clamp(0.0, 180.0)
+                .toDouble(),
           ),
           child: SingleChildScrollView(
             child: Column(
@@ -1319,7 +1353,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         }
         final normalizedQuery = query.toLowerCase();
         final matches = options
-            .where((option) => option.toLowerCase().startsWith(normalizedQuery))
+            .where((option) => option.toLowerCase().contains(normalizedQuery))
             .toList();
         if (matches.isEmpty) return;
 
@@ -1465,7 +1499,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                       .where(
                                         (option) => option
                                             .toLowerCase()
-                                            .startsWith(query.toLowerCase()),
+                                            .contains(query.toLowerCase()),
                                       )
                                       .toList();
                                   if (matches.isEmpty) return;
@@ -1523,7 +1557,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                     final listHeight =
                                         (popupHeight -
                                                 (showDone ? doneAreaHeight : 0))
-                                            .clamp(0.0, 154.0)
+                                            .clamp(0.0, 144.0)
                                             .toDouble();
 
                                     return Align(
@@ -1541,13 +1575,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                             child: Column(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
-                                                ConstrainedBox(
-                                                  constraints: BoxConstraints(
-                                                    maxHeight: listHeight,
-                                                  ),
+                                                SizedBox(
+                                                  height: listHeight,
                                                   child: ListView.builder(
                                                     padding: EdgeInsets.zero,
-                                                    shrinkWrap: true,
                                                     itemCount: matches.length,
                                                     itemBuilder: (context, index) {
                                                       final name =
@@ -1694,7 +1725,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                               m.symbol,
                                           searchQuery: () =>
                                               assigneeMentionQuery ?? '',
-                                          closeOnSelect: true,
                                           multiSelect:
                                               pickerType ==
                                               FloatingSheetType.assign,
@@ -1813,6 +1843,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       builder: (ctx) {
         return AlertDialog(
           title: Text('Delete ${_selected.length} task(s)?'),
+          scrollable: true,
           content: const Text(
             'Are you sure you want to delete selected tasks?',
           ),
@@ -1855,6 +1886,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       builder: (ctx) {
         return AlertDialog(
           title: const Text('Add substep'),
+          scrollable: true,
           content: TextField(
             controller: controller,
             autofocus: true,
@@ -2178,11 +2210,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           _viewModel.sortTasks();
         },
       ),
-      title: Text(
-        task.title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: Text(task.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(
         details.isEmpty ? 'Task' : details.join(' • '),
         maxLines: 1,
@@ -2390,50 +2418,52 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.sort),
-              title: const Text('Sort by'),
-              subtitle: Text(_sortBy),
-              onTap: () => Navigator.pop(context, 'sort'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.group_work_outlined),
-              title: const Text('Group by'),
-              subtitle: Text(_groupBy),
-              onTap: () => Navigator.pop(context, 'group'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.view_quilt_outlined),
-              title: const Text('View type'),
-              subtitle: Text(_viewType),
-              onTap: () => Navigator.pop(context, 'view'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.zoom_in),
-              title: const Text('Adjust zoom'),
-              subtitle: Text('${(_zoom * 100).round()}%'),
-              onTap: () => Navigator.pop(context, 'zoom'),
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.add_to_home_screen),
-              title: const Text('Add shortcut to home screen'),
-              onTap: () => Navigator.pop(context, 'shortcut'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.share_outlined),
-              title: const Text('Share list'),
-              onTap: () => Navigator.pop(context, 'share'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.print_outlined),
-              title: const Text('Print list'),
-              onTap: () => Navigator.pop(context, 'print'),
-            ),
-          ],
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 168),
+          child: ListView(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.sort),
+                title: const Text('Sort by'),
+                subtitle: Text(_sortBy),
+                onTap: () => Navigator.pop(context, 'sort'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.group_work_outlined),
+                title: const Text('Group by'),
+                subtitle: Text(_groupBy),
+                onTap: () => Navigator.pop(context, 'group'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.view_quilt_outlined),
+                title: const Text('View type'),
+                subtitle: Text(_viewType),
+                onTap: () => Navigator.pop(context, 'view'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.zoom_in),
+                title: const Text('Adjust zoom'),
+                subtitle: Text('${(_zoom * 100).round()}%'),
+                onTap: () => Navigator.pop(context, 'zoom'),
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.add_to_home_screen),
+                title: const Text('Add shortcut to home screen'),
+                onTap: () => Navigator.pop(context, 'shortcut'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.share_outlined),
+                title: const Text('Share list'),
+                onTap: () => Navigator.pop(context, 'share'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.print_outlined),
+                title: const Text('Print list'),
+                onTap: () => Navigator.pop(context, 'print'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2492,18 +2522,26 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }) async {
     final value = await showDialog<String>(
       context: context,
-      builder: (context) => SimpleDialog(
+      builder: (context) => AlertDialog(
         title: Text(title),
-        children: options
-            .map(
-              (option) => RadioListTile<String>(
+        scrollable: true,
+        content: SizedBox(
+          height: options.length.clamp(1, 3).toDouble() * 56.0,
+          width: 280,
+          child: ListView.builder(
+            itemCount: options.length,
+            itemExtent: 56,
+            itemBuilder: (context, index) {
+              final option = options[index];
+              return RadioListTile<String>(
                 value: option,
                 groupValue: selected,
                 title: Text(option),
                 onChanged: (value) => Navigator.pop(context, value),
-              ),
-            )
-            .toList(),
+              );
+            },
+          ),
+        ),
       ),
     );
     if (value != null && mounted) onSelected(value);
@@ -2516,6 +2554,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Adjust zoom'),
+          scrollable: true,
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

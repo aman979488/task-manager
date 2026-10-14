@@ -173,89 +173,96 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: SizedBox(
-                height: 430,
-                child: Column(
-                  children: [
-                    Row(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+                ),
+                child: SingleChildScrollView(
+                  child: SizedBox(
+                    height: 430,
+                    child: Column(
                       children: [
-                        _tabButton(
-                          title: "DATE",
-                          selected: tabIndex == 0,
-                          onTap: () => setState(() => tabIndex = 0),
+                        Row(
+                          children: [
+                            _tabButton(
+                              title: "DATE",
+                              selected: tabIndex == 0,
+                              onTap: () => setState(() => tabIndex = 0),
+                            ),
+                            _tabButton(
+                              title: "TIME",
+                              selected: tabIndex == 1,
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: selectedTime,
+                                );
+                                if (picked != null) {
+                                  selectedTime = picked;
+                                  setState(() => tabIndex = 1);
+                                }
+                              },
+                            ),
+                          ],
                         ),
-                        _tabButton(
-                          title: "TIME",
-                          selected: tabIndex == 1,
-                          onTap: () async {
-                            final picked = await showTimePicker(
-                              context: context,
-                              initialTime: selectedTime,
-                            );
-                            if (picked != null) {
-                              selectedTime = picked;
-                              setState(() => tabIndex = 1);
-                            }
-                          },
+                        Expanded(
+                          child: tabIndex == 0
+                              ? CalendarDatePicker(
+                                  initialDate: selectedDate,
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime(2100),
+                                  onDateChanged: (date) {
+                                    selectedDate = date;
+                                  },
+                                )
+                              : Center(
+                                  child: Text(
+                                    selectedTime.format(context),
+                                    style: const TextStyle(
+                                      fontSize: 40,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text("CANCEL"),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: primaryColor,
+                                ),
+                                onPressed: () {
+                                  final result = DateTime(
+                                    selectedDate.year,
+                                    selectedDate.month,
+                                    selectedDate.day,
+                                    selectedTime.hour,
+                                    selectedTime.minute,
+                                  );
+                                  Navigator.pop(context, result);
+                                },
+                                child: const Text(
+                                  "SAVE",
+                                  style: TextStyle(color: secondaryColor),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                    Expanded(
-                      child: tabIndex == 0
-                          ? CalendarDatePicker(
-                              initialDate: selectedDate,
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                              onDateChanged: (date) {
-                                selectedDate = date;
-                              },
-                            )
-                          : Center(
-                              child: Text(
-                                selectedTime.format(context),
-                                style: const TextStyle(
-                                  fontSize: 40,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text("CANCEL"),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryColor,
-                            ),
-                            onPressed: () {
-                              final result = DateTime(
-                                selectedDate.year,
-                                selectedDate.month,
-                                selectedDate.day,
-                                selectedTime.hour,
-                                selectedTime.minute,
-                              );
-                              Navigator.pop(context, result);
-                            },
-                            child: const Text(
-                              "SAVE",
-                              style: TextStyle(color: secondaryColor),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             );
@@ -758,6 +765,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       builder: (ctx) {
         return AlertDialog(
           title: const Text('Delete step'),
+          scrollable: true,
           content: const Text('Are you sure you want to delete this sub-step?'),
           actions: [
             TextButton(
