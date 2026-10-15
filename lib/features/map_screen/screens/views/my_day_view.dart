@@ -69,9 +69,7 @@ class _MyDayViewState extends State<MyDayView> {
   List<Task> get _suggestions {
     final dayTaskKeys = _dayTasks.map(_taskKey).toSet();
     return widget.suggestions
-        .where(
-          (task) => !task.isDone && !dayTaskKeys.contains(_taskKey(task)),
-        )
+        .where((task) => !task.isDone && !dayTaskKeys.contains(_taskKey(task)))
         .toList();
   }
 
@@ -108,8 +106,8 @@ class _MyDayViewState extends State<MyDayView> {
     }
 
     final groups = <String, List<Task>>{
-      for (final date in datedGroups.keys.toList()
-        ..sort((a, b) => b.compareTo(a)))
+      for (final date
+          in datedGroups.keys.toList()..sort((a, b) => b.compareTo(a)))
         'From ${_dateLabel(date)}': datedGroups[date]!,
       if (earlier.isNotEmpty) 'From earlier': earlier,
       if (recent.isNotEmpty) 'Recently added': recent,
@@ -136,114 +134,111 @@ class _MyDayViewState extends State<MyDayView> {
           return Material(
             color: Colors.white,
             clipBehavior: Clip.antiAlias,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(22),
-            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
             child: StatefulBuilder(
               builder: (context, setSheetState) => CustomScrollView(
                 controller: scrollController,
                 slivers: [
-                SliverToBoxAdapter(
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 9),
-                      Container(
-                        width: 38,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade400,
-                          borderRadius: BorderRadius.circular(4),
+                  SliverToBoxAdapter(
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 9),
+                        Container(
+                          width: 38,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade400,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
                         ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 16, 8),
-                        child: Row(
-                          children: [
-                            IconButton(
-                              tooltip: 'Close suggestions',
-                              onPressed: () => Navigator.of(sheetContext).pop(),
-                              icon: const Icon(Icons.close),
-                            ),
-                            const Expanded(
-                              child: Text(
-                                'Suggestions',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 16, 8),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                tooltip: 'Close suggestions',
+                                onPressed: () =>
+                                    Navigator.of(sheetContext).pop(),
+                                icon: const Icon(Icons.close),
+                              ),
+                              const Expanded(
+                                child: Text(
+                                  'Suggestions',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
-                            ),
-                            Text(
-                              '${suggestions.length - _addedInSuggestionsSheet.length}',
-                              style: TextStyle(color: Colors.grey.shade600),
-                            ),
-                          ],
+                              Text(
+                                '${suggestions.length - _addedInSuggestionsSheet.length}',
+                                style: TextStyle(color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const Divider(height: 1),
-                    ],
-                  ),
-                ),
-                if (groups.isEmpty)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(child: Text('No suggestions available.')),
-                  )
-                else
-                  for (final entry in groups.entries.where(
-                    (entry) => entry.value.any(
-                      (task) => !_addedInSuggestionsSheet.contains(
-                        _taskKey(task),
-                      ),
+                        const Divider(height: 1),
+                      ],
                     ),
-                  )) ...[
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 16, 4),
-                        child: Text(
-                          entry.key,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
+                  ),
+                  if (groups.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(child: Text('No suggestions available.')),
+                    )
+                  else
+                    for (final entry in groups.entries.where(
+                      (entry) => entry.value.any(
+                        (task) =>
+                            !_addedInSuggestionsSheet.contains(_taskKey(task)),
+                      ),
+                    )) ...[
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 16, 16, 4),
+                          child: Text(
+                            entry.key,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        final visibleTasks = entry.value
-                            .where(
-                              (task) =>
-                                  !_addedInSuggestionsSheet.contains(
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final visibleTasks = entry.value
+                                .where(
+                                  (task) => !_addedInSuggestionsSheet.contains(
                                     _taskKey(task),
                                   ),
-                            )
-                            .toList();
-                        final task = visibleTasks[index];
-                        final key = _taskKey(task);
-                        return widget.suggestionBuilder(
-                          task,
-                          () {
-                            setState(() => _addedTasks[key] = task);
-                            setSheetState(
-                              () => _addedInSuggestionsSheet.add(key),
-                            );
+                                )
+                                .toList();
+                            final task = visibleTasks[index];
+                            final key = _taskKey(task);
+                            return widget.suggestionBuilder(task, () {
+                              setState(() => _addedTasks[key] = task);
+                              setSheetState(
+                                () => _addedInSuggestionsSheet.add(key),
+                              );
+                            });
                           },
-                        );
-                      }, childCount: entry.value
-                          .where(
-                            (task) => !_addedInSuggestionsSheet.contains(
-                              _taskKey(task),
-                            ),
-                          )
-                          .length),
+                          childCount: entry.value
+                              .where(
+                                (task) => !_addedInSuggestionsSheet.contains(
+                                  _taskKey(task),
+                                ),
+                              )
+                              .length,
+                        ),
+                      ),
+                    ],
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: MediaQuery.paddingOf(context).bottom + 24,
                     ),
-                  ],
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: MediaQuery.paddingOf(context).bottom + 24,
                   ),
-                ),
                 ],
               ),
             ),
@@ -257,52 +252,36 @@ class _MyDayViewState extends State<MyDayView> {
   Widget build(BuildContext context) {
     final dayTasks = _dayTasks;
     final suggestions = _suggestions;
-    final today = MaterialLocalizations.of(
-      context,
-    ).formatFullDate(DateTime.now());
+    final today = MaterialLocalizations.of(context)
+        .formatFullDate(DateTime.now());
 
     return Stack(
       children: [
         Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.wb_sunny_outlined,
-                    color: Color(0xFF6B5800),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'My Day',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          today,
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'My Day',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                  Text(
-                    '${dayTasks.length} tasks',
-                    style: TextStyle(
-                      color: Colors.blueGrey.shade600,
-                      fontWeight: FontWeight.w600,
+                    Text(
+                      today,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 16,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             const Divider(height: 1),
@@ -339,7 +318,7 @@ class _MyDayViewState extends State<MyDayView> {
         Positioned(
           left: 0,
           right: 0,
-          bottom: 32 + MediaQuery.paddingOf(context).bottom,
+          bottom: 16 + MediaQuery.paddingOf(context).bottom,
           child: Center(
             child: Material(
               color: const Color(0xFF526D8A),

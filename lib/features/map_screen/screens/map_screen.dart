@@ -1828,6 +1828,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     ];
 
     return ListTile(
+      onTap: () => _openTaskDetail(task),
       leading: Checkbox(
         value: task.isDone,
         onChanged: (_) async {
