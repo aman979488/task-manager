@@ -11,6 +11,7 @@ class GroupByAssigneeView extends StatelessWidget {
     required this.onOpenAssignee,
     required this.onOpenTask,
     required this.refreshable,
+    this.openAssigneeOnTap = false,
   });
 
   final Map<String, List<Task>> groups;
@@ -18,6 +19,7 @@ class GroupByAssigneeView extends StatelessWidget {
   final void Function(String name, List<Task> tasks) onOpenAssignee;
   final ValueChanged<Task> onOpenTask;
   final Widget Function(Widget child) refreshable;
+  final bool openAssigneeOnTap;
 
   @override
   Widget build(BuildContext context) => GroupByView(
@@ -27,5 +29,6 @@ class GroupByAssigneeView extends StatelessWidget {
     onOpenAssignee: onOpenAssignee,
     onOpenTask: onOpenTask,
     refreshable: refreshable,
+    openAssigneeOnTap: openAssigneeOnTap,
   );
 }

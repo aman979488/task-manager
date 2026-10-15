@@ -279,6 +279,10 @@ class MapScreenViewModel extends ChangeNotifier {
   }
 
   Map<String, List<Task>> myWorkSections(List<Task> myTasks) {
+    return sectionsForWork(myTasks);
+  }
+
+  static Map<String, List<Task>> sectionsForWork(List<Task> myTasks) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final pending = myTasks.where((task) => !task.isDone);

@@ -104,7 +104,8 @@ class TaskTile extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (task.workType?.trim().isNotEmpty == true ||
+                  if (task.assignee?.trim().isNotEmpty == true ||
+                      task.workType?.trim().isNotEmpty == true ||
                       task.clientName?.trim().isNotEmpty == true)
                     Padding(
                       padding: EdgeInsets.only(top: dense ? 1 : 3),

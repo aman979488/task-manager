@@ -8,10 +8,12 @@ class MyWorkView extends StatefulWidget {
     super.key,
     required this.sections,
     required this.taskResultsBuilder,
+    this.emptyMessage = 'No tasks in My Work.',
   });
 
   final Map<String, List<Task>> sections;
   final Widget Function(List<Task> tasks) taskResultsBuilder;
+  final String emptyMessage;
 
   @override
   State<MyWorkView> createState() => _MyWorkViewState();
@@ -123,11 +125,11 @@ class _MyWorkViewState extends State<MyWorkView> {
             SliverList(
               delegate: SliverChildListDelegate(
                 populatedNames.isEmpty
-                    ? const [
+                    ? [
                         Padding(
                           padding: EdgeInsets.fromLTRB(16, 20, 16, 20),
                           child: Text(
-                            'No tasks in My Work.',
+                            widget.emptyMessage,
                             style: TextStyle(color: Colors.blueGrey),
                           ),
                         ),

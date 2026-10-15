@@ -661,6 +661,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final initialQuery = searchQuery?.call() ?? '';
     _searchQuery = initialQuery;
     _searchController.clear();
+    double? fixedMenuTop;
+    double? fixedMenuBottom;
+    double? fixedMenuMaxHeight;
     _floatingSheetOverlay = OverlayEntry(
       builder: (_) => LayoutBuilder(
         builder: (context, constraints) {
@@ -669,28 +672,36 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             0.0,
             constraints.maxHeight,
           );
-          final currentButtonPosition = button.localToGlobal(
-            Offset.zero,
-            ancestor: overlay,
-          );
-          final desiredMenuHeight = (usableHeight - padding * 2)
-              .clamp(0.0, maxMenuHeight)
-              .toDouble();
-          final spaceAbove = (currentButtonPosition.dy - padding).clamp(
-            0.0,
-            desiredMenuHeight,
-          );
-          final spaceBelow =
-              (usableHeight -
-                      currentButtonPosition.dy -
-                      button.size.height -
-                      padding)
-                  .clamp(0.0, desiredMenuHeight);
-          final openAbove = spaceAbove >= spaceBelow;
-          final menuMaxHeight = openAbove ? spaceAbove : spaceBelow;
-          final top = openAbove
-              ? currentButtonPosition.dy - menuMaxHeight
-              : currentButtonPosition.dy + button.size.height + padding;
+          if ((fixedMenuTop == null && fixedMenuBottom == null) ||
+              fixedMenuMaxHeight == null) {
+            final currentButtonPosition = button.localToGlobal(
+              Offset.zero,
+              ancestor: overlay,
+            );
+            final desiredMenuHeight = (usableHeight - padding * 2)
+                .clamp(0.0, maxMenuHeight)
+                .toDouble();
+            final spaceAbove = (currentButtonPosition.dy - padding).clamp(
+              0.0,
+              desiredMenuHeight,
+            );
+            final spaceBelow =
+                (usableHeight -
+                        currentButtonPosition.dy -
+                        button.size.height -
+                        padding)
+                    .clamp(0.0, desiredMenuHeight);
+            final openAbove = spaceAbove >= spaceBelow;
+            fixedMenuMaxHeight = openAbove ? spaceAbove : spaceBelow;
+            if (openAbove) {
+              fixedMenuBottom =
+                  constraints.maxHeight - (currentButtonPosition.dy - padding);
+            } else {
+              fixedMenuTop =
+                  currentButtonPosition.dy + button.size.height + padding;
+            }
+          }
+          final menuMaxHeight = fixedMenuMaxHeight!;
           final menuWidth = (constraints.maxWidth - padding * 2).clamp(
             0.0,
             220.0,
@@ -705,7 +716,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
               Positioned(
                 right: padding,
-                top: top,
+                top: fixedMenuTop,
+                bottom: fixedMenuBottom,
                 child: Material(
                   color: Colors.white,
                   elevation: 8,
@@ -786,58 +798,69 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                     ),
                                   ),
                                 ),
-                              SizedBox(
-                                height: optionListHeight,
-                                child: filteredOptions.isEmpty
-                                    ? const Padding(
-                                        padding: EdgeInsets.all(16),
-                                        child: Center(
-                                          child: Text(
-                                            'No results',
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: Colors.grey,
+                              TextFieldTapRegion(
+                                child: ExcludeFocus(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        height: optionListHeight,
+                                        child: filteredOptions.isEmpty
+                                            ? const Padding(
+                                                padding: EdgeInsets.all(16),
+                                                child: Center(
+                                                  child: Text(
+                                                    'No results',
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                      color: Colors.grey,
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                            : ListView(
+                                                padding: EdgeInsets.zero,
+                                                shrinkWrap: true,
+                                                children: filteredOptions,
+                                              ),
+                                      ),
+                                      if (multiSelect)
+                                        SizedBox(
+                                          height: doneAreaHeight,
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(8.0),
+                                            child: SizedBox(
+                                              width: double.infinity,
+                                              child: ElevatedButton(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor:
+                                                      secondaryColor,
+                                                  foregroundColor: Colors.white,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                  ),
+                                                ),
+                                                onPressed: () {
+                                                  _hideFloatingSheet();
+                                                  onDone?.call();
+                                                },
+                                                child: const Text(
+                                                  'Done',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      )
-                                    : ListView(
-                                        padding: EdgeInsets.zero,
-                                        shrinkWrap: true,
-                                        children: filteredOptions,
-                                      ),
-                              ),
-                              if (multiSelect)
-                                SizedBox(
-                                  height: doneAreaHeight,
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: secondaryColor,
-                                          foregroundColor: Colors.white,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                          ),
-                                        ),
-                                        onPressed: () {
-                                          _hideFloatingSheet();
-                                          onDone?.call();
-                                        },
-                                        child: const Text(
-                                          'Done',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
+                                    ],
                                   ),
                                 ),
+                              ),
                             ],
                           ),
                         );
@@ -1031,6 +1054,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       });
     }
 
+    void refocusComposer() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _focusNode.canRequestFocus) {
+          _focusNode.requestFocus();
+        }
+      });
+    }
+
     Future<void> completeMention(
       String opt,
       StateSetter setModalState, {
@@ -1059,7 +1090,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         } else if (selectedDate == null) {
           selectedDate = QuickDateTimeOptions.resolve(opt);
         }
-        if (selectedDate == null) return;
+        if (selectedDate == null) {
+          refocusComposer();
+          return;
+        }
         selectedValue = selectedDate.toIso8601String();
       }
 
@@ -1079,8 +1113,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         assigneeMentionStart = -1;
         assigneeMentionEnd = -1;
       });
-      if (!_focusNode.hasFocus) _focusNode.requestFocus();
-
       final hasTextBefore = beforeMention.isNotEmpty;
       final hasTextAfter = afterMention.isNotEmpty;
       final updatedText = hasTextBefore && hasTextAfter
@@ -1120,6 +1152,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         }
       });
       setModalState(() {});
+      refocusComposer();
     }
 
     List<String> currentNewTaskAssignees() => (_newTaskAssignee ?? '')
@@ -1479,6 +1512,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                         focusNode.requestFocus();
                                       }
                                     },
+                                    onEditingComplete: () {},
+                                    onTapOutside: (_) {},
                                     minLines: 1,
                                     maxLines: 4,
 
@@ -1736,11 +1771,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  Widget _buildTaskTile(Task task) => _buildMapTaskListItem(
-    task,
-    viewType: 'Detailed list',
-    dense: true,
-  );
+  Widget _buildTaskTile(Task task) =>
+      _buildMapTaskListItem(task, viewType: 'Detailed list', dense: true);
 
   List<Task> _getOverdueTasks() => _viewModel.overdueTasks();
   List<Task> _getPendingTasks() => _viewModel.pendingTasks();
@@ -1749,8 +1781,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   List<Task> _getMyTasks() =>
       _viewModel.myTasks(Provider.of<AuthViewModel>(context, listen: false));
 
-  List<Task> _getMyDayTasks() =>
-      MapScreenViewModel.myDayTasks(_getMyTasks());
+  List<Task> _getMyDayTasks() => MapScreenViewModel.myDayTasks(_getMyTasks());
 
   Widget _buildMyWorkTaskResults(List<Task> visibleTasks) =>
       MyWorkTaskResultsView(
@@ -1761,12 +1792,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         onDateChanged: (date) => setState(() => _calendarDate = date),
         scheduledDate: _taskScheduledDate,
         taskBuilder: (task, index) =>
-            _buildTaskItem(
-              task,
-              index,
-              dense: true,
-              confirmCompletion: true,
-            ),
+            _buildTaskItem(task, index, dense: true, confirmCompletion: true),
         detailedTaskBuilder: (task) => Column(
           children: [
             _buildMapTaskListItem(
@@ -1798,6 +1824,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       groups: groups,
       pageStorageId: 'assign-tab',
       refreshable: _refreshableScrollView,
+      openAssigneeOnTap: true,
       onOpenAssignee: _showAssigneeTasksModal,
       onOpenTask: _openTaskDetail,
     );
@@ -1877,9 +1904,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       DateTime.tryParse(task.deadline ?? task.reminder ?? '');
 
   String? _taskListDescription(Task task) {
-    final assignee = task.assignee?.trim();
-    if (assignee != null && assignee.isNotEmpty) return assignee;
-
     final note = task.note.trim();
     return note.isEmpty ? null : note;
   }
@@ -1909,10 +1933,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           await _updateTaskInFirebase(task);
         },
       ),
-      onToggleDone: () => _toggleTaskDone(
-        task,
-        confirmCompletion: confirmCompletion,
-      ),
+      onToggleDone: () =>
+          _toggleTaskDone(task, confirmCompletion: confirmCompletion),
       onAddSubtask: () => _promptAddSubstep(task),
       onToggleSelection: () => _toggleTaskSelection(task),
       onOpen: () => _openOrToggleTask(task),
@@ -1938,8 +1960,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     int index, {
     bool dense = true,
     bool confirmCompletion = false,
-  }) =>
-      _viewType == 'Detailed list'
+  }) => _viewType == 'Detailed list'
       ? Column(
           children: [
             _buildMapTaskListItem(
