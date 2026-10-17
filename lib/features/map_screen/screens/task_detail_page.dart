@@ -4,25 +4,26 @@ import '../models/task.dart';
 import '../models/floating_sheet_type.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 
 import '../../../viewmodels/auth_viewmodel.dart';
+import '../services/task_assignment_notification_service.dart';
+import '../models/quick_date_time_option.dart';
+import 'views/date_time_picker_dialog.dart';
 
 class TaskDetailPage extends StatefulWidget {
   final Task task;
   final VoidCallback onChanged;
-  final VoidCallback onDelete;
+  final Future<void> Function() onSave;
 
   const TaskDetailPage({
     super.key,
     required this.task,
+    required this.onSave,
     VoidCallback? onChanged,
-    VoidCallback? onDelete,
-  }) : onChanged = onChanged ?? _defaultCallback,
-       onDelete = onDelete ?? _defaultCallback;
+  }) : onChanged = onChanged ?? _defaultCallback;
 
   static void _defaultCallback() {}
 
@@ -31,6 +32,8 @@ class TaskDetailPage extends StatefulWidget {
 }
 
 class _TaskDetailPageState extends State<TaskDetailPage> {
+  final TaskAssignmentNotificationService _assignmentNotificationService =
+      TaskAssignmentNotificationService();
   OverlayEntry? _overlayEntry;
   late TextEditingController _noteController;
   final TextEditingController _searchController = TextEditingController();
@@ -53,6 +56,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   List<String>? _clientsCache;
   List<String>? _foldersCache;
   List<String>? _projectsCache; // 🚀 NAYA
+  bool _isSaving = false;
 
   static const Color primaryColor = Color(0xFFFBE64E);
   static const Color secondaryColor = Color(0xFF6B5800);
@@ -153,115 +157,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     _searchQuery = '';
   }
 
-  Future<DateTime?> pickDateTimeWithTabs(
-    BuildContext context, {
-    DateTime? initial,
-  }) async {
-    DateTime selectedDate = initial ?? DateTime.now();
-    TimeOfDay selectedTime = TimeOfDay.fromDateTime(initial ?? DateTime.now());
-    int tabIndex = 0;
-
-    return showDialog<DateTime>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: SizedBox(
-                height: 430,
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        _tabButton(
-                          title: "DATE",
-                          selected: tabIndex == 0,
-                          onTap: () => setState(() => tabIndex = 0),
-                        ),
-                        _tabButton(
-                          title: "TIME",
-                          selected: tabIndex == 1,
-                          onTap: () async {
-                            final picked = await showTimePicker(
-                              context: context,
-                              initialTime: selectedTime,
-                            );
-                            if (picked != null) {
-                              selectedTime = picked;
-                              setState(() => tabIndex = 1);
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                    Expanded(
-                      child: tabIndex == 0
-                          ? CalendarDatePicker(
-                              initialDate: selectedDate,
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                              onDateChanged: (date) {
-                                selectedDate = date;
-                              },
-                            )
-                          : Center(
-                              child: Text(
-                                selectedTime.format(context),
-                                style: const TextStyle(
-                                  fontSize: 40,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text("CANCEL"),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryColor,
-                            ),
-                            onPressed: () {
-                              final result = DateTime(
-                                selectedDate.year,
-                                selectedDate.month,
-                                selectedDate.day,
-                                selectedTime.hour,
-                                selectedTime.minute,
-                              );
-                              Navigator.pop(context, result);
-                            },
-                            child: const Text(
-                              "SAVE",
-                              style: TextStyle(color: secondaryColor),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
   Future<void> _sendTaskAssignmentNotification(
     String? assignee,
     String taskTitle,
@@ -269,85 +164,18 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   ) async {
     if (assignee == null || assignee.trim().isEmpty) return;
     final authVM = Provider.of<AuthViewModel>(ctx, listen: false);
-    if (!authVM.allowNotifications) return;
-    final String cleanAssignee = assignee.trim().toLowerCase();
-    final String myName = authVM.userName.trim().toLowerCase();
-
-    if (cleanAssignee == myName ||
-        cleanAssignee == authVM.userUid.toLowerCase() ||
-        cleanAssignee == authVM.userEmail.toLowerCase()) {
-      return;
-    }
-
     try {
-      String? targetFcmToken;
-
-      // Look up FCM token in 'users' collection first
-      final userQuery = await FirebaseFirestore.instance
-          .collection('users')
-          .where('name', isEqualTo: assignee.trim())
-          .limit(1)
-          .get();
-
-      if (userQuery.docs.isNotEmpty) {
-        targetFcmToken = userQuery.docs.first.data()['fcmToken']?.toString();
-      } else {
-        // Fallback: look up in 'cps' collection
-        final cpQuery = await FirebaseFirestore.instance
-            .collection('cps')
-            .where('cpName', isEqualTo: assignee.trim())
-            .limit(1)
-            .get();
-        if (cpQuery.docs.isNotEmpty) {
-          targetFcmToken = cpQuery.docs.first.data()['fcmToken']?.toString();
-        }
-      }
-
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'recipientName': assignee.trim(),
-        'recipientFcmToken':
-            targetFcmToken, // 🚀 NAYA: FCM Token for background push
-        'title': 'New Task Assigned',
-        'body': '${authVM.userName} assigned you a task: "$taskTitle"',
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-        'type': 'task_assigned',
-      });
+      await _assignmentNotificationService.sendAssignmentNotification(
+        assignee: assignee,
+        taskTitle: taskTitle,
+        senderName: authVM.userName,
+        senderUid: authVM.userUid,
+        senderEmail: authVM.userEmail,
+        notificationsEnabled: authVM.allowNotifications,
+      );
     } catch (e) {
       debugPrint('Error sending notification: $e');
     }
-  }
-
-  Widget _tabButton({
-    required String title,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: selected ? secondaryColor : Colors.transparent,
-                width: 2,
-              ),
-            ),
-          ),
-          child: Center(
-            child: Text(
-              title,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: selected ? secondaryColor : Colors.black54,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _showOverlay(
@@ -435,7 +263,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ListTile(title: Text("U1")),
             ListTile(title: Text("U2")),
             ListTile(title: Text("U3")),
-            ListTile(title: Text("Urgent")),
             ListTile(title: Text("IMP")),
             ListTile(title: Text("Today")),
             ListTile(title: Text("Tomorrow")),
@@ -447,24 +274,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ];
         case 'reminder':
         case 'deadline':
-          return const [
-            ListTile(
-              leading: Icon(Icons.access_time),
-              title: Text("Today (1 hour)"),
+          return [
+            ...QuickDateTimeOptions.options().map(
+              (option) => ListTile(
+                leading: const Icon(Icons.access_time),
+                title: Text(option.label),
+              ),
             ),
-            ListTile(
-              leading: Icon(Icons.access_time),
-              title: Text("Today (3 hour)"),
-            ),
-            ListTile(
-              leading: Icon(Icons.access_time),
-              title: Text("Today (6 hour)"),
-            ),
-            ListTile(
-              leading: Icon(Icons.access_time),
-              title: Text("Tomorrow (12 pm)"),
-            ),
-            ListTile(
+            const ListTile(
               leading: Icon(Icons.calendar_month),
               title: Text("Custom"),
             ),
@@ -621,50 +438,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                               )) {
                                                 _hideOverlay();
                                                 computed =
-                                                    await pickDateTimeWithTabs(
+                                                    await showDateTimePickerWithTabs(
                                                       context,
                                                     );
                                               } else {
-                                                final now = DateTime.now();
-                                                final lower = label
-                                                    .toLowerCase();
-                                                if (lower.contains(
-                                                  'today (1 hour)',
-                                                )) {
-                                                  computed = now.add(
-                                                    const Duration(hours: 1),
-                                                  );
-                                                } else if (lower.contains(
-                                                  'today (3 hour)',
-                                                )) {
-                                                  computed = now.add(
-                                                    const Duration(hours: 3),
-                                                  );
-                                                } else if (lower.contains(
-                                                  'today (6 hour)',
-                                                )) {
-                                                  computed = now.add(
-                                                    const Duration(hours: 6),
-                                                  );
-                                                } else if (lower.contains(
-                                                  'tomorrow (12 pm)',
-                                                )) {
-                                                  final tomorrow =
-                                                      DateTime(
-                                                        now.year,
-                                                        now.month,
-                                                        now.day,
-                                                      ).add(
-                                                        const Duration(days: 1),
-                                                      );
-                                                  computed = DateTime(
-                                                    tomorrow.year,
-                                                    tomorrow.month,
-                                                    tomorrow.day,
-                                                    12,
-                                                    0,
-                                                  );
-                                                }
+                                                computed =
+                                                    QuickDateTimeOptions.resolve(
+                                                      label,
+                                                    );
                                               }
 
                                               if (computed != null) {
@@ -790,6 +571,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       builder: (ctx) {
         return AlertDialog(
           title: const Text('Delete step'),
+          scrollable: true,
           content: const Text('Are you sure you want to delete this sub-step?'),
           actions: [
             TextButton(
@@ -960,6 +742,28 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   bool _isSelected(String? value) => value != null && value.isNotEmpty;
 
+  Future<void> _saveTask() async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+    task
+      ..title = _titleController.text
+      ..note = _noteController.text;
+    try {
+      await widget.onSave();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('Task saved')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('Could not save task: $error')));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   Widget _priorityBadgeHeader() {
     final p = task.priority;
     if (p == null || p.isEmpty) return const SizedBox.shrink();
@@ -1020,6 +824,23 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           style: TextStyle(color: secondaryColor, fontWeight: FontWeight.bold),
         ),
         iconTheme: const IconThemeData(color: secondaryColor),
+        actions: [
+          TextButton(
+            onPressed: _isSaving ? null : _saveTask,
+            style: TextButton.styleFrom(foregroundColor: secondaryColor),
+            child: _isSaving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: secondaryColor,
+                    ),
+                  )
+                : const Text('Save'),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -1300,38 +1121,57 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     const SizedBox(height: 12),
 
                     // 🚀 NAYA: Extra Fields Editor (Start, End, Acc, Monitor, Remark)
-                    _buildExtraFieldRow('Start Time', task.startTime, (val) {
-                      setState(() {
-                        task.startTime = val;
-                      });
-                      widget.onChanged();
-                    }, isTime: true),
-                    _buildExtraFieldRow('End Time', task.endTime, (val) {
-                      setState(() {
-                        task.endTime = val;
-                      });
-                      widget.onChanged();
-                    }, isTime: true),
-                    _buildExtraFieldRow('Accompanied By', task.accompaniedBy, (
-                      val,
-                    ) {
-                      setState(() {
-                        task.accompaniedBy = val;
-                      });
-                      widget.onChanged();
-                    }),
-                    _buildExtraFieldRow('Monitor', task.monitor, (val) {
-                      setState(() {
-                        task.monitor = val;
-                      });
-                      widget.onChanged();
-                    }),
-                    _buildExtraFieldRow('Remark', task.remark, (val) {
-                      setState(() {
-                        task.remark = val;
-                      });
-                      widget.onChanged();
-                    }),
+                    _buildExtraFieldTile(
+                      label: 'Start Time',
+                      value: task.startTime,
+                      icon: Icons.access_time,
+                      onTap: (buttonContext) => _pickExtraTime(
+                        buttonContext,
+                        (value) => task.startTime = value,
+                      ),
+                    ),
+                    _buildExtraFieldTile(
+                      label: 'End Time',
+                      value: task.endTime,
+                      icon: Icons.access_time,
+                      onTap: (buttonContext) => _pickExtraTime(
+                        buttonContext,
+                        (value) => task.endTime = value,
+                      ),
+                    ),
+                    _buildExtraFieldTile(
+                      label: 'Accompanied By',
+                      value: task.accompaniedBy,
+                      icon: Icons.person_outline,
+                      onTap: (buttonContext) => _editExtraField(
+                        buttonContext,
+                        'Accompanied By',
+                        task.accompaniedBy,
+                        (value) => task.accompaniedBy = value,
+                      ),
+                    ),
+                    _buildExtraFieldTile(
+                      label: 'Monitor',
+                      value: task.monitor,
+                      icon: Icons.desktop_windows_outlined,
+                      onTap: (buttonContext) => _editExtraField(
+                        buttonContext,
+                        'Monitor',
+                        task.monitor,
+                        (value) => task.monitor = value,
+                      ),
+                    ),
+                    _buildExtraFieldTile(
+                      label: 'Remark',
+                      value: task.remark,
+                      icon: Icons.notes,
+                      onTap: (buttonContext) => _editExtraField(
+                        buttonContext,
+                        'Remark',
+                        task.remark,
+                        (value) => task.remark = value,
+                      ),
+                    ),
 
                     const SizedBox(height: 12),
 
@@ -1409,7 +1249,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                 ),
                               ),
                             );
-                          }).toList(),
+                          }),
                           const SizedBox(height: 8),
                         ],
                       ),
@@ -1464,31 +1304,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
 
                     const SizedBox(height: 15),
-
-                    // ── Created + delete ─────────────────────────────
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "Created: ${task.createdDate}",
-                          style: TextStyle(
-                            color: Colors.grey.shade700,
-                            fontSize: 14,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.brown,
-                            size: 28,
-                          ),
-                          onPressed: () {
-                            widget.onDelete();
-                            context.pop();
-                          },
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),
@@ -1499,94 +1314,75 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-  // 🚀 NAYA: Helper for Extra Fields (Inline editing)
-  Widget _buildExtraFieldRow(
+  Widget _buildExtraFieldTile({
+    required String label,
+    required String? value,
+    required IconData icon,
+    required Future<void> Function(BuildContext) onTap,
+  }) {
+    return Builder(
+      builder: (buttonContext) => _animatedBorderedTile(
+        isSelected: _isSelected(value),
+        child: ListTile(
+          leading: Icon(icon, color: secondaryColor),
+          title: Text(label),
+          trailing: _infoTrailing(value),
+          onTap: () => onTap(buttonContext),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickExtraTime(
+    BuildContext buttonContext,
+    void Function(String) onChanged,
+  ) async {
+    final time = await showTimePicker(
+      context: buttonContext,
+      initialTime: TimeOfDay.now(),
+    );
+    if (time == null || !mounted) return;
+    setState(() => onChanged(time.format(context)));
+    widget.onChanged();
+  }
+
+  Future<void> _editExtraField(
+    BuildContext buttonContext,
     String label,
     String? value,
-    Function(String) onChanged, {
-    bool isTime = false,
-  }) {
-    final TextEditingController ctrl = TextEditingController(text: value);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: secondaryColor,
-              ),
-            ),
+    void Function(String) onChanged,
+  ) async {
+    final controller = TextEditingController(text: value);
+    final updatedValue = await showDialog<String>(
+      context: buttonContext,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(label),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: label == 'Remark' ? 3 : 1,
+          decoration: InputDecoration(hintText: 'Enter $label'),
+          textInputAction: label == 'Remark'
+              ? TextInputAction.newline
+              : TextInputAction.done,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
           ),
-          Expanded(
-            flex: 4,
-            child: isTime
-                ? InkWell(
-                    onTap: () async {
-                      final time = await showTimePicker(
-                        context: context,
-                        initialTime: TimeOfDay.now(),
-                      );
-                      if (time != null && mounted) {
-                        onChanged(time.format(context));
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        value?.isNotEmpty == true ? value! : 'Set time',
-                        style: TextStyle(
-                          color: value?.isNotEmpty == true
-                              ? Colors.black87
-                              : Colors.grey,
-                        ),
-                      ),
-                    ),
-                  )
-                : Focus(
-                    onFocusChange: (hasFocus) {
-                      if (!hasFocus) {
-                        onChanged(ctrl.text.trim());
-                      }
-                    },
-                    child: TextField(
-                      controller: ctrl,
-                      style: const TextStyle(fontSize: 13),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        hintText: 'Enter $label',
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      onSubmitted: (val) {
-                        onChanged(val.trim());
-                      },
-                    ),
-                  ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Save'),
           ),
         ],
       ),
     );
+    controller.dispose();
+    if (updatedValue == null || !mounted) return;
+    setState(() => onChanged(updatedValue));
+    widget.onChanged();
   }
 
   Widget _buildAddButton(

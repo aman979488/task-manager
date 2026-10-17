@@ -1,9 +1,12 @@
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../features/map_screen/models/task.dart';
 import '../features/map_screen/screens/map_screen.dart';
 import '../features/map_screen/screens/task_detail_page.dart';
 import '../features/map_screen/screens/assignee_tasks_view.dart';
+import '../features/map_screen/viewmodels/map_screen_viewmodel.dart';
+import '../features/map_screen/viewmodels/add_task_viewmodel.dart';
 import 'app_routes.dart';
 
 class AppRouter {
@@ -12,13 +15,25 @@ class AppRouter {
     routes: [
       GoRoute(
         path: AppRoutes.home,
-        builder: (context, state) => const MapScreen(title: 'Task Manager'),
+        builder: (context, state) => MultiProvider(
+          providers: [
+            ChangeNotifierProvider<MapScreenViewModel>(
+              create: (_) => MapScreenViewModel(),
+            ),
+            ChangeNotifierProvider<AddTaskViewModel>(
+              create: (_) => AddTaskViewModel(),
+            ),
+          ],
+          child: const MapScreen(title: 'Task Manager'),
+        ),
       ),
       GoRoute(
         path: AppRoutes.taskDetail,
         builder: (context, state) {
-          final task = state.extra as Task;
-          return TaskDetailPage(task: task, onChanged: () {}, onDelete: () {});
+          final extra = state.extra as Map<String, dynamic>;
+          final task = extra['task'] as Task;
+          final onSave = extra['onSave'] as Future<void> Function();
+          return TaskDetailPage(task: task, onChanged: () {}, onSave: onSave);
         },
       ),
       GoRoute(
