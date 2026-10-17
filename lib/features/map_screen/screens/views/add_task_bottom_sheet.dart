@@ -243,7 +243,6 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       loadProjects: mapVm.loadProjects,
       loadAssignees: mapVm.loadAssignees,
       multiSelect: isMulti,
-      closeOnSelect: isMulti,
       selectedValues: currentSelections,
       focusNodeToKeep: _focusNode,
       onSelected: (val) {
@@ -642,8 +641,6 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
                                         _activePickerSymbol == m.symbol,
                                     searchQuery: () => _mentionQuery ?? '',
                                     multiSelect:
-                                        pickerType == FloatingSheetType.assign,
-                                    closeOnSelect:
                                         pickerType == FloatingSheetType.assign,
                                     selectedValues:
                                         pickerType == FloatingSheetType.assign

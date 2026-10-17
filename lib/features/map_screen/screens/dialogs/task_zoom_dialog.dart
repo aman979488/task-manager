@@ -16,9 +16,8 @@ Future<void> showTaskZoomDialog(
           mainAxisSize: MainAxisSize.min,
           children: [
             Slider(
-              min: 0.8,
+              min: 0.5,
               max: 1.4,
-              divisions: 6,
               value: zoom,
               label: '${(zoom * 100).round()}%',
               onChanged: (value) {

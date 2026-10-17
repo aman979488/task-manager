@@ -30,10 +30,8 @@ class AppRouter {
       GoRoute(
         path: AppRoutes.taskDetail,
         builder: (context, state) {
-          final extra = state.extra as Map<String, dynamic>;
-          final task = extra['task'] as Task;
-          final onSave = extra['onSave'] as Future<void> Function();
-          return TaskDetailPage(task: task, onChanged: () {}, onSave: onSave);
+          final task = state.extra as Task;
+          return TaskDetailPage(task: task, onChanged: () {}, onDelete: () {});
         },
       ),
       GoRoute(

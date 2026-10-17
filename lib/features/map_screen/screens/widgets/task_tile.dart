@@ -10,7 +10,6 @@ class TaskTile extends StatelessWidget {
     required this.task,
     required this.isSelected,
     this.dense = false,
-    this.showMetadata = false,
     required this.taskName,
     required this.description,
     required this.priorityWidget,
@@ -23,7 +22,6 @@ class TaskTile extends StatelessWidget {
   final Task task;
   final bool isSelected;
   final bool dense;
-  final bool showMetadata;
   final String taskName;
   final String? description;
   final Widget priorityWidget;
@@ -105,10 +103,9 @@ class TaskTile extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (showMetadata &&
-                      (task.assignee?.trim().isNotEmpty == true ||
-                          task.workType?.trim().isNotEmpty == true ||
-                          task.clientName?.trim().isNotEmpty == true))
+                  if (task.assignee?.trim().isNotEmpty == true ||
+                      task.workType?.trim().isNotEmpty == true ||
+                      task.clientName?.trim().isNotEmpty == true)
                     Padding(
                       padding: EdgeInsets.only(top: dense ? 1 : 3),
                       child: TaskMetadataBadges(task: task, compact: true),

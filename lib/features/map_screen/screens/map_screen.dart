@@ -90,12 +90,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Future<void> _openTaskDetail(Task task) async {
     FloatingMetadataSheet.hide();
-    final vm = Provider.of<MapScreenViewModel>(context, listen: false);
-    await context.push<void>(
-      '/task',
-      extra: {'task': task, 'onSave': () => vm.updateTask(task)},
-    );
+    await context.push<void>('/task', extra: task);
     if (!mounted) return;
+    final vm = Provider.of<MapScreenViewModel>(context, listen: false);
     final authVm = Provider.of<AuthViewModel>(context, listen: false);
     await vm.refreshTasks(authVm);
   }

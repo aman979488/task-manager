@@ -52,7 +52,6 @@ class MapScreenTabViews extends StatelessWidget {
     Task task, {
     String? viewType,
     bool dense = false,
-    bool showMetadata = false,
     bool confirmCompletion = false,
     bool tapCompletesTask = false,
     bool keepInMyDay = false,
@@ -61,7 +60,6 @@ class MapScreenTabViews extends StatelessWidget {
       task: task,
       viewType: viewType ?? viewModel.viewType,
       dense: dense,
-      showMetadata: showMetadata,
       taskName: task.title,
       description: task.note.trim().isNotEmpty ? task.note.trim() : null,
       isSelected: viewModel.isTaskSelected(task),
@@ -89,7 +87,6 @@ class MapScreenTabViews extends StatelessWidget {
     Task task,
     int index, {
     bool dense = true,
-    bool showMetadata = false,
     bool confirmCompletion = false,
     bool tapCompletesTask = false,
     bool keepInMyDay = false,
@@ -103,7 +100,6 @@ class MapScreenTabViews extends StatelessWidget {
             task,
             viewType: effectiveViewType,
             dense: dense,
-            showMetadata: showMetadata,
             confirmCompletion: confirmCompletion,
             tapCompletesTask: tapCompletesTask,
             keepInMyDay: keepInMyDay,
@@ -120,7 +116,6 @@ class MapScreenTabViews extends StatelessWidget {
       task,
       viewType: effectiveViewType,
       dense: dense,
-      showMetadata: showMetadata,
       confirmCompletion: confirmCompletion,
       tapCompletesTask: tapCompletesTask,
       keepInMyDay: keepInMyDay,
@@ -163,165 +158,178 @@ class MapScreenTabViews extends StatelessWidget {
     final visibleOverdueTasks = viewModel.getVisibleTasks(source: overdueTasks);
     final visiblePendingTasks = viewModel.getVisibleTasks(source: pendingTasks);
 
-    return TabBarView(
-      controller: tabController,
-      children: [
-        Builder(
-          key: const PageStorageKey('my-day-tab'),
-          builder: (_) => MyDayView(
-            tasks: visibleMyDayTasks,
-            suggestions: viewModel.getVisibleTasks(
-              source: myTasks.where((t) => !t.isDone).toList(),
-            ),
-            taskBuilder: (task, index) => _buildTaskItem(
-              task,
-              index,
-              tapCompletesTask: true,
-              keepInMyDay: true,
-              viewType:
-                  const {
-                    'Grid',
-                    'List',
-                    'Detailed list',
-                  }.contains(viewModel.myDayViewType)
-                  ? viewModel.myDayViewType
-                  : 'Detailed list',
-            ),
-            calendarViewType: viewModel.myDayViewType,
-            selectedDate: viewModel.calendarDate,
-            onDateChanged: viewModel.setCalendarDate,
-            onTaskTap: (task) => onToggleTaskDone(task, keepInMyDay: true),
-            suggestionBuilder: (task, onAdd) => ListTile(
-              onTap: () => onOpenTask(task),
-              leading: Checkbox(
-                value: task.isDone,
-                onChanged: (_) => onToggleTaskDone(task),
+    return MediaQuery(
+      data: MediaQuery.of(context)
+          .copyWith(textScaler: TextScaler.linear(viewModel.zoom)),
+      child: TabBarView(
+        controller: tabController,
+        children: [
+          Builder(
+            key: const PageStorageKey('my-day-tab'),
+            builder: (_) => MyDayView(
+              tasks: visibleMyDayTasks,
+              suggestions: viewModel.getVisibleTasks(
+                source: myTasks.where((t) => !t.isDone).toList(),
               ),
-              title: Text(
-                task.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13),
+              taskBuilder: (task, index) => _buildTaskItem(
+                task,
+                index,
+                tapCompletesTask: true,
+                keepInMyDay: true,
+                viewType:
+                    const {
+                      'Grid',
+                      'List',
+                      'Detailed list',
+                    }.contains(viewModel.myDayViewType)
+                    ? viewModel.myDayViewType
+                    : 'Detailed list',
               ),
-              trailing: IconButton(
-                tooltip: 'Add to My Day',
-                onPressed: onAdd,
-                icon: const Icon(Icons.add, color: Color(0xFF526D8A)),
-              ),
-            ),
-            onAddToMyDay: viewModel.addTaskToMyDay,
-            onRefresh: onRefresh,
-          ),
-        ),
-        Builder(
-          key: const PageStorageKey('my-work-tab'),
-          builder: (_) => _refreshableScrollView(
-            MyWorkView(
-              sections: viewModel.myWorkSections(myTasks),
-              taskResultsBuilder: (secTasks) => MyWorkTaskResultsView(
-                tasks: viewModel.getVisibleTasks(source: secTasks),
-                viewType: viewModel.viewType,
-                zoom: viewModel.zoom,
-                selectedDate: viewModel.calendarDate,
-                onDateChanged: viewModel.setCalendarDate,
-                scheduledDate: (t) =>
-                    TaskDateFormatter.scheduledDate(t.deadline, t.reminder),
-                taskBuilder: (task, index) => _buildTaskItem(
-                  task,
-                  index,
-                  dense: true,
-                  showMetadata: true,
-                  confirmCompletion: true,
+              calendarViewType: viewModel.myDayViewType,
+              selectedDate: viewModel.calendarDate,
+              onDateChanged: viewModel.setCalendarDate,
+              onTaskTap: (task) => onToggleTaskDone(task, keepInMyDay: true),
+              suggestionBuilder: (task, onAdd) => ListTile(
+                onTap: () => onOpenTask(task),
+                leading: Checkbox(
+                  value: task.isDone,
+                  onChanged: (_) => onToggleTaskDone(task),
                 ),
-                detailedTaskBuilder: (task) => Column(
-                  children: [
-                    _buildMapTaskListItem(
-                      task,
-                      viewType: 'Detailed list',
-                      dense: true,
-                      showMetadata: true,
-                      confirmCompletion: true,
-                    ),
-                    Container(
-                      height: 1,
-                      margin: const EdgeInsets.only(left: 15, right: 15),
-                      color: Colors.grey.withAlpha(15),
-                    ),
-                  ],
+                title: Text(
+                  task.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13),
+                ),
+                trailing: IconButton(
+                  tooltip: 'Add to My Day',
+                  onPressed: onAdd,
+                  icon: const Icon(Icons.add, color: Color(0xFF526D8A)),
                 ),
               ),
+              onAddToMyDay: viewModel.addTaskToMyDay,
+              onRefresh: onRefresh,
             ),
           ),
-        ),
-        Builder(
-          key: const PageStorageKey('assign-tab'),
-          builder: (assignContext) => GroupByAssigneeView(
-            groups: MapScreenViewModel.assignedTasksByName(visibleAllTasks),
-            pageStorageId: 'assign-tab',
-            refreshable: _refreshableScrollView,
-            openAssigneeOnTap: true,
-            onOpenAssignee: (name, tasks) => assignContext.push(
-              '/assignee-tasks',
-              extra: {'assigneeName': name, 'tasks': tasks},
+          Builder(
+            key: const PageStorageKey('my-work-tab'),
+            builder: (_) => _refreshableScrollView(
+              MyWorkView(
+                sections: viewModel.myWorkSections(myTasks),
+                taskResultsBuilder: (secTasks) => MyWorkTaskResultsView(
+                  tasks: viewModel.getVisibleTasks(source: secTasks),
+                  viewType: viewModel.viewType,
+                  zoom: viewModel.zoom,
+                  selectedDate: viewModel.calendarDate,
+                  onDateChanged: viewModel.setCalendarDate,
+                  scheduledDate: (t) =>
+                      TaskDateFormatter.scheduledDate(t.deadline, t.reminder),
+                  taskBuilder: (task, index) => _buildTaskItem(
+                    task,
+                    index,
+                    dense: true,
+                    confirmCompletion: true,
+                  ),
+                  detailedTaskBuilder: (task) => Column(
+                    children: [
+                      _buildMapTaskListItem(
+                        task,
+                        viewType: 'Detailed list',
+                        dense: true,
+                        confirmCompletion: true,
+                      ),
+                      Container(
+                        height: 1,
+                        margin: const EdgeInsets.only(left: 15, right: 15),
+                        color: Colors.grey.withAlpha(15),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            onOpenTask: onOpenTask,
           ),
-        ),
-        Builder(
-          key: const PageStorageKey('all-work-tab'),
-          builder: (_) => AllWorkView(
-            tasks: visibleAllTasks,
-            viewType: viewModel.viewType,
-            zoom: viewModel.zoom,
-            taskBuilder: (task, index) =>
-                _buildTaskItem(task, index, dense: true),
-            calendarBuilder: _buildCalendarView,
-            refreshable: _refreshableScrollView,
+          Builder(
+            key: const PageStorageKey('assign-tab'),
+            builder: (assignContext) => GroupByAssigneeView(
+              groups: MapScreenViewModel.assignedTasksByName(visibleAllTasks),
+              pageStorageId: 'assign-tab',
+              refreshable: _refreshableScrollView,
+              openAssigneeOnTap: true,
+              onOpenAssignee: (name, tasks) => assignContext.push(
+                '/assignee-tasks',
+                extra: {'assigneeName': name, 'tasks': tasks},
+              ),
+              onOpenTask: onOpenTask,
+            ),
           ),
-        ),
-        Builder(
-          key: const PageStorageKey('done-tasks-tab'),
-          builder: (_) => DoneTasksView(
-            tasks: visibleDoneTasks,
-            viewType: viewModel.viewType,
-            zoom: viewModel.zoom,
-            taskBuilder: (task, index) => _buildTaskItem(task, index),
-            calendarBuilder: _buildCalendarView,
-            refreshable: _refreshableScrollView,
+          Builder(
+            key: const PageStorageKey('all-work-tab'),
+            builder: (_) => AllWorkView(
+              tasks: visibleAllTasks,
+              viewType: viewModel.viewType,
+              zoom: viewModel.zoom,
+              taskBuilder: (task, index) =>
+                  _buildTaskItem(task, index, dense: true),
+              calendarBuilder: _buildCalendarView,
+              refreshable: _refreshableScrollView,
+            ),
           ),
-        ),
-        Builder(
-          key: const PageStorageKey('overdue-tasks-tab'),
-          builder: (_) => OverdueTasksView(
-            tasks: visibleOverdueTasks,
-            viewType: viewModel.viewType,
-            zoom: viewModel.zoom,
-            taskBuilder: (task, index) => _buildTaskItem(task, index),
-            calendarBuilder: _buildCalendarView,
-            refreshable: _refreshableScrollView,
+          Builder(
+            key: const PageStorageKey('done-tasks-tab'),
+            builder: (_) => DoneTasksView(
+              tasks: visibleDoneTasks,
+              viewType: viewModel.viewType,
+              zoom: viewModel.zoom,
+              taskBuilder: (task, index) => _buildTaskItem(task, index),
+              calendarBuilder: _buildCalendarView,
+              refreshable: _refreshableScrollView,
+            ),
           ),
-        ),
-        Builder(
-          key: const PageStorageKey('pending-tasks-tab'),
-          builder: (_) => PendingTasksView(
-            tasks: visiblePendingTasks,
-            viewType: viewModel.viewType,
-            zoom: viewModel.zoom,
-            taskBuilder: (task, index) => _buildTaskItem(task, index),
-            calendarBuilder: _buildCalendarView,
-            refreshable: _refreshableScrollView,
+          Builder(
+            key: const PageStorageKey('overdue-tasks-tab'),
+            builder: (_) => OverdueTasksView(
+              tasks: visibleOverdueTasks,
+              viewType: viewModel.viewType,
+              zoom: viewModel.zoom,
+              taskBuilder: (task, index) => _buildTaskItem(task, index),
+              calendarBuilder: _buildCalendarView,
+              refreshable: _refreshableScrollView,
+            ),
           ),
-        ),
-        Builder(
-          key: const PageStorageKey('group-by-tab'),
-          builder: (groupByContext) {
-            final grouped = MapScreenViewModel.groupTasks(
-              visibleAllTasks,
-              viewModel.groupBy,
-            );
-            if (viewModel.groupBy == 'Assignee') {
-              return GroupByAssigneeView(
+          Builder(
+            key: const PageStorageKey('pending-tasks-tab'),
+            builder: (_) => PendingTasksView(
+              tasks: visiblePendingTasks,
+              viewType: viewModel.viewType,
+              zoom: viewModel.zoom,
+              taskBuilder: (task, index) => _buildTaskItem(task, index),
+              calendarBuilder: _buildCalendarView,
+              refreshable: _refreshableScrollView,
+            ),
+          ),
+          Builder(
+            key: const PageStorageKey('group-by-tab'),
+            builder: (groupByContext) {
+              final grouped = MapScreenViewModel.groupTasks(
+                visibleAllTasks,
+                viewModel.groupBy,
+              );
+              if (viewModel.groupBy == 'Assignee') {
+                return GroupByAssigneeView(
+                  groups: grouped,
+                  pageStorageId: 'group-by-${viewModel.groupBy}-tab',
+                  refreshable: _refreshableScrollView,
+                  onOpenAssignee: (name, tasks) => groupByContext.push(
+                    '/assignee-tasks',
+                    extra: {'assigneeName': name, 'tasks': tasks},
+                  ),
+                  onOpenTask: onOpenTask,
+                );
+              }
+              return GroupByView(
                 groups: grouped,
+                groupBy: viewModel.groupBy,
                 pageStorageId: 'group-by-${viewModel.groupBy}-tab',
                 refreshable: _refreshableScrollView,
                 onOpenAssignee: (name, tasks) => groupByContext.push(
@@ -330,21 +338,10 @@ class MapScreenTabViews extends StatelessWidget {
                 ),
                 onOpenTask: onOpenTask,
               );
-            }
-            return GroupByView(
-              groups: grouped,
-              groupBy: viewModel.groupBy,
-              pageStorageId: 'group-by-${viewModel.groupBy}-tab',
-              refreshable: _refreshableScrollView,
-              onOpenAssignee: (name, tasks) => groupByContext.push(
-                '/assignee-tasks',
-                extra: {'assigneeName': name, 'tasks': tasks},
-              ),
-              onOpenTask: onOpenTask,
-            );
-          },
-        ),
-      ],
+            },
+          ),
+        ],
+      ),
     );
   }
 }

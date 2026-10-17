@@ -12,7 +12,6 @@ class TaskGridCard extends StatelessWidget {
     required this.description,
     required this.isSelected,
     this.dense = false,
-    this.showMetadata = false,
     required this.onToggleSelection,
     required this.onOpen,
   });
@@ -22,7 +21,6 @@ class TaskGridCard extends StatelessWidget {
   final String? description;
   final bool isSelected;
   final bool dense;
-  final bool showMetadata;
   final VoidCallback onToggleSelection;
   final VoidCallback onOpen;
 
@@ -90,10 +88,9 @@ class TaskGridCard extends StatelessWidget {
                   color: Colors.grey.shade600,
                 ),
               ),
-            if (showMetadata &&
-                (task.assignee?.trim().isNotEmpty == true ||
-                    task.workType?.trim().isNotEmpty == true ||
-                    task.clientName?.trim().isNotEmpty == true))
+            if (task.assignee?.trim().isNotEmpty == true ||
+                task.workType?.trim().isNotEmpty == true ||
+                task.clientName?.trim().isNotEmpty == true)
               Padding(
                 padding: EdgeInsets.only(top: dense ? 3 : 6),
                 child: TaskMetadataBadges(task: task, compact: true),

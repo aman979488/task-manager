@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 
@@ -39,8 +37,6 @@ class _MyWorkViewState extends State<MyWorkView> {
   final GlobalKey _viewportKey = GlobalKey();
   final Map<String, GlobalKey> _sectionHeaderKeys = {};
   List<String> _pinnedSections = const [];
-  Timer? _blankTapTimer;
-  int _blankTapCount = 0;
 
   @override
   void initState() {
@@ -50,32 +46,10 @@ class _MyWorkViewState extends State<MyWorkView> {
 
   @override
   void dispose() {
-    _blankTapTimer?.cancel();
     _scrollController
       ..removeListener(_updatePinnedSections)
       ..dispose();
     super.dispose();
-  }
-
-  void _handleBlankTap(List<String> populatedNames) {
-    _blankTapCount++;
-    _blankTapTimer?.cancel();
-    _blankTapTimer = Timer(const Duration(milliseconds: 350), () {
-      final tapCount = _blankTapCount;
-      _blankTapCount = 0;
-      if (!mounted || populatedNames.isEmpty || tapCount < 2) return;
-
-      final sectionIndex = tapCount >= 3 ? 1 : 0;
-      if (sectionIndex >= populatedNames.length) return;
-      setState(() {
-        final section = populatedNames[sectionIndex];
-        if (sectionIndex == 0 && !_expandedSections.add(section)) {
-          _expandedSections.remove(section);
-        } else if (sectionIndex > 0) {
-          _expandedSections.add(section);
-        }
-      });
-    });
   }
 
   void _updatePinnedSections() {
@@ -120,7 +94,13 @@ class _MyWorkViewState extends State<MyWorkView> {
         .toList();
     Widget blankArea({double? height}) => GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _handleBlankTap(populatedNames),
+      onDoubleTap: () {
+        if (populatedNames.isEmpty) return;
+        setState(() {
+          final first = populatedNames.first;
+          if (!_expandedSections.add(first)) _expandedSections.remove(first);
+        });
+      },
       child: SizedBox(height: height, width: double.infinity),
     );
 
@@ -200,16 +180,7 @@ class _MyWorkViewState extends State<MyWorkView> {
         if (isExpanded)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(color: color.withValues(alpha: 0.25)),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: widget.taskResultsBuilder(tasks),
-              ),
-            ),
+            child: widget.taskResultsBuilder(tasks),
           ),
       ],
     );
