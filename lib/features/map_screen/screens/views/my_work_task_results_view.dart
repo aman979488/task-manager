@@ -77,26 +77,30 @@ class MyWorkTaskResultsView extends StatelessWidget {
       );
     }
 
-    return viewType == 'Grid'
-        ? GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 260,
-              mainAxisExtent: 130 + (65 * (zoom - 1)),
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
+    return MediaQuery(
+      data: MediaQuery.of(context)
+          .copyWith(textScaler: TextScaler.linear(zoom)),
+      child: viewType == 'Grid'
+          ? GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 260,
+                mainAxisExtent: 130 + (65 * (zoom - 1)),
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              itemCount: tasks.length,
+              itemBuilder: (context, index) => taskBuilder(tasks[index], index),
+            )
+          : Column(
+              children: tasks
+                  .asMap()
+                  .entries
+                  .map((entry) => taskBuilder(entry.value, entry.key))
+                  .toList(),
             ),
-            itemCount: tasks.length,
-            itemBuilder: (context, index) => taskBuilder(tasks[index], index),
-          )
-        : Column(
-            children: tasks
-                .asMap()
-                .entries
-                .map((entry) => taskBuilder(entry.value, entry.key))
-                .toList(),
-          );
+    );
   }
 }

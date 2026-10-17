@@ -18,7 +18,7 @@ void main() {
           body: GroupByAssigneeView(
             groups: assigneeGroups,
             pageStorageId: 'assignees',
-            onOpenAssignee: (_, _) {},
+            onOpenAssignee: (_, __) {},
             onOpenTask: (_) {},
             refreshable: (child) => child,
           ),
@@ -106,7 +106,7 @@ void main() {
                           key: const PageStorageKey('assign-tab'),
                           groups: groups,
                           pageStorageId: 'assign-tab',
-                          onOpenAssignee: (_, _) {},
+                          onOpenAssignee: (_, __) {},
                           onOpenTask: (_) {},
                           refreshable: (child) => child,
                         )

@@ -12,6 +12,7 @@ class CompactTaskTile extends StatelessWidget {
     required this.description,
     required this.isSelected,
     this.dense = false,
+    this.showMetadata = false,
     required this.priorityBadge,
     required this.onToggleDone,
     required this.onAddSubtask,
@@ -24,6 +25,7 @@ class CompactTaskTile extends StatelessWidget {
   final String? description;
   final bool isSelected;
   final bool dense;
+  final bool showMetadata;
   final Widget priorityBadge;
   final VoidCallback onToggleDone;
   final VoidCallback onAddSubtask;
@@ -33,9 +35,10 @@ class CompactTaskTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasMetadata =
-        task.assignee?.trim().isNotEmpty == true ||
-        task.workType?.trim().isNotEmpty == true ||
-        task.clientName?.trim().isNotEmpty == true;
+        showMetadata &&
+        (task.assignee?.trim().isNotEmpty == true ||
+            task.workType?.trim().isNotEmpty == true ||
+            task.clientName?.trim().isNotEmpty == true);
     final hasSubsteps = task.steps.isNotEmpty;
     return ListTile(
       dense: true,
