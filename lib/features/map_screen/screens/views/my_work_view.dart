@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 
@@ -8,10 +10,12 @@ class MyWorkView extends StatefulWidget {
     super.key,
     required this.sections,
     required this.taskResultsBuilder,
+    this.emptyMessage = 'No tasks in My Work.',
   });
 
   final Map<String, List<Task>> sections;
   final Widget Function(List<Task> tasks) taskResultsBuilder;
+  final String emptyMessage;
 
   @override
   State<MyWorkView> createState() => _MyWorkViewState();
@@ -35,6 +39,8 @@ class _MyWorkViewState extends State<MyWorkView> {
   final GlobalKey _viewportKey = GlobalKey();
   final Map<String, GlobalKey> _sectionHeaderKeys = {};
   List<String> _pinnedSections = const [];
+  Timer? _blankTapTimer;
+  int _blankTapCount = 0;
 
   @override
   void initState() {
@@ -44,10 +50,32 @@ class _MyWorkViewState extends State<MyWorkView> {
 
   @override
   void dispose() {
+    _blankTapTimer?.cancel();
     _scrollController
       ..removeListener(_updatePinnedSections)
       ..dispose();
     super.dispose();
+  }
+
+  void _handleBlankTap(List<String> populatedNames) {
+    _blankTapCount++;
+    _blankTapTimer?.cancel();
+    _blankTapTimer = Timer(const Duration(milliseconds: 350), () {
+      final tapCount = _blankTapCount;
+      _blankTapCount = 0;
+      if (!mounted || populatedNames.isEmpty || tapCount < 2) return;
+
+      final sectionIndex = tapCount >= 3 ? 1 : 0;
+      if (sectionIndex >= populatedNames.length) return;
+      setState(() {
+        final section = populatedNames[sectionIndex];
+        if (sectionIndex == 0 && !_expandedSections.add(section)) {
+          _expandedSections.remove(section);
+        } else if (sectionIndex > 0) {
+          _expandedSections.add(section);
+        }
+      });
+    });
   }
 
   void _updatePinnedSections() {
@@ -92,13 +120,7 @@ class _MyWorkViewState extends State<MyWorkView> {
         .toList();
     Widget blankArea({double? height}) => GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onDoubleTap: () {
-        if (populatedNames.isEmpty) return;
-        setState(() {
-          final first = populatedNames.first;
-          if (!_expandedSections.add(first)) _expandedSections.remove(first);
-        });
-      },
+      onTap: () => _handleBlankTap(populatedNames),
       child: SizedBox(height: height, width: double.infinity),
     );
 
@@ -123,11 +145,11 @@ class _MyWorkViewState extends State<MyWorkView> {
             SliverList(
               delegate: SliverChildListDelegate(
                 populatedNames.isEmpty
-                    ? const [
+                    ? [
                         Padding(
                           padding: EdgeInsets.fromLTRB(16, 20, 16, 20),
                           child: Text(
-                            'No tasks in My Work.',
+                            widget.emptyMessage,
                             style: TextStyle(color: Colors.blueGrey),
                           ),
                         ),

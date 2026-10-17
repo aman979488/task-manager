@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
 import 'task_metadata_badges.dart';
+import 'task_substeps_summary.dart';
 
 class CompactTaskTile extends StatelessWidget {
   const CompactTaskTile({
@@ -11,6 +12,7 @@ class CompactTaskTile extends StatelessWidget {
     required this.description,
     required this.isSelected,
     this.dense = false,
+    this.showMetadata = false,
     required this.priorityBadge,
     required this.onToggleDone,
     required this.onAddSubtask,
@@ -23,6 +25,7 @@ class CompactTaskTile extends StatelessWidget {
   final String? description;
   final bool isSelected;
   final bool dense;
+  final bool showMetadata;
   final Widget priorityBadge;
   final VoidCallback onToggleDone;
   final VoidCallback onAddSubtask;
@@ -32,8 +35,11 @@ class CompactTaskTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasMetadata =
-        task.workType?.trim().isNotEmpty == true ||
-        task.clientName?.trim().isNotEmpty == true;
+        showMetadata &&
+        (task.assignee?.trim().isNotEmpty == true ||
+            task.workType?.trim().isNotEmpty == true ||
+            task.clientName?.trim().isNotEmpty == true);
+    final hasSubsteps = task.steps.isNotEmpty;
     return ListTile(
       dense: true,
       visualDensity: dense
@@ -58,7 +64,7 @@ class CompactTaskTile extends StatelessWidget {
           decorationColor: Colors.blueGrey.shade400,
         ),
       ),
-      subtitle: description?.isNotEmpty != true && !hasMetadata
+      subtitle: description?.isNotEmpty != true && !hasMetadata && !hasSubsteps
           ? null
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,6 +80,8 @@ class CompactTaskTile extends StatelessWidget {
                       height: 1.25,
                     ),
                   ),
+                if (hasSubsteps)
+                  TaskSubstepsSummary(steps: task.steps, dense: true),
                 if (hasMetadata)
                   Padding(
                     padding: EdgeInsets.only(top: dense ? 1 : 3),
@@ -85,6 +93,7 @@ class CompactTaskTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           priorityBadge,
+          const SizedBox(width: 6),
           IconButton(
             tooltip: 'Add subtask',
             visualDensity: VisualDensity.compact,

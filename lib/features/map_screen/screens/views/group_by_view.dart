@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
+import '../widgets/task_metadata_badges.dart';
 
 class GroupByView extends StatelessWidget {
   const GroupByView({
@@ -11,6 +12,7 @@ class GroupByView extends StatelessWidget {
     required this.onOpenAssignee,
     required this.onOpenTask,
     required this.refreshable,
+    this.openAssigneeOnTap = false,
   });
 
   final Map<String, List<Task>> groups;
@@ -19,6 +21,7 @@ class GroupByView extends StatelessWidget {
   final void Function(String name, List<Task> tasks) onOpenAssignee;
   final ValueChanged<Task> onOpenTask;
   final Widget Function(Widget child) refreshable;
+  final bool openAssigneeOnTap;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +57,98 @@ class GroupByView extends StatelessWidget {
           final tasks = groups[name]!;
           final completedCount = tasks.where((task) => task.isDone).length;
           final pendingCount = tasks.length - completedCount;
+          final cardContents = openAssigneeOnTap && groupBy == 'Assignee'
+              ? ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFFFBE64E)
+                        .withValues(alpha: 0.3),
+                    child: Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF6B5800),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  title: Text(
+                    name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Total: ${tasks.length} • Pending: $pendingCount • Done: $completedCount',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => onOpenAssignee(name, tasks),
+                )
+              : ExpansionTile(
+                  key: PageStorageKey('$pageStorageId-group-$name'),
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFFFBE64E)
+                        .withValues(alpha: 0.3),
+                    child: Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF6B5800),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  title: Text(
+                    name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Total: ${tasks.length} • Pending: $pendingCount • Done: $completedCount',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                  ),
+                  children: [
+                    if (groupBy == 'Assignee')
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () => onOpenAssignee(name, tasks),
+                          icon: const Icon(Icons.open_in_new, size: 16),
+                          label: const Text(
+                            'Open assignee task view',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ),
+                    ...tasks.map(
+                      (task) => ListTile(
+                        dense: true,
+                        leading: Icon(
+                          task.isDone
+                              ? Icons.check_circle_outline
+                              : Icons.radio_button_unchecked,
+                          color: task.isDone ? Colors.green : Colors.grey,
+                        ),
+                        title: Text(
+                          task.title,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        subtitle:
+                            task.assignee?.trim().isNotEmpty == true ||
+                                task.clientName?.trim().isNotEmpty == true ||
+                                task.workType?.trim().isNotEmpty == true
+                            ? TaskMetadataBadges(task: task, compact: true)
+                            : null,
+                        onTap: () => onOpenTask(task),
+                      ),
+                    ),
+                  ],
+                );
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
@@ -71,63 +166,7 @@ class GroupByView extends StatelessWidget {
             child: Material(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              child: ExpansionTile(
-                key: PageStorageKey('$pageStorageId-group-$name'),
-                leading: CircleAvatar(
-                  backgroundColor: const Color(0xFFFBE64E)
-                      .withValues(alpha: 0.3),
-                  child: Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : '?',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF6B5800),
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-                title: Text(
-                  name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: Colors.black87,
-                  ),
-                ),
-                subtitle: Text(
-                  'Total: ${tasks.length} • Pending: $pendingCount • Done: $completedCount',
-                  style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-                ),
-                children: [
-                  if (groupBy == 'Assignee')
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: () => onOpenAssignee(name, tasks),
-                        icon: const Icon(Icons.open_in_new, size: 16),
-                        label: const Text(
-                          'Open assignee task view',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ),
-                  ...tasks.map(
-                    (task) => ListTile(
-                      dense: true,
-                      leading: Icon(
-                        task.isDone
-                            ? Icons.check_circle_outline
-                            : Icons.radio_button_unchecked,
-                        color: task.isDone ? Colors.green : Colors.grey,
-                      ),
-                      title: Text(
-                        task.title,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      onTap: () => onOpenTask(task),
-                    ),
-                  ),
-                ],
-              ),
+              child: cardContents,
             ),
           );
         },

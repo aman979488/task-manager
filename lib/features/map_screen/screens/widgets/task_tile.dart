@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
 import 'task_metadata_badges.dart';
+import 'task_substeps_summary.dart';
 
 class TaskTile extends StatelessWidget {
   const TaskTile({
@@ -9,6 +10,7 @@ class TaskTile extends StatelessWidget {
     required this.task,
     required this.isSelected,
     this.dense = false,
+    this.showMetadata = false,
     required this.taskName,
     required this.description,
     required this.priorityWidget,
@@ -21,6 +23,7 @@ class TaskTile extends StatelessWidget {
   final Task task;
   final bool isSelected;
   final bool dense;
+  final bool showMetadata;
   final String taskName;
   final String? description;
   final Widget priorityWidget;
@@ -45,10 +48,7 @@ class TaskTile extends StatelessWidget {
               : Colors.white,
           borderRadius: BorderRadius.circular(8),
         ),
-        padding: EdgeInsets.symmetric(
-          horizontal: 8,
-          vertical: dense ? 5 : 8,
-        ),
+        padding: EdgeInsets.symmetric(horizontal: 8, vertical: dense ? 5 : 8),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -88,6 +88,7 @@ class TaskTile extends StatelessWidget {
                       decorationColor: Colors.blueGrey.shade400,
                     ),
                   ),
+                  TaskSubstepsSummary(steps: task.steps, dense: dense),
                   if (description?.isNotEmpty == true)
                     Padding(
                       padding: EdgeInsets.only(top: dense ? 1 : 3),
@@ -104,8 +105,10 @@ class TaskTile extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (task.workType?.trim().isNotEmpty == true ||
-                      task.clientName?.trim().isNotEmpty == true)
+                  if (showMetadata &&
+                      (task.assignee?.trim().isNotEmpty == true ||
+                          task.workType?.trim().isNotEmpty == true ||
+                          task.clientName?.trim().isNotEmpty == true))
                     Padding(
                       padding: EdgeInsets.only(top: dense ? 1 : 3),
                       child: TaskMetadataBadges(task: task, compact: true),
@@ -120,7 +123,7 @@ class TaskTile extends StatelessWidget {
                 Row(
                   children: [
                     priorityWidget,
-                    SizedBox(width: dense ? 4 : 8),
+                    SizedBox(width: dense ? 8 : 12),
                     InkWell(
                       onTap: onAddSubtask,
                       borderRadius: BorderRadius.circular(20),
