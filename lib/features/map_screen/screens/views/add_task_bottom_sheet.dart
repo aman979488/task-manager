@@ -339,9 +339,14 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       },
     );
   }
+  String _capitalizeFirst(String text) {
+  final t = text.trim();
+  if (t.isEmpty) return t;
+  return t[0].toUpperCase() + t.substring(1);
+}
 
   Future<void> _handleSubmit() async {
-    final title = _taskNameController.text.trim();
+    final title = _capitalizeFirst(_taskNameController.text);
     if (title.isEmpty) return;
 
     final authVm = Provider.of<AuthViewModel>(context, listen: false);

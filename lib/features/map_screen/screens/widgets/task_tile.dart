@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
+import '../../utils/task_title_formatter.dart';
 import 'task_metadata_badges.dart';
 import 'task_substeps_summary.dart';
 
@@ -35,9 +36,9 @@ class TaskTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: EdgeInsets.symmetric(
-      horizontal: dense ? 8 : 12,
-      vertical: dense ? 0 : 2,
-    ),
+  horizontal: dense ? 2 : 4,
+  vertical: dense ? 0 : 2,
+),
     child: InkWell(
       onLongPress: onToggleSelection,
       onTap: onOpen,
@@ -48,7 +49,7 @@ class TaskTile extends StatelessWidget {
               : Colors.white,
           borderRadius: BorderRadius.circular(8),
         ),
-        padding: EdgeInsets.symmetric(horizontal: 8, vertical: dense ? 5 : 8),
+        padding: EdgeInsets.symmetric(horizontal: 0, vertical: dense ? 5 : 8),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -77,7 +78,7 @@ class TaskTile extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    taskName,
+                    capitalizeFirstCharacter(taskName),
                     style: TextStyle(
                       fontSize: dense ? 13 : 15,
                       fontWeight: FontWeight.w600,
