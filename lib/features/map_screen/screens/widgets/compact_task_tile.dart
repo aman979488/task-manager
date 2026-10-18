@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
 import 'task_metadata_badges.dart';
+import 'task_substeps_summary.dart';
 
 class CompactTaskTile extends StatelessWidget {
   const CompactTaskTile({
@@ -35,6 +36,7 @@ class CompactTaskTile extends StatelessWidget {
         task.assignee?.trim().isNotEmpty == true ||
         task.workType?.trim().isNotEmpty == true ||
         task.clientName?.trim().isNotEmpty == true;
+    final hasSubsteps = task.steps.isNotEmpty;
     return ListTile(
       dense: true,
       visualDensity: dense
@@ -59,7 +61,7 @@ class CompactTaskTile extends StatelessWidget {
           decorationColor: Colors.blueGrey.shade400,
         ),
       ),
-      subtitle: description?.isNotEmpty != true && !hasMetadata
+      subtitle: description?.isNotEmpty != true && !hasMetadata && !hasSubsteps
           ? null
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -75,6 +77,8 @@ class CompactTaskTile extends StatelessWidget {
                       height: 1.25,
                     ),
                   ),
+                if (hasSubsteps)
+                  TaskSubstepsSummary(steps: task.steps, dense: true),
                 if (hasMetadata)
                   Padding(
                     padding: EdgeInsets.only(top: dense ? 1 : 3),
@@ -86,6 +90,7 @@ class CompactTaskTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           priorityBadge,
+          const SizedBox(width: 6),
           IconButton(
             tooltip: 'Add subtask',
             visualDensity: VisualDensity.compact,

@@ -54,6 +54,7 @@ class Task {
   String? reminder;
   bool reminderSent;
   bool deadlineReminderSent;
+  bool isInMyDay;
   String? assignee;
   String? deadline;
   String? workType;
@@ -71,6 +72,7 @@ class Task {
   String? assigneeUid;
 
   int? priorityUpdatedAt;
+  int? completedAt;
 
   List<TaskStep> steps;
   List<TaskFile> files;
@@ -85,6 +87,7 @@ class Task {
     this.reminder,
     this.reminderSent = false,
     this.deadlineReminderSent = false,
+    this.isInMyDay = false,
     this.assignee,
     this.deadline,
     this.workType,
@@ -100,6 +103,7 @@ class Task {
     this.editedBy,
     this.assigneeUid,
     this.priorityUpdatedAt,
+    this.completedAt,
     List<TaskStep>? steps,
     List<TaskFile>? files,
   }) : createdDate = createdDate ?? _getCurrentDateTime(),
@@ -116,6 +120,7 @@ class Task {
       'reminder': reminder,
       'reminderSent': reminderSent,
       'deadlineReminderSent': deadlineReminderSent,
+      'isInMyDay': isInMyDay,
       'assignee': assignee,
       'deadline': deadline,
       'workType': workType,
@@ -131,6 +136,7 @@ class Task {
       'editedBy': editedBy,
       'assigneeUid': assigneeUid,
       'priorityUpdatedAt': priorityUpdatedAt,
+      'completedAt': completedAt,
       'steps': steps.map((s) => s.toMap()).toList(),
       'files': files.map((f) => f.toMap()).toList(),
     };
@@ -154,6 +160,16 @@ class Task {
       parsedPriorityUpdatedAt = int.tryParse(priorityUpdatedAtValue);
     }
 
+    final dynamic completedAtValue = data['completedAt'];
+    int? parsedCompletedAt;
+    if (completedAtValue is int) {
+      parsedCompletedAt = completedAtValue;
+    } else if (completedAtValue is num) {
+      parsedCompletedAt = completedAtValue.toInt();
+    } else if (completedAtValue is String) {
+      parsedCompletedAt = int.tryParse(completedAtValue);
+    }
+
     return Task(
       title,
       id: id,
@@ -164,6 +180,7 @@ class Task {
       reminder: data['reminder']?.toString(),
       reminderSent: data['reminderSent'] ?? false,
       deadlineReminderSent: data['deadlineReminderSent'] ?? false,
+      isInMyDay: data['isInMyDay'] == true,
       assignee: data['assignee']?.toString(),
       deadline: data['deadline']?.toString(),
       workType: data['workType']?.toString(),
@@ -183,6 +200,7 @@ class Task {
           : null,
       assigneeUid: data['assigneeUid']?.toString(),
       priorityUpdatedAt: parsedPriorityUpdatedAt,
+      completedAt: parsedCompletedAt,
       steps: parsedSteps
           .map((e) => TaskStep.fromMap(e))
           .where((step) => step.title.isNotEmpty || step.isDone)

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
 import 'task_metadata_badges.dart';
+import 'task_substeps_summary.dart';
 
 class TaskGridCard extends StatelessWidget {
   const TaskGridCard({
@@ -75,6 +76,7 @@ class TaskGridCard extends StatelessWidget {
                 decoration: task.isDone ? TextDecoration.lineThrough : null,
               ),
             ),
+            TaskSubstepsSummary(steps: task.steps, dense: dense),
             const Spacer(),
             if (description?.isNotEmpty == true)
               Text(

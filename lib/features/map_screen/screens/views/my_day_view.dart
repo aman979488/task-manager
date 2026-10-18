@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
@@ -8,14 +10,24 @@ class MyDayView extends StatefulWidget {
     required this.tasks,
     required this.suggestions,
     required this.taskBuilder,
+    required this.calendarViewType,
+    required this.selectedDate,
+    required this.onDateChanged,
+    required this.onTaskTap,
     required this.suggestionBuilder,
+    required this.onAddToMyDay,
     required this.onRefresh,
   });
 
   final List<Task> tasks;
   final List<Task> suggestions;
   final Widget Function(Task task, int index) taskBuilder;
+  final String calendarViewType;
+  final DateTime selectedDate;
+  final ValueChanged<DateTime> onDateChanged;
+  final ValueChanged<Task> onTaskTap;
   final Widget Function(Task task, VoidCallback onAdd) suggestionBuilder;
+  final Future<void> Function(Task task) onAddToMyDay;
   final Future<void> Function() onRefresh;
 
   @override
@@ -23,7 +35,6 @@ class MyDayView extends StatefulWidget {
 }
 
 class _MyDayViewState extends State<MyDayView> {
-  final Map<String, Task> _addedTasks = {};
   final Set<String> _addedInSuggestionsSheet = {};
 
   String _taskKey(Task task) =>
@@ -56,14 +67,309 @@ class _MyDayViewState extends State<MyDayView> {
     return '${weekdays[date.weekday - 1]} ${date.day} ${months[date.month - 1]}';
   }
 
-  List<Task> get _dayTasks {
-    final tasksByKey = <String, Task>{
-      for (final task in _addedTasks.values)
-        if (!task.isDone) _taskKey(task): task,
-      for (final task in widget.tasks)
-        if (!task.isDone) _taskKey(task): task,
+  List<Task> get _dayTasks => widget.tasks;
+
+  DateTime? _scheduledDate(Task task) {
+    final parsed = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
+    if (parsed != null) return DateTime(parsed.year, parsed.month, parsed.day);
+    if (task.priority?.trim().toLowerCase() == 'today' || task.isInMyDay) {
+      final now = DateTime.now();
+      return DateTime(now.year, now.month, now.day);
+    }
+    return null;
+  }
+
+  List<Task> _calendarTasks() {
+    final selected = DateTime(
+      widget.selectedDate.year,
+      widget.selectedDate.month,
+      widget.selectedDate.day,
+    );
+    final start = switch (widget.calendarViewType) {
+      'Week' => selected.subtract(Duration(days: selected.weekday - 1)),
+      'Month' => DateTime(selected.year, selected.month),
+      _ => selected,
     };
-    return tasksByKey.values.toList();
+    final end = switch (widget.calendarViewType) {
+      '3 Day' => start.add(const Duration(days: 2)),
+      'Week' => start.add(const Duration(days: 6)),
+      'Month' => DateTime(selected.year, selected.month + 1, 0),
+      _ => start,
+    };
+    final tasksByKey = <String, Task>{
+      for (final task in _dayTasks) _taskKey(task): task,
+      for (final task in widget.suggestions) _taskKey(task): task,
+    };
+    return tasksByKey.values.where((task) {
+      final date = _scheduledDate(task);
+      return date != null && !date.isBefore(start) && !date.isAfter(end);
+    }).toList();
+  }
+
+  int? _minutesForTime(String? value) {
+    if (value == null) return null;
+    final match = RegExp(
+      r'^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$',
+      caseSensitive: false,
+    ).firstMatch(value.trim());
+    if (match == null) return null;
+
+    var hour = int.parse(match.group(1)!);
+    final minute = int.parse(match.group(2)!);
+    final meridiem = match.group(3)?.toUpperCase();
+    if (hour > 23 || minute > 59) return null;
+    if (meridiem != null) {
+      if (hour < 1 || hour > 12) return null;
+      hour %= 12;
+      if (meridiem == 'PM') hour += 12;
+    }
+    return hour * 60 + minute;
+  }
+
+  int _taskStartMinutes(Task task) {
+    final explicitTime = _minutesForTime(task.startTime);
+    if (explicitTime != null) return explicitTime;
+    final date = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
+    if (date != null && (date.hour != 0 || date.minute != 0)) {
+      return date.hour * 60 + date.minute;
+    }
+    return 9 * 60;
+  }
+
+  int _taskDurationMinutes(Task task, int startMinutes) {
+    final endMinutes = _minutesForTime(task.endTime);
+    if (endMinutes == null || endMinutes <= startMinutes) return 60;
+    return endMinutes - startMinutes;
+  }
+
+  Widget _buildHourlyCalendar(BuildContext context, {required int dayCount}) {
+    const timeColumnWidth = 48.0;
+    const hourHeight = 64.0;
+    const hoursInDay = 24;
+    final selectedDay = DateTime(
+      widget.selectedDate.year,
+      widget.selectedDate.month,
+      widget.selectedDate.day,
+    );
+    final firstDay = widget.calendarViewType == 'Week'
+        ? selectedDay.subtract(Duration(days: selectedDay.weekday - 1))
+        : selectedDay;
+    final days = List.generate(
+      dayCount,
+      (index) => firstDay.add(Duration(days: index)),
+    );
+    final tasksByKey = <String, Task>{
+      for (final task in _dayTasks) _taskKey(task): task,
+      for (final task in widget.suggestions) _taskKey(task): task,
+    };
+    final tasksByDay = List.generate(
+      days.length,
+      (dayIndex) => tasksByKey.values.where((task) {
+        final date = _scheduledDate(task);
+        return date != null &&
+            date.year == days[dayIndex].year &&
+            date.month == days[dayIndex].month &&
+            date.day == days[dayIndex].day;
+      }).toList(),
+    );
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 52,
+          child: Row(
+            children: [
+              const SizedBox(width: timeColumnWidth),
+              for (final day in days)
+                Expanded(
+                  child: InkWell(
+                    onTap: () => widget.onDateChanged(day),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          MaterialLocalizations.of(context)
+                              .narrowWeekdays[day.weekday % 7],
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 11,
+                          ),
+                        ),
+                        Text(
+                          '${day.day}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color:
+                                day.year == DateTime.now().year &&
+                                    day.month == DateTime.now().month &&
+                                    day.day == DateTime.now().day
+                                ? const Color(0xFF526D8A)
+                                : Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: widget.onRefresh,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final dayWidth =
+                    (constraints.maxWidth - timeColumnWidth) / days.length;
+                final events = <Widget>[];
+                for (var dayIndex = 0; dayIndex < days.length; dayIndex++) {
+                  for (final task in tasksByDay[dayIndex]) {
+                    final startMinutes = _taskStartMinutes(task);
+                    final durationMinutes = _taskDurationMinutes(
+                      task,
+                      startMinutes,
+                    );
+                    final visibleStart = startMinutes.clamp(0, 24 * 60 - 1);
+                    final visibleEnd = (startMinutes + durationMinutes).clamp(
+                      visibleStart + 30,
+                      24 * 60,
+                    );
+                    final top = visibleStart / 60 * hourHeight;
+                    final eventHeight =
+                        (visibleEnd - visibleStart) / 60 * hourHeight;
+                    events.add(
+                      Positioned(
+                        left: timeColumnWidth + dayIndex * dayWidth + 2,
+                        top: top,
+                        width: dayWidth - 4,
+                        height: eventHeight
+                            .clamp(34, 24 * hourHeight)
+                            .toDouble(),
+                        child: Material(
+                          color: const Color(0xFFE8F0F8),
+                          borderRadius: BorderRadius.circular(5),
+                          child: InkWell(
+                            onTap: () => widget.onTaskTap(task),
+                            borderRadius: BorderRadius.circular(5),
+                            child: Padding(
+                              padding: const EdgeInsets.all(3),
+                              child: Text(
+                                task.title,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Color(0xFF26364A),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                }
+
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: SizedBox(
+                    height: hoursInDay * hourHeight,
+                    child: Stack(
+                      children: [
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: timeColumnWidth,
+                              child: Column(
+                                children: [
+                                  for (var hour = 0; hour < hoursInDay; hour++)
+                                    SizedBox(
+                                      height: hourHeight,
+                                      child: Align(
+                                        alignment: Alignment.topCenter,
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 2,
+                                          ),
+                                          child: Text(
+                                            '${hour.toString().padLeft(2, '0')}:00',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            for (
+                              var dayIndex = 0;
+                              dayIndex < days.length;
+                              dayIndex++
+                            )
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    for (
+                                      var hour = 0;
+                                      hour < hoursInDay;
+                                      hour++
+                                    )
+                                      Container(
+                                        height: hourHeight,
+                                        decoration: BoxDecoration(
+                                          border: Border(
+                                            top: BorderSide(
+                                              color: Colors.grey.shade200,
+                                            ),
+                                            left: BorderSide(
+                                              color: Colors.grey.shade200,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                        ...events,
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _moveCalendar(int direction) {
+    final step = switch (widget.calendarViewType) {
+      '3 Day' => 3,
+      'Week' => 7,
+      'Month' => 0,
+      _ => 1,
+    };
+    if (widget.calendarViewType == 'Month') {
+      widget.onDateChanged(
+        DateTime(
+          widget.selectedDate.year,
+          widget.selectedDate.month + direction,
+          1,
+        ),
+      );
+    } else {
+      widget.onDateChanged(
+        widget.selectedDate.add(Duration(days: step * direction)),
+      );
+    }
   }
 
   List<Task> get _suggestions {
@@ -218,7 +524,7 @@ class _MyDayViewState extends State<MyDayView> {
                             final task = visibleTasks[index];
                             final key = _taskKey(task);
                             return widget.suggestionBuilder(task, () {
-                              setState(() => _addedTasks[key] = task);
+                              unawaited(widget.onAddToMyDay(task));
                               setSheetState(
                                 () => _addedInSuggestionsSheet.add(key),
                               );
@@ -254,6 +560,21 @@ class _MyDayViewState extends State<MyDayView> {
     final suggestions = _suggestions;
     final today = MaterialLocalizations.of(context)
         .formatFullDate(DateTime.now());
+    final isCalendarView = const {
+      'Calendar',
+      'Day',
+      '3 Day',
+      'Week',
+      'Month',
+    }.contains(widget.calendarViewType);
+    final calendarTasks = isCalendarView ? _calendarTasks() : dayTasks;
+    final selectedDateLabel = widget.calendarViewType == 'Week'
+        ? '${MaterialLocalizations.of(context).formatMediumDate(widget.selectedDate.subtract(Duration(days: widget.selectedDate.weekday - 1)))} - '
+              '${MaterialLocalizations.of(context).formatMediumDate(widget.selectedDate.add(Duration(days: 7 - widget.selectedDate.weekday)))}'
+        : widget.calendarViewType == '3 Day'
+        ? '${MaterialLocalizations.of(context).formatMediumDate(widget.selectedDate)} - '
+              '${MaterialLocalizations.of(context).formatMediumDate(widget.selectedDate.add(const Duration(days: 2)))}'
+        : MaterialLocalizations.of(context).formatFullDate(widget.selectedDate);
 
     return Stack(
       children: [
@@ -273,45 +594,119 @@ class _MyDayViewState extends State<MyDayView> {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    Text(
-                      today,
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 16,
+                    if (!isCalendarView)
+                      Text(
+                        today,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 16,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
             ),
             const Divider(height: 1),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: widget.onRefresh,
-                child: dayTasks.isEmpty
-                    ? ListView(
-                        padding: const EdgeInsets.only(bottom: 76),
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: [
-                          SizedBox(
-                            height: 220,
-                            child: Center(
-                              child: Text(
-                                'No tasks planned for today yet.',
-                                style: TextStyle(color: Colors.grey.shade600),
-                              ),
-                            ),
+            if (isCalendarView)
+              Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Previous ${widget.calendarViewType}',
+                          onPressed: () => _moveCalendar(-1),
+                          icon: const Icon(Icons.chevron_left),
+                        ),
+                        Expanded(
+                          child: Text(
+                            selectedDateLabel,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
-                        ],
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.only(bottom: 76),
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        itemCount: dayTasks.length,
-                        itemBuilder: (context, index) =>
-                            widget.taskBuilder(dayTasks[index], index),
+                        ),
+                        IconButton(
+                          tooltip: 'Next ${widget.calendarViewType}',
+                          onPressed: () => _moveCalendar(1),
+                          icon: const Icon(Icons.chevron_right),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (widget.calendarViewType == 'Month' ||
+                      widget.calendarViewType == 'Calendar')
+                    CalendarDatePicker(
+                      initialDate: widget.selectedDate,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                      onDateChanged: widget.onDateChanged,
+                    )
+                  else if (widget.calendarViewType == 'Week')
+                    SizedBox(
+                      height: 58,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: 7,
+                        itemBuilder: (context, index) {
+                          final firstDay = widget.calendarViewType == 'Week'
+                              ? widget.selectedDate.subtract(
+                                  Duration(
+                                    days: widget.selectedDate.weekday - 1,
+                                  ),
+                                )
+                              : widget.selectedDate;
+                          final date = firstDay.add(Duration(days: index));
+                          return TextButton(
+                            onPressed: () => widget.onDateChanged(date),
+                            child: Text(
+                              MaterialLocalizations.of(context)
+                                  .formatShortDate(date),
+                            ),
+                          );
+                        },
                       ),
+                    ),
+                ],
               ),
+            Expanded(
+              child:
+                  widget.calendarViewType == '3 Day' ||
+                      widget.calendarViewType == 'Week'
+                  ? _buildHourlyCalendar(
+                      context,
+                      dayCount: widget.calendarViewType == 'Week' ? 7 : 3,
+                    )
+                  : RefreshIndicator(
+                      onRefresh: widget.onRefresh,
+                      child: calendarTasks.isEmpty
+                          ? ListView(
+                              padding: const EdgeInsets.only(bottom: 76),
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              children: [
+                                SizedBox(
+                                  height: 220,
+                                  child: Center(
+                                    child: Text(
+                                      isCalendarView
+                                          ? 'No tasks scheduled for this period.'
+                                          : 'No tasks planned for today yet.',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.only(bottom: 76),
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              itemCount: calendarTasks.length,
+                              itemBuilder: (context, index) => widget
+                                  .taskBuilder(calendarTasks[index], index),
+                            ),
+                    ),
             ),
           ],
         ),

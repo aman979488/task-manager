@@ -48,38 +48,32 @@ class TaskListView extends StatelessWidget {
       );
     }
     return refreshable(
-      MediaQuery(
-        data: MediaQuery.of(context)
-            .copyWith(textScaler: TextScaler.linear(zoom)),
-        child: viewType == 'Grid'
-            ? GridView.builder(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.fromLTRB(
-                  compactLayout ? 8 : 12,
-                  compactLayout ? 4 : 8,
-                  compactLayout ? 8 : 12,
-                  100,
-                ),
-                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 260,
-                  mainAxisExtent:
-                      (compactLayout ? 132 : 150) +
-                      ((compactLayout ? 65 : 80) * (zoom - 1)),
-                  crossAxisSpacing: compactLayout ? 8 : 10,
-                  mainAxisSpacing: compactLayout ? 8 : 10,
-                ),
-                itemCount: tasks.length,
-                itemBuilder: (context, index) =>
-                    taskBuilder(tasks[index], index),
-              )
-            : ListView.builder(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.fromLTRB(0, compactLayout ? 4 : 8, 0, 100),
-                itemCount: tasks.length,
-                itemBuilder: (context, index) =>
-                    taskBuilder(tasks[index], index),
+      viewType == 'Grid'
+          ? GridView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                compactLayout ? 8 : 12,
+                compactLayout ? 4 : 8,
+                compactLayout ? 8 : 12,
+                100,
               ),
-      ),
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 260,
+                mainAxisExtent:
+                    (compactLayout ? 132 : 150) +
+                    ((compactLayout ? 65 : 80) * (zoom - 1)),
+                crossAxisSpacing: compactLayout ? 8 : 10,
+                mainAxisSpacing: compactLayout ? 8 : 10,
+              ),
+              itemCount: tasks.length,
+              itemBuilder: (context, index) => taskBuilder(tasks[index], index),
+            )
+          : ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(0, compactLayout ? 4 : 8, 0, 100),
+              itemCount: tasks.length,
+              itemBuilder: (context, index) => taskBuilder(tasks[index], index),
+            ),
     );
   }
 }

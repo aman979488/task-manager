@@ -264,7 +264,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ListTile(title: Text("U1")),
             ListTile(title: Text("U2")),
             ListTile(title: Text("U3")),
-            ListTile(title: Text("Urgent")),
             ListTile(title: Text("IMP")),
             ListTile(title: Text("Today")),
             ListTile(title: Text("Tomorrow")),
