@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/task.dart';
 import '../models/floating_sheet_type.dart';
+import '../utils/task_title_formatter.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -894,7 +895,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                     });
                                   },
                                   child: Text(
-                                    task.title,
+                                    capitalizeFirstCharacter(task.title),
                                     style: TextStyle(
                                       fontSize: 20,
                                       fontWeight: FontWeight.w600,
