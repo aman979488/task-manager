@@ -37,7 +37,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 8, vsync: this);
+    _tabController = TabController(length: 9, vsync: this);
   }
 
   @override
@@ -157,9 +157,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       0 => MapScreenViewModel.myDayTasks(myTasks),
       1 => myTasks,
       3 => viewModel.tasks,
-      4 => viewModel.doneTasks(),
-      5 => viewModel.overdueTasks(),
-      6 => viewModel.pendingTasks(),
+      4 => viewModel.tasks,
+      5 => viewModel.doneTasks(),
+      6 => viewModel.overdueTasks(),
+      7 => viewModel.pendingTasks(),
       _ => viewModel.tasks,
     };
   }
@@ -258,6 +259,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 Tab(text: 'My Day (${myDayTasks.length})'),
                 const Tab(text: 'My Work'),
                 const Tab(text: 'Assign'),
+                const Tab(text: 'Clients'),
                 Tab(text: 'All Work (${allTasks.length})'),
                 Tab(text: 'Done (${doneTasks.length})'),
                 Tab(text: 'Overdue (${overdueTasks.length})'),

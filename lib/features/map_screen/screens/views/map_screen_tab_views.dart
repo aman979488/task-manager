@@ -9,6 +9,7 @@ import '../../viewmodels/map_screen_viewmodel.dart';
 import '../widgets/map_task_list_item.dart';
 import 'all_work_view.dart';
 import 'calendar_view.dart';
+import 'client_tasks_view.dart';
 import 'done_tasks_view.dart';
 import 'group_by_assignee_view.dart';
 import 'group_by_view.dart';
@@ -103,7 +104,7 @@ class MapScreenTabViews extends StatelessWidget {
             task,
             viewType: effectiveViewType,
             dense: dense,
-            showMetadata: showMetadata,
+            showMetadata: showMetadata || effectiveViewType == 'Detailed list',
             confirmCompletion: confirmCompletion,
             tapCompletesTask: tapCompletesTask,
             keepInMyDay: keepInMyDay,
@@ -120,7 +121,7 @@ class MapScreenTabViews extends StatelessWidget {
       task,
       viewType: effectiveViewType,
       dense: dense,
-      showMetadata: showMetadata,
+      showMetadata: showMetadata || effectiveViewType == 'Detailed list',
       confirmCompletion: confirmCompletion,
       tapCompletesTask: tapCompletesTask,
       keepInMyDay: keepInMyDay,
@@ -137,7 +138,12 @@ class MapScreenTabViews extends StatelessWidget {
       refreshable: _refreshableScrollView,
       taskBuilder: (task, index) => Column(
         children: [
-          _buildMapTaskListItem(task, viewType: 'Detailed list', dense: true),
+          _buildMapTaskListItem(
+            task,
+            viewType: 'Detailed list',
+            dense: true,
+            showMetadata: true,
+          ),
           Container(
             height: 1,
             margin: const EdgeInsets.only(left: 15, right: 15),
@@ -264,6 +270,15 @@ class MapScreenTabViews extends StatelessWidget {
               '/assignee-tasks',
               extra: {'assigneeName': name, 'tasks': tasks},
             ),
+            onOpenTask: onOpenTask,
+          ),
+        ),
+        Builder(
+          key: const PageStorageKey('clients-tab'),
+          builder: (_) => ClientTasksView(
+            tasks: visibleAllTasks,
+            loadClients: viewModel.loadClients,
+            refreshable: _refreshableScrollView,
             onOpenTask: onOpenTask,
           ),
         ),
