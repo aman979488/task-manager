@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
+import '../widgets/task_metadata_badges.dart';
 
 class GroupByView extends StatelessWidget {
   const GroupByView({
@@ -59,9 +60,8 @@ class GroupByView extends StatelessWidget {
           final cardContents = openAssigneeOnTap && groupBy == 'Assignee'
               ? ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: const Color(
-                      0xFFFBE64E,
-                    ).withValues(alpha: 0.3),
+                    backgroundColor: const Color(0xFFFBE64E)
+                        .withValues(alpha: 0.3),
                     child: Text(
                       name.isNotEmpty ? name[0].toUpperCase() : '?',
                       style: const TextStyle(
@@ -89,9 +89,8 @@ class GroupByView extends StatelessWidget {
               : ExpansionTile(
                   key: PageStorageKey('$pageStorageId-group-$name'),
                   leading: CircleAvatar(
-                    backgroundColor: const Color(
-                      0xFFFBE64E,
-                    ).withValues(alpha: 0.3),
+                    backgroundColor: const Color(0xFFFBE64E)
+                        .withValues(alpha: 0.3),
                     child: Text(
                       name.isNotEmpty ? name[0].toUpperCase() : '?',
                       style: const TextStyle(
@@ -139,6 +138,12 @@ class GroupByView extends StatelessWidget {
                           task.title,
                           style: const TextStyle(fontSize: 12),
                         ),
+                        subtitle:
+                            task.assignee?.trim().isNotEmpty == true ||
+                                task.clientName?.trim().isNotEmpty == true ||
+                                task.workType?.trim().isNotEmpty == true
+                            ? TaskMetadataBadges(task: task, compact: true)
+                            : null,
                         onTap: () => onOpenTask(task),
                       ),
                     ),

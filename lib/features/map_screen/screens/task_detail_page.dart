@@ -4,7 +4,6 @@ import '../models/task.dart';
 import '../models/floating_sheet_type.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
@@ -17,15 +16,14 @@ import 'views/date_time_picker_dialog.dart';
 class TaskDetailPage extends StatefulWidget {
   final Task task;
   final VoidCallback onChanged;
-  final VoidCallback onDelete;
+  final Future<void> Function() onSave;
 
   const TaskDetailPage({
     super.key,
     required this.task,
+    required this.onSave,
     VoidCallback? onChanged,
-    VoidCallback? onDelete,
-  }) : onChanged = onChanged ?? _defaultCallback,
-       onDelete = onDelete ?? _defaultCallback;
+  }) : onChanged = onChanged ?? _defaultCallback;
 
   static void _defaultCallback() {}
 
@@ -58,6 +56,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   List<String>? _clientsCache;
   List<String>? _foldersCache;
   List<String>? _projectsCache; // 🚀 NAYA
+  bool _isSaving = false;
 
   static const Color primaryColor = Color(0xFFFBE64E);
   static const Color secondaryColor = Color(0xFF6B5800);
@@ -743,6 +742,28 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   bool _isSelected(String? value) => value != null && value.isNotEmpty;
 
+  Future<void> _saveTask() async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+    task
+      ..title = _titleController.text
+      ..note = _noteController.text;
+    try {
+      await widget.onSave();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('Task saved')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('Could not save task: $error')));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   Widget _priorityBadgeHeader() {
     final p = task.priority;
     if (p == null || p.isEmpty) return const SizedBox.shrink();
@@ -803,6 +824,23 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           style: TextStyle(color: secondaryColor, fontWeight: FontWeight.bold),
         ),
         iconTheme: const IconThemeData(color: secondaryColor),
+        actions: [
+          TextButton(
+            onPressed: _isSaving ? null : _saveTask,
+            style: TextButton.styleFrom(foregroundColor: secondaryColor),
+            child: _isSaving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: secondaryColor,
+                    ),
+                  )
+                : const Text('Save'),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -1083,38 +1121,57 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     const SizedBox(height: 12),
 
                     // 🚀 NAYA: Extra Fields Editor (Start, End, Acc, Monitor, Remark)
-                    _buildExtraFieldRow('Start Time', task.startTime, (val) {
-                      setState(() {
-                        task.startTime = val;
-                      });
-                      widget.onChanged();
-                    }, isTime: true),
-                    _buildExtraFieldRow('End Time', task.endTime, (val) {
-                      setState(() {
-                        task.endTime = val;
-                      });
-                      widget.onChanged();
-                    }, isTime: true),
-                    _buildExtraFieldRow('Accompanied By', task.accompaniedBy, (
-                      val,
-                    ) {
-                      setState(() {
-                        task.accompaniedBy = val;
-                      });
-                      widget.onChanged();
-                    }),
-                    _buildExtraFieldRow('Monitor', task.monitor, (val) {
-                      setState(() {
-                        task.monitor = val;
-                      });
-                      widget.onChanged();
-                    }),
-                    _buildExtraFieldRow('Remark', task.remark, (val) {
-                      setState(() {
-                        task.remark = val;
-                      });
-                      widget.onChanged();
-                    }),
+                    _buildExtraFieldTile(
+                      label: 'Start Time',
+                      value: task.startTime,
+                      icon: Icons.access_time,
+                      onTap: (buttonContext) => _pickExtraTime(
+                        buttonContext,
+                        (value) => task.startTime = value,
+                      ),
+                    ),
+                    _buildExtraFieldTile(
+                      label: 'End Time',
+                      value: task.endTime,
+                      icon: Icons.access_time,
+                      onTap: (buttonContext) => _pickExtraTime(
+                        buttonContext,
+                        (value) => task.endTime = value,
+                      ),
+                    ),
+                    _buildExtraFieldTile(
+                      label: 'Accompanied By',
+                      value: task.accompaniedBy,
+                      icon: Icons.person_outline,
+                      onTap: (buttonContext) => _editExtraField(
+                        buttonContext,
+                        'Accompanied By',
+                        task.accompaniedBy,
+                        (value) => task.accompaniedBy = value,
+                      ),
+                    ),
+                    _buildExtraFieldTile(
+                      label: 'Monitor',
+                      value: task.monitor,
+                      icon: Icons.desktop_windows_outlined,
+                      onTap: (buttonContext) => _editExtraField(
+                        buttonContext,
+                        'Monitor',
+                        task.monitor,
+                        (value) => task.monitor = value,
+                      ),
+                    ),
+                    _buildExtraFieldTile(
+                      label: 'Remark',
+                      value: task.remark,
+                      icon: Icons.notes,
+                      onTap: (buttonContext) => _editExtraField(
+                        buttonContext,
+                        'Remark',
+                        task.remark,
+                        (value) => task.remark = value,
+                      ),
+                    ),
 
                     const SizedBox(height: 12),
 
@@ -1247,31 +1304,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
 
                     const SizedBox(height: 15),
-
-                    // ── Created + delete ─────────────────────────────
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "Created: ${task.createdDate}",
-                          style: TextStyle(
-                            color: Colors.grey.shade700,
-                            fontSize: 14,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.brown,
-                            size: 28,
-                          ),
-                          onPressed: () {
-                            widget.onDelete();
-                            context.pop();
-                          },
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),
@@ -1282,94 +1314,75 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-  // 🚀 NAYA: Helper for Extra Fields (Inline editing)
-  Widget _buildExtraFieldRow(
+  Widget _buildExtraFieldTile({
+    required String label,
+    required String? value,
+    required IconData icon,
+    required Future<void> Function(BuildContext) onTap,
+  }) {
+    return Builder(
+      builder: (buttonContext) => _animatedBorderedTile(
+        isSelected: _isSelected(value),
+        child: ListTile(
+          leading: Icon(icon, color: secondaryColor),
+          title: Text(label),
+          trailing: _infoTrailing(value),
+          onTap: () => onTap(buttonContext),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickExtraTime(
+    BuildContext buttonContext,
+    void Function(String) onChanged,
+  ) async {
+    final time = await showTimePicker(
+      context: buttonContext,
+      initialTime: TimeOfDay.now(),
+    );
+    if (time == null || !mounted) return;
+    setState(() => onChanged(time.format(context)));
+    widget.onChanged();
+  }
+
+  Future<void> _editExtraField(
+    BuildContext buttonContext,
     String label,
     String? value,
-    Function(String) onChanged, {
-    bool isTime = false,
-  }) {
-    final TextEditingController ctrl = TextEditingController(text: value);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: secondaryColor,
-              ),
-            ),
+    void Function(String) onChanged,
+  ) async {
+    final controller = TextEditingController(text: value);
+    final updatedValue = await showDialog<String>(
+      context: buttonContext,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(label),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: label == 'Remark' ? 3 : 1,
+          decoration: InputDecoration(hintText: 'Enter $label'),
+          textInputAction: label == 'Remark'
+              ? TextInputAction.newline
+              : TextInputAction.done,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
           ),
-          Expanded(
-            flex: 4,
-            child: isTime
-                ? InkWell(
-                    onTap: () async {
-                      final time = await showTimePicker(
-                        context: context,
-                        initialTime: TimeOfDay.now(),
-                      );
-                      if (time != null && mounted) {
-                        onChanged(time.format(context));
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        value?.isNotEmpty == true ? value! : 'Set time',
-                        style: TextStyle(
-                          color: value?.isNotEmpty == true
-                              ? Colors.black87
-                              : Colors.grey,
-                        ),
-                      ),
-                    ),
-                  )
-                : Focus(
-                    onFocusChange: (hasFocus) {
-                      if (!hasFocus) {
-                        onChanged(ctrl.text.trim());
-                      }
-                    },
-                    child: TextField(
-                      controller: ctrl,
-                      style: const TextStyle(fontSize: 13),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        hintText: 'Enter $label',
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      onSubmitted: (val) {
-                        onChanged(val.trim());
-                      },
-                    ),
-                  ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Save'),
           ),
         ],
       ),
     );
+    controller.dispose();
+    if (updatedValue == null || !mounted) return;
+    setState(() => onChanged(updatedValue));
+    widget.onChanged();
   }
 
   Widget _buildAddButton(

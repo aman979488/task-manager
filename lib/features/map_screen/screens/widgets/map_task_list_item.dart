@@ -11,6 +11,7 @@ class MapTaskListItem extends StatelessWidget {
     required this.task,
     required this.viewType,
     this.dense = false,
+    this.showMetadata = false,
     required this.isSelected,
     required this.taskName,
     required this.description,
@@ -24,6 +25,7 @@ class MapTaskListItem extends StatelessWidget {
   final Task task;
   final String viewType;
   final bool dense;
+  final bool showMetadata;
   final bool isSelected;
   final String taskName;
   final String? description;
@@ -40,6 +42,7 @@ class MapTaskListItem extends StatelessWidget {
         task: task,
         taskName: taskName,
         description: description,
+        showMetadata: showMetadata,
         isSelected: isSelected,
         dense: dense,
         onToggleSelection: onToggleSelection,
@@ -52,6 +55,7 @@ class MapTaskListItem extends StatelessWidget {
         task: task,
         taskName: taskName,
         description: description,
+        showMetadata: showMetadata,
         isSelected: isSelected,
         dense: dense,
         priorityBadge: _priorityBadge(
@@ -71,6 +75,7 @@ class MapTaskListItem extends StatelessWidget {
       dense: dense,
       taskName: taskName,
       description: description,
+      showMetadata: showMetadata,
       priorityWidget: Builder(
         builder: (badgeContext) => _priorityBadge(
           compact: dense,

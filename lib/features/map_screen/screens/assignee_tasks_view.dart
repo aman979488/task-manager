@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../models/task.dart';
 import '../viewmodels/map_screen_viewmodel.dart';
 import 'views/my_work_view.dart';
+import 'widgets/task_metadata_badges.dart';
 
 class AssigneeTasksView extends StatelessWidget {
   final String assigneeName;
@@ -78,13 +79,29 @@ class AssigneeTasksView extends StatelessWidget {
                     color: task.isDone ? Colors.grey : Colors.black87,
                   ),
                 ),
-                subtitle: task.workType?.trim().isNotEmpty == true
-                    ? Text(
-                        'Work Type: ${task.workType}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
+                subtitle:
+                    task.note.trim().isNotEmpty ||
+                        task.assignee?.trim().isNotEmpty == true ||
+                        task.clientName?.trim().isNotEmpty == true ||
+                        task.workType?.trim().isNotEmpty == true
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (task.note.trim().isNotEmpty)
+                            Text(
+                              task.note.trim(),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          if (task.assignee?.trim().isNotEmpty == true ||
+                              task.clientName?.trim().isNotEmpty == true ||
+                              task.workType?.trim().isNotEmpty == true)
+                            TaskMetadataBadges(task: task, compact: true),
+                        ],
                       )
                     : null,
                 trailing: const Icon(

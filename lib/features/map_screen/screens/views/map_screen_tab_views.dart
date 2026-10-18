@@ -52,6 +52,7 @@ class MapScreenTabViews extends StatelessWidget {
     Task task, {
     String? viewType,
     bool dense = false,
+    bool showMetadata = false,
     bool confirmCompletion = false,
     bool tapCompletesTask = false,
     bool keepInMyDay = false,
@@ -60,6 +61,7 @@ class MapScreenTabViews extends StatelessWidget {
       task: task,
       viewType: viewType ?? viewModel.viewType,
       dense: dense,
+      showMetadata: showMetadata,
       taskName: task.title,
       description: task.note.trim().isNotEmpty ? task.note.trim() : null,
       isSelected: viewModel.isTaskSelected(task),
@@ -87,6 +89,7 @@ class MapScreenTabViews extends StatelessWidget {
     Task task,
     int index, {
     bool dense = true,
+    bool showMetadata = false,
     bool confirmCompletion = false,
     bool tapCompletesTask = false,
     bool keepInMyDay = false,
@@ -100,6 +103,7 @@ class MapScreenTabViews extends StatelessWidget {
             task,
             viewType: effectiveViewType,
             dense: dense,
+            showMetadata: showMetadata,
             confirmCompletion: confirmCompletion,
             tapCompletesTask: tapCompletesTask,
             keepInMyDay: keepInMyDay,
@@ -116,6 +120,7 @@ class MapScreenTabViews extends StatelessWidget {
       task,
       viewType: effectiveViewType,
       dense: dense,
+      showMetadata: showMetadata,
       confirmCompletion: confirmCompletion,
       tapCompletesTask: tapCompletesTask,
       keepInMyDay: keepInMyDay,
@@ -228,6 +233,7 @@ class MapScreenTabViews extends StatelessWidget {
                     task,
                     index,
                     dense: true,
+                    showMetadata: true,
                     confirmCompletion: true,
                   ),
                   detailedTaskBuilder: (task) => Column(
@@ -236,6 +242,7 @@ class MapScreenTabViews extends StatelessWidget {
                         task,
                         viewType: 'Detailed list',
                         dense: true,
+                        showMetadata: true,
                         confirmCompletion: true,
                       ),
                       Container(

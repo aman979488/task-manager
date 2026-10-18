@@ -29,7 +29,9 @@ void main() {
     await tester.pumpAndSettle();
 
     final slider = tester.widget<Slider>(find.byType(Slider));
-    expect(slider.divisions, isNull);
+    expect(slider.min, 0.8);
+    expect(slider.max, 1.4);
+    expect(slider.divisions, 6);
     expect(slider.value, 1);
 
     await tester.drag(find.byType(Slider), const Offset(100, 0));

@@ -12,6 +12,7 @@ class FloatingMetadataSheet {
   static OverlayEntry? _currentOverlay;
   static final TextEditingController _searchController =
       TextEditingController();
+  static String _searchQuery = '';
 
   static bool get isShowing => _currentOverlay != null;
 
@@ -21,6 +22,7 @@ class FloatingMetadataSheet {
       _currentOverlay = null;
     }
     _searchController.clear();
+    _searchQuery = '';
   }
 
   static void update() {
@@ -84,7 +86,12 @@ class FloatingMetadataSheet {
 
     String currentQuery() {
       final searchText = _searchController.text.trim();
-      return (searchText.isNotEmpty ? searchText : searchQuery?.call() ?? '')
+      final externalQuery = searchQuery?.call().trim() ?? '';
+      return (searchText.isNotEmpty
+              ? searchText
+              : externalQuery.isNotEmpty
+              ? externalQuery
+              : _searchQuery)
           .trim()
           .toLowerCase();
     }
@@ -215,6 +222,8 @@ class FloatingMetadataSheet {
             .toDouble();
 
     hide();
+    final initialQuery = searchQuery?.call() ?? '';
+    _searchQuery = initialQuery;
     _searchController.clear();
 
     _currentOverlay = OverlayEntry(
@@ -343,6 +352,7 @@ class FloatingMetadataSheet {
                                         ),
                                       ),
                                       onChanged: (val) {
+                                        _searchQuery = val;
                                         setOverlayState(() {});
                                       },
                                     ),
