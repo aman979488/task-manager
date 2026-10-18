@@ -21,13 +21,15 @@ class TaskMentionParser {
     final c = cursor.clamp(0, text.length);
     for (var i = c - 1; i >= 0; i--) {
       final ch = text[i];
-      if (RegExp(r'\s').hasMatch(ch)) return null;
       if (allowedSymbols.contains(ch)) {
         if (i == 0 || RegExp(r'\s').hasMatch(text[i - 1])) {
+          final suffix = text.substring(i + 1, c);
+          final query = suffix.trimLeft();
+          if (RegExp(r'\s').hasMatch(query)) return null;
           return TaskMention(
             start: i,
             symbol: ch,
-            query: text.substring(i + 1, c),
+            query: query,
           );
         }
         return null;

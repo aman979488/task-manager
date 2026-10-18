@@ -10,7 +10,8 @@ import 'date_time_picker_dialog.dart';
 
 class FloatingMetadataSheet {
   static OverlayEntry? _currentOverlay;
-  static final TextEditingController _searchController = TextEditingController();
+  static final TextEditingController _searchController =
+      TextEditingController();
   static String _searchQuery = '';
 
   static bool get isShowing => _currentOverlay != null;
@@ -73,14 +74,30 @@ class FloatingMetadataSheet {
     if (!buttonContext.mounted || !context.mounted) return;
     if (shouldShow != null && !shouldShow()) return;
 
-    final BuildContext rootContext =
-        Navigator.of(buttonContext, rootNavigator: true).context;
+    final BuildContext rootContext = Navigator.of(
+      buttonContext,
+      rootNavigator: true,
+    ).context;
     final RenderBox button = buttonContext.findRenderObject() as RenderBox;
     final overlayState = Overlay.of(buttonContext);
     if (!overlayState.mounted) return;
-    final RenderBox overlay = overlayState.context.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        overlayState.context.findRenderObject() as RenderBox;
+
+    String currentQuery() {
+      final searchText = _searchController.text.trim();
+      final externalQuery = searchQuery?.call().trim() ?? '';
+      return (searchText.isNotEmpty
+              ? searchText
+              : externalQuery.isNotEmpty
+              ? externalQuery
+              : _searchQuery)
+          .trim()
+          .toLowerCase();
+    }
 
     List<Widget> buildOptions(StateSetter? setOverlayState) {
+      final typedQuery = currentQuery();
       List<String> options = [];
       switch (type) {
         case FloatingSheetType.priority:
@@ -107,11 +124,13 @@ class FloatingMetadataSheet {
           break;
       }
 
-      final typedQuery = searchQuery?.call().trim().toLowerCase() ?? '';
       final matchingOptions = typedQuery.isEmpty
           ? const <String>[]
           : options
-                .where((opt) => TaskMentionParser.matchesSearchQuery(opt, typedQuery))
+                .where(
+                  (opt) =>
+                      TaskMentionParser.matchesSearchQuery(opt, typedQuery),
+                )
                 .toList();
       final highlightedOption = matchingOptions.firstWhere(
         (opt) => opt.toLowerCase() == typedQuery,
@@ -128,15 +147,15 @@ class FloatingMetadataSheet {
           selectedTileColor: TaskConstants.primaryColor.withValues(alpha: 0.22),
           leading:
               type == FloatingSheetType.priority ||
-                      type == FloatingSheetType.remind ||
-                      type == FloatingSheetType.deadline
-                  ? Icon(
-                      type == FloatingSheetType.priority
-                          ? Icons.flag
-                          : Icons.access_time,
-                      size: 18,
-                    )
-                  : null,
+                  type == FloatingSheetType.remind ||
+                  type == FloatingSheetType.deadline
+              ? Icon(
+                  type == FloatingSheetType.priority
+                      ? Icons.flag
+                      : Icons.access_time,
+                  size: 18,
+                )
+              : null,
           title: Text(
             opt,
             style: TextStyle(
@@ -150,7 +169,11 @@ class FloatingMetadataSheet {
             ),
           ),
           trailing: isSelected
-              ? const Icon(Icons.check, size: 16, color: TaskConstants.secondaryColor)
+              ? const Icon(
+                  Icons.check,
+                  size: 16,
+                  color: TaskConstants.secondaryColor,
+                )
               : null,
           onTap: () async {
             final now = DateTime.now();
@@ -176,8 +199,6 @@ class FloatingMetadataSheet {
             if (onSelected != null) onSelected(finalVal);
 
             if (!multiSelect || closeOnSelect) {
-              _searchController.clear();
-              _searchQuery = '';
               hide();
               if (closeOnSelect) onDone?.call();
             } else {
@@ -249,7 +270,10 @@ class FloatingMetadataSheet {
               ),
               Positioned(
                 right: padding,
-                top: top,
+                top: openAbove ? null : top,
+                bottom: openAbove
+                    ? constraints.maxHeight - currentButtonPosition.dy + padding
+                    : null,
                 child: Material(
                   color: Colors.white,
                   elevation: 8,
@@ -260,14 +284,15 @@ class FloatingMetadataSheet {
                       builder: (context, setOverlayState) {
                         const showSearch = true;
                         final allOptions = buildOptions(setOverlayState);
+                        final typedQuery = currentQuery();
                         final filteredOptions =
-                            showSearch && _searchQuery.isNotEmpty
+                            showSearch && typedQuery.isNotEmpty
                             ? allOptions.where((tile) {
                                 final title =
                                     ((tile as ListTile).title as Text).data!;
                                 return TaskMentionParser.matchesSearchQuery(
                                   title,
-                                  _searchQuery,
+                                  typedQuery,
                                 );
                               }).toList()
                             : allOptions;

@@ -34,8 +34,7 @@ class CompactTaskTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasMetadata =
-        showMetadata &&
+    final hasMetadata = showMetadata &&
         (task.assignee?.trim().isNotEmpty == true ||
             task.workType?.trim().isNotEmpty == true ||
             task.clientName?.trim().isNotEmpty == true);

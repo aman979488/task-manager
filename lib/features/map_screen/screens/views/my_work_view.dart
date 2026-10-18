@@ -200,16 +200,7 @@ class _MyWorkViewState extends State<MyWorkView> {
         if (isExpanded)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(color: color.withValues(alpha: 0.25)),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: widget.taskResultsBuilder(tasks),
-              ),
-            ),
+            child: widget.taskResultsBuilder(tasks),
           ),
       ],
     );

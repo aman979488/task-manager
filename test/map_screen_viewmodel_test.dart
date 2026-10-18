@@ -154,4 +154,29 @@ void main() {
       isNot(contains(completed)),
     );
   });
+
+  test('assignee work sections group pending tasks by priority', () {
+    final urgent = Task('Urgent task', priority: 'Urgent', assignee: 'Aman');
+    final tomorrow = Task(
+      'Tomorrow task',
+      priority: 'Tomorrow',
+      assignee: 'Aman',
+    );
+    final completed = Task(
+      'Completed urgent',
+      priority: 'Urgent',
+      assignee: 'Aman',
+      isDone: true,
+    );
+
+    final sections = MapScreenViewModel.sectionsForWork([
+      urgent,
+      tomorrow,
+      completed,
+    ]);
+
+    expect(sections['Urgent Works'], [urgent]);
+    expect(sections['Tomorrow Works'], [tomorrow]);
+    expect(sections.values.expand((tasks) => tasks), isNot(contains(completed)));
+  });
 }
