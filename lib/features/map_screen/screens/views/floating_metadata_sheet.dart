@@ -322,9 +322,7 @@ class FloatingMetadataSheet {
                                     padding: const EdgeInsets.all(10),
                                     child: TextField(
                                       controller: _searchController,
-                                      autofocus:
-                                          compactWeb &&
-                                          type == FloatingSheetType.assign,
+                                      autofocus: false,
                                       decoration: InputDecoration(
                                         hintText: 'Search...',
                                         hintStyle: TextStyle(

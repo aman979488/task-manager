@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -55,7 +56,7 @@ class AddTaskBottomSheet extends StatefulWidget {
     ).whenComplete(() {
       FloatingMetadataSheet.hide();
       if (!kIsWeb) {
-        SystemChannels.textInput.invokeMethod('textInput.hide');
+        SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
       }
     });
   }
@@ -367,7 +368,8 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     final systemNavBar = MediaQuery.of(context).padding.bottom;
     final bottomPadding = 16.0 + (kIsWeb ? 0.0 : systemNavBar);
 
-    if (!_initialFocusScheduled) {
+    final isIosWeb = kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+    if (!_initialFocusScheduled && !isIosWeb) {
       _initialFocusScheduled = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _focusNode.canRequestFocus) {
@@ -388,7 +390,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
         _focusNode.unfocus();
         FocusScope.of(context).unfocus();
         if (!kIsWeb) {
-          SystemChannels.textInput.invokeMethod('textInput.hide');
+          SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
         }
       },
       child: AddTaskSheet(
@@ -580,6 +582,10 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
                               onTap: () {
                                 if (!focusNode.hasFocus) {
                                   focusNode.requestFocus();
+                                } else if (kIsWeb) {
+                                  SystemChannels.textInput.invokeMethod<void>(
+                                    'TextInput.show',
+                                  );
                                 }
                               },
                               onEditingComplete: () {},

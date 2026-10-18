@@ -95,6 +95,7 @@ class MapTaskListItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        width: compact ? null : 84,
         constraints: compact
             ? const BoxConstraints(maxWidth: 60, maxHeight: 22)
             : null,
@@ -102,31 +103,39 @@ class MapTaskListItem extends StatelessWidget {
           horizontal: compact ? 6 : 10,
           vertical: compact ? 2 : 6,
         ),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: compact ? color.withValues(alpha: 0.07) : null,
           borderRadius: BorderRadius.circular(compact ? 10 : 12),
           border: Border.all(
             color: compact
                 ? color.withValues(alpha: 0.42)
-                : priority == null || priority.isEmpty
-                ? Colors.grey.shade300
                 : const Color(0xFF6B5800),
           ),
         ),
-        child: Text(
-          priority != null && priority.isNotEmpty ? priority : 'None',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: compact ? 10 : 13,
-            color: compact
-                ? color
-                : priority == null || priority.isEmpty
-                ? Colors.grey.shade600
-                : const Color(0xFF6B5800),
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        child: compact
+            ? Text(
+                priority != null && priority.isNotEmpty ? priority : 'None',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                ),
+              )
+            : FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  priority != null && priority.isNotEmpty ? priority : 'None',
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF6B5800),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
       ),
     );
   }
