@@ -128,109 +128,84 @@ class _ClientTasksViewState extends State<ClientTasksView> {
         ListView.builder(
           key: const PageStorageKey('clients-list'),
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(0, 12, 0, 100),
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 100),
           itemCount: clientKeys.length,
           itemBuilder: (context, index) {
             final key = clientKeys[index];
             final name = namesByKey[key]!;
             final tasks = tasksByClient[key] ?? const <Task>[];
             final expanded = _expandedClients.contains(key);
-            const sectionColor = Color(0xFF71808D);
+            final completedCount = tasks.where((task) => task.isDone).length;
 
-            return Column(
-              children: [
-                SizedBox(
-                  height: 48,
-                  child: InkWell(
-                    key: PageStorageKey('client-$key'),
-                    onTap: () => setState(() {
-                      if (expanded) {
-                        _expandedClients.remove(key);
-                      } else {
-                        _expandedClients.add(key);
-                      }
-                    }),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              name.toUpperCase(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: sectionColor,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.4,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            constraints: const BoxConstraints(minWidth: 28),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: sectionColor.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              '${tasks.length}',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: sectionColor,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(
-                            expanded
-                                ? Icons.keyboard_arrow_up
-                                : Icons.keyboard_arrow_down,
-                            color: sectionColor,
-                          ),
-                        ],
+            return Container(
+              margin: const EdgeInsets.only(bottom: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                child: ExpansionTile(
+                  key: PageStorageKey('client-$key'),
+                  initiallyExpanded: expanded,
+                  dense: true,
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 8),
+                  childrenPadding: EdgeInsets.zero,
+                  onExpansionChanged: (isExpanded) => setState(() {
+                    if (isExpanded) {
+                      _expandedClients.add(key);
+                    } else {
+                      _expandedClients.remove(key);
+                    }
+                  }),
+                  leading: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: const Color(0xFFFBE64E)
+                        .withValues(alpha: 0.3),
+                    child: Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF6B5800),
+                        fontSize: 12,
                       ),
                     ),
                   ),
+                  title: Text(
+                    name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Total: ${tasks.length} • Pending: ${tasks.length - completedCount} • Done: $completedCount',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                  ),
+                  children: [
+                    if (tasks.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
+                        child: Text('No tasks for this client yet.'),
+                      )
+                    else
+                      _ClientTaskTable(
+                        tasks: tasks,
+                        onOpenTask: widget.onOpenTask,
+                      ),
+                  ],
                 ),
-                if (expanded)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: sectionColor.withValues(alpha: 0.25),
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: tasks.isEmpty
-                            ? const Padding(
-                                padding: EdgeInsets.fromLTRB(16, 16, 16, 16),
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    'No tasks for this client yet.',
-                                    style: TextStyle(color: Colors.grey),
-                                  ),
-                                ),
-                              )
-                            : _ClientTaskTable(
-                                tasks: tasks,
-                                onOpenTask: widget.onOpenTask,
-                              ),
-                      ),
-                    ),
-                  ),
-              ],
+              ),
             );
           },
         ),
@@ -250,6 +225,8 @@ class _ClientTaskTable extends StatelessWidget {
     scrollDirection: Axis.horizontal,
     child: DataTable(
       showCheckboxColumn: false,
+      horizontalMargin: 8,
+      columnSpacing: 12,
       columns: const [
         DataColumn(label: Text('Task')),
         DataColumn(label: Text('Task date')),

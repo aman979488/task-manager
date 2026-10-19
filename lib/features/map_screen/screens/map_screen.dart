@@ -101,12 +101,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _promptAddSubstep(Task task) async {
-    final title = await promptAddSubstepDialog(context);
-    if (!mounted) return;
-    if (title != null && title.isNotEmpty) {
-      final vm = Provider.of<MapScreenViewModel>(context, listen: false);
-      await vm.addSubstep(task, title);
-    }
+    final vm = Provider.of<MapScreenViewModel>(context, listen: false);
+    await promptAddSubstepDialog(
+      context,
+      onAdd: (title) => vm.addSubstep(task, title),
+    );
   }
 
   Future<void> _confirmDeleteSelected(MapScreenViewModel viewModel) async {

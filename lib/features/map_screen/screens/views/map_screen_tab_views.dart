@@ -274,7 +274,8 @@ class MapScreenTabViews extends StatelessWidget {
                         task,
                         viewType: 'Detailed list',
                         dense: true,
-                        showMetadata: true,
+                        showMetadata: false,
+                        hideTaskMetadata: true,
                         confirmCompletion: true,
                       ),
                       Container(
@@ -294,7 +295,6 @@ class MapScreenTabViews extends StatelessWidget {
               groups: MapScreenViewModel.assignedTasksByName(visibleAllTasks),
               pageStorageId: 'assign-tab',
               refreshable: _refreshableScrollView,
-              openAssigneeOnTap: true,
               onOpenAssignee: (name, tasks) => assignContext.push(
                 '/assignee-tasks',
                 extra: {'assigneeName': name, 'tasks': tasks},

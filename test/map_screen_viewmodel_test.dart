@@ -65,7 +65,7 @@ void main() {
     expect(Task.fromMap('call-me', completedTask.toMap()).isInMyDay, isTrue);
   });
 
-  test('My Work includes only my unassigned created tasks', () {
+  test('My Work includes tasks created by me or assigned to me', () {
     final createdUnassigned = Task(
       'Created unassigned',
       createdBy: {'uid': 'user-1', 'email': 'user@example.com', 'name': 'Me'},
@@ -77,15 +77,25 @@ void main() {
     );
     final assignedToMe = Task('Assigned to me', assignee: 'Me');
     final assignedByUidOnly = Task('Assigned by uid', assigneeUid: 'user-1');
+    final assignedToSomeoneElse = Task(
+      'Assigned to someone else',
+      assignee: 'Priya',
+    );
 
     expect(
       MapScreenViewModel.myTasksForUser(
-        [createdUnassigned, createdAssigned, assignedToMe, assignedByUidOnly],
+        [
+          createdUnassigned,
+          createdAssigned,
+          assignedToMe,
+          assignedByUidOnly,
+          assignedToSomeoneElse,
+        ],
         userUid: 'user-1',
         userEmail: 'user@example.com',
         userName: 'Me',
       ),
-      [createdUnassigned],
+      [createdUnassigned, createdAssigned, assignedToMe, assignedByUidOnly],
     );
   });
 

@@ -478,9 +478,14 @@ class MapScreenViewModel extends ChangeNotifier {
                 (email == myEmail || myEmail.contains(email))) ||
             (name.isNotEmpty && (name == myName || myName.contains(name)));
       }
-      final hasAssignee = (task.assignee?.trim().isNotEmpty ?? false) ||
-          (task.assigneeUid?.trim().isNotEmpty ?? false);
-      return isCreator && !hasAssignee;
+      final assignee = (task.assignee ?? '').trim().toLowerCase();
+      final assigneeUid = (task.assigneeUid ?? '').trim().toLowerCase();
+      final isAssignedToMe =
+          (myName.isNotEmpty && assignee.contains(myName)) ||
+          (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
+          (myUid.isNotEmpty &&
+              (assignee.contains(myUid) || assigneeUid.contains(myUid)));
+      return isCreator || isAssignedToMe;
     }).toList();
   }
 

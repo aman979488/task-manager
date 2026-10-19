@@ -39,9 +39,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   late TextEditingController _noteController;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _showAdditionalDetails = false;
+  Future<String?>? _createdByNameFuture;
 
   // for steps
   late TextEditingController _stepController;
+  final FocusNode _stepFocusNode = FocusNode();
   bool _isAddingStep = false;
   int? _editingStepIndex;
 
@@ -77,6 +80,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     task.title = _titleController.text;
     _noteController.dispose();
     _stepController.dispose();
+    _stepFocusNode.dispose();
     _searchController.dispose();
     _titleController.dispose();
     super.dispose();
@@ -245,17 +249,16 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       projects = _projectsCache;
     }
 
+    if (!mounted || !buttonContext.mounted) return;
     final OverlayState overlayState = Overlay.of(buttonContext);
     final RenderBox button = buttonContext.findRenderObject() as RenderBox;
     final RenderBox overlayBox =
         overlayState.context.findRenderObject() as RenderBox;
-
     final Offset buttonPosition = button.localToGlobal(
       Offset.zero,
       ancestor: overlayBox,
     );
     final Size buttonSize = button.size;
-    final Size overlaySize = overlayBox.size;
 
     List<Widget> tilesFor(String key) {
       switch (key) {
@@ -538,13 +541,18 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   void _saveStep(String value) {
     final text = value.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty) {
+      _stepFocusNode.requestFocus();
+      return;
+    }
     setState(() {
       task.steps.add(TaskStep(title: text));
-      _isAddingStep = false;
       _stepController.clear();
     });
     widget.onChanged();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _isAddingStep) _stepFocusNode.requestFocus();
+    });
   }
 
   void _startEditStep(int index) {
@@ -601,7 +609,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   Widget _buildStepTile(TaskStep step, int index) {
     final isEditing = _editingStepIndex == index;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
+      padding: const EdgeInsets.only(bottom: 2.0),
       child: Row(
         children: [
           GestureDetector(
@@ -641,6 +649,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ),
           if (isEditing)
             IconButton(
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               icon: const Icon(Icons.close, size: 18),
               onPressed: () {
                 setState(() {
@@ -651,6 +662,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             )
           else
             IconButton(
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               icon: const Icon(
                 Icons.delete_outline,
                 size: 20,
@@ -661,17 +675,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
         ],
       ),
-    );
-  }
-
-  Widget _borderedTile({required Widget child}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: child,
     );
   }
 
@@ -928,7 +931,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                             Expanded(
                               child: TextField(
                                 controller: _stepController,
+                                focusNode: _stepFocusNode,
                                 autofocus: true,
+                                textInputAction: TextInputAction.next,
                                 decoration: const InputDecoration(
                                   hintText: "Add step",
                                   border: InputBorder.none,
@@ -939,6 +944,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                             IconButton(
                               icon: const Icon(Icons.close, size: 18),
                               onPressed: () {
+                                _stepFocusNode.unfocus();
                                 setState(() {
                                   _isAddingStep = false;
                                   _stepController.clear();
@@ -997,6 +1003,24 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
                     Builder(
                       builder: (buttonContext) => _animatedBorderedTile(
+                        isSelected: _isSelected(task.workType),
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.insert_drive_file,
+                            color: secondaryColor,
+                          ),
+                          title: const Text("Work Type"),
+                          trailing: _infoTrailing(task.workType),
+                          onTap: () => _showOverlay(
+                            buttonContext,
+                            FloatingSheetType.workType,
+                            fieldKey: 'workType',
+                          ),
+                        ),
+                      ),
+                    ),
+                    Builder(
+                      builder: (buttonContext) => _animatedBorderedTile(
                         isSelected: _isSelected(task.reminder),
                         child: ListTile(
                           leading: const Icon(
@@ -1031,41 +1055,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
                     Builder(
                       builder: (buttonContext) => _animatedBorderedTile(
-                        isSelected: _isSelected(task.deadline),
-                        child: ListTile(
-                          leading: const Icon(
-                            Icons.alarm,
-                            color: secondaryColor,
-                          ),
-                          title: const Text("Deadline"),
-                          trailing: _infoTrailing(task.deadline),
-                          onTap: () => _showOverlay(
-                            buttonContext,
-                            FloatingSheetType.deadline,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Builder(
-                      builder: (buttonContext) => _animatedBorderedTile(
-                        isSelected: _isSelected(task.workType),
-                        child: ListTile(
-                          leading: const Icon(
-                            Icons.insert_drive_file,
-                            color: secondaryColor,
-                          ),
-                          title: const Text("Work Type"),
-                          trailing: _infoTrailing(task.workType),
-                          onTap: () => _showOverlay(
-                            buttonContext,
-                            FloatingSheetType.workType,
-                            fieldKey: 'workType',
-                          ),
-                        ),
-                      ),
-                    ),
-                    Builder(
-                      builder: (buttonContext) => _animatedBorderedTile(
                         isSelected: _isSelected(task.clientName),
                         child: ListTile(
                           leading: const Icon(
@@ -1084,95 +1073,150 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
                     Builder(
                       builder: (buttonContext) => _animatedBorderedTile(
-                        isSelected: _isSelected(task.refProject),
+                        isSelected: _isSelected(task.deadline),
                         child: ListTile(
                           leading: const Icon(
-                            Icons.apartment_outlined,
+                            Icons.alarm,
                             color: secondaryColor,
                           ),
-                          title: const Text("Ref Project"),
-                          trailing: _infoTrailing(task.refProject),
+                          title: const Text("Deadline"),
+                          trailing: _infoTrailing(task.deadline),
                           onTap: () => _showOverlay(
                             buttonContext,
-                            FloatingSheetType.refProject,
-                            fieldKey: 'refProject',
+                            FloatingSheetType.deadline,
                           ),
                         ),
                       ),
                     ),
-                    Builder(
-                      builder: (buttonContext) => _animatedBorderedTile(
-                        isSelected: _isSelected(task.folder),
-                        child: ListTile(
-                          leading: const Icon(
-                            Icons.folder_outlined,
-                            color: secondaryColor,
-                          ),
-                          title: const Text("Folder"),
-                          trailing: _infoTrailing(task.folder),
-                          onTap: () => _showOverlay(
-                            buttonContext,
-                            FloatingSheetType.folder,
-                            fieldKey: 'folder',
-                          ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () => setState(
+                          () =>
+                              _showAdditionalDetails = !_showAdditionalDetails,
+                        ),
+                        icon: Icon(
+                          _showAdditionalDetails
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          color: secondaryColor,
+                        ),
+                        label: Text(
+                          _showAdditionalDetails ? 'View less' : 'View more',
+                          style: const TextStyle(color: secondaryColor),
                         ),
                       ),
                     ),
-
-                    const SizedBox(height: 12),
-
-                    // 🚀 NAYA: Extra Fields Editor (Start, End, Acc, Monitor, Remark)
-                    _buildExtraFieldTile(
-                      label: 'Start Time',
-                      value: task.startTime,
-                      icon: Icons.access_time,
-                      onTap: (buttonContext) => _pickExtraTime(
-                        buttonContext,
-                        (value) => task.startTime = value,
+                    if (_showAdditionalDetails) ...[
+                      Builder(
+                        builder: (buttonContext) => _animatedBorderedTile(
+                          isSelected: _isSelected(task.refProject),
+                          child: ListTile(
+                            leading: const Icon(
+                              Icons.apartment_outlined,
+                              color: secondaryColor,
+                            ),
+                            title: const Text("Ref Project"),
+                            trailing: _infoTrailing(task.refProject),
+                            onTap: () => _showOverlay(
+                              buttonContext,
+                              FloatingSheetType.refProject,
+                              fieldKey: 'refProject',
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                    _buildExtraFieldTile(
-                      label: 'End Time',
-                      value: task.endTime,
-                      icon: Icons.access_time,
-                      onTap: (buttonContext) => _pickExtraTime(
-                        buttonContext,
-                        (value) => task.endTime = value,
+                      _buildExtraFieldTile(
+                        label: 'Start Time',
+                        value: task.startTime,
+                        icon: Icons.access_time,
+                        onTap: (buttonContext) => _pickExtraTime(
+                          buttonContext,
+                          (value) => task.startTime = value,
+                        ),
                       ),
-                    ),
-                    _buildExtraFieldTile(
-                      label: 'Accompanied By',
-                      value: task.accompaniedBy,
-                      icon: Icons.person_outline,
-                      onTap: (buttonContext) => _editExtraField(
-                        buttonContext,
-                        'Accompanied By',
-                        task.accompaniedBy,
-                        (value) => task.accompaniedBy = value,
+                      _buildExtraFieldTile(
+                        label: 'End Time',
+                        value: task.endTime,
+                        icon: Icons.access_time,
+                        onTap: (buttonContext) => _pickExtraTime(
+                          buttonContext,
+                          (value) => task.endTime = value,
+                        ),
                       ),
-                    ),
-                    _buildExtraFieldTile(
-                      label: 'Monitor',
-                      value: task.monitor,
-                      icon: Icons.desktop_windows_outlined,
-                      onTap: (buttonContext) => _editExtraField(
-                        buttonContext,
-                        'Monitor',
-                        task.monitor,
-                        (value) => task.monitor = value,
+                      _buildExtraFieldTile(
+                        label: 'Accompanied By',
+                        value: task.accompaniedBy,
+                        icon: Icons.person_outline,
+                        onTap: (buttonContext) => _editExtraField(
+                          buttonContext,
+                          'Accompanied By',
+                          task.accompaniedBy,
+                          (value) => task.accompaniedBy = value,
+                        ),
                       ),
-                    ),
-                    _buildExtraFieldTile(
-                      label: 'Remark',
-                      value: task.remark,
-                      icon: Icons.notes,
-                      onTap: (buttonContext) => _editExtraField(
-                        buttonContext,
-                        'Remark',
-                        task.remark,
-                        (value) => task.remark = value,
+                      _buildExtraFieldTile(
+                        label: 'Monitor',
+                        value: task.monitor,
+                        icon: Icons.desktop_windows_outlined,
+                        onTap: (buttonContext) => _editExtraField(
+                          buttonContext,
+                          'Monitor',
+                          task.monitor,
+                          (value) => task.monitor = value,
+                        ),
                       ),
-                    ),
+                      Builder(
+                        builder: (buttonContext) => _animatedBorderedTile(
+                          isSelected: _isSelected(task.folder),
+                          child: ListTile(
+                            leading: const Icon(
+                              Icons.folder_outlined,
+                              color: secondaryColor,
+                            ),
+                            title: const Text("Folder"),
+                            trailing: _infoTrailing(task.folder),
+                            onTap: () => _showOverlay(
+                              buttonContext,
+                              FloatingSheetType.folder,
+                              fieldKey: 'folder',
+                            ),
+                          ),
+                        ),
+                      ),
+                      _buildExtraFieldTile(
+                        label: 'Remark',
+                        value: task.remark,
+                        icon: Icons.notes,
+                        onTap: (buttonContext) => _editExtraField(
+                          buttonContext,
+                          'Remark',
+                          task.remark,
+                          (value) => task.remark = value,
+                        ),
+                      ),
+                      const SizedBox(height: 15),
+                      const Text(
+                        "Add note",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _noteController,
+                        maxLines: 12,
+                        onChanged: (value) {
+                          task.note = value;
+                          widget.onChanged();
+                        },
+                        decoration: const InputDecoration(
+                          hintText: "Add note",
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
 
                     const SizedBox(height: 12),
 
@@ -1261,12 +1305,29 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     if (task.createdBy != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          "Created By: ${task.createdBy!['name'] ?? task.createdBy!['email'] ?? 'Unknown'}",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
+                        child: FutureBuilder<String?>(
+                          future: _createdByNameFuture ??= _loadCreatorName(),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasError) {
+                              debugPrint(
+                                'Could not load task creator name: ${snapshot.error}',
+                              );
+                            }
+                            final metadataName = _metadataCreatorName();
+                            final emailName = _creatorEmailName();
+                            final name =
+                                snapshot.data ??
+                                metadataName ??
+                                emailName ??
+                                'Unknown';
+                            return Text(
+                              "Created By: $name",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            );
+                          },
                         ),
                       ),
                     if (task.editedBy != null)
@@ -1280,29 +1341,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           ),
                         ),
                       ),
-
-                    const SizedBox(height: 15),
-
-                    const Text(
-                      "Add note",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _noteController,
-                      maxLines: 12,
-                      onChanged: (value) {
-                        task.note = value;
-                        widget.onChanged();
-                      },
-                      decoration: const InputDecoration(
-                        hintText: "Add note",
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
 
                     const SizedBox(height: 15),
                   ],
@@ -1332,6 +1370,86 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         ),
       ),
     );
+  }
+
+  String? _metadataCreatorName() {
+    final metadata = task.createdBy;
+    if (metadata == null) return null;
+    for (final key in [
+      'name',
+      'displayName',
+      'fullName',
+      'userName',
+      'cpName',
+    ]) {
+      final value = metadata[key]?.toString().trim();
+      if (value != null &&
+          value.isNotEmpty &&
+          value.toLowerCase() != 'user' &&
+          value.toLowerCase() != 'unknown') {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  String? _creatorEmailName() {
+    final email = task.createdBy?['email']?.toString().trim() ?? '';
+    if (email.isEmpty) return null;
+    return email.contains('@') ? email.split('@').first : email;
+  }
+
+  Future<String?> _loadCreatorName() async {
+    if (_metadataCreatorName() != null) return _metadataCreatorName();
+
+    final metadata = task.createdBy;
+    if (metadata == null) return null;
+    final uid = metadata['uid']?.toString().trim() ?? '';
+    final email = metadata['email']?.toString().trim() ?? '';
+    final users = FirebaseFirestore.instance.collection('users');
+
+    if (uid.isNotEmpty) {
+      final profile = await users.where('uid', isEqualTo: uid).limit(1).get();
+      if (profile.docs.isNotEmpty) {
+        final profileName = _profileName(profile.docs.first.data());
+        if (profileName != null) return profileName;
+      }
+
+      final profileById = await users.doc(uid).get();
+      final profileName = _profileName(profileById.data());
+      if (profileName != null) return profileName;
+    }
+
+    if (email.isNotEmpty) {
+      final profile = await users
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+      if (profile.docs.isNotEmpty) {
+        return _profileName(profile.docs.first.data());
+      }
+    }
+    return null;
+  }
+
+  String? _profileName(Map<String, dynamic>? profile) {
+    if (profile == null) return null;
+    for (final key in [
+      'name',
+      'displayName',
+      'fullName',
+      'userName',
+      'cpName',
+    ]) {
+      final value = profile[key]?.toString().trim();
+      if (value != null &&
+          value.isNotEmpty &&
+          value.toLowerCase() != 'user' &&
+          value.toLowerCase() != 'unknown') {
+        return value;
+      }
+    }
+    return null;
   }
 
   Future<void> _pickExtraTime(
@@ -1385,74 +1503,4 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     setState(() => onChanged(updatedValue));
     widget.onChanged();
   }
-
-  Widget _buildAddButton(
-    BuildContext context, {
-    required String label,
-    required IconData icon,
-    required void Function(BuildContext) onTap,
-  }) {
-    return InkWell(
-      onTap: () => onTap(context),
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.grey.shade300),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: Colors.grey.shade700),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailButton(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required void Function(BuildContext) onTap,
-  }) {
-    return InkWell(
-      onTap: () => onTap(context),
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: secondaryColor),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: secondaryColor),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: secondaryColor,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Removed duplicates.
 }

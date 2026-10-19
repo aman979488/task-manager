@@ -26,18 +26,18 @@ void main() {
       ),
     );
 
+    expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
     await tester.tap(find.text('Aman').first);
     await tester.pumpAndSettle();
     expect(find.text('Aman task 1'), findsOneWidget);
     expect(find.text('Aman task 2'), findsOneWidget);
   });
 
-  testWidgets('tapping an assign-tab name opens its assignee view', (
+  testWidgets('tapping an assign-tab card expands tasks inline', (
     tester,
   ) async {
     final amanTasks = [Task('Aman task', assignee: 'Aman')];
-    String? openedName;
-    List<Task>? openedTasks;
+    var openedAssigneeView = false;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -45,10 +45,8 @@ void main() {
           body: GroupByAssigneeView(
             groups: {'Aman': amanTasks},
             pageStorageId: 'assign',
-            openAssigneeOnTap: true,
             onOpenAssignee: (name, tasks) {
-              openedName = name;
-              openedTasks = tasks;
+              openedAssigneeView = true;
             },
             onOpenTask: (_) {},
             refreshable: (child) => child,
@@ -58,8 +56,10 @@ void main() {
     );
 
     await tester.tap(find.text('Aman').first);
-    expect(openedName, 'Aman');
-    expect(openedTasks, amanTasks);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Aman task'), findsOneWidget);
+    expect(openedAssigneeView, isFalse);
   });
 
   testWidgets('assignee task view groups tasks into My Work sections', (

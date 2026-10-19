@@ -50,7 +50,7 @@ class GroupByView extends StatelessWidget {
       ListView.builder(
         key: PageStorageKey('$pageStorageId-list'),
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        padding: const EdgeInsets.fromLTRB(4, 4, 4, 100),
         itemCount: names.length,
         itemBuilder: (context, index) {
           final name = names[index];
@@ -60,6 +60,7 @@ class GroupByView extends StatelessWidget {
           final cardContents = openAssigneeOnTap && groupBy == 'Assignee'
               ? ListTile(
                   leading: CircleAvatar(
+                    radius: 16,
                     backgroundColor: const Color(0xFFFBE64E)
                         .withValues(alpha: 0.3),
                     child: Text(
@@ -88,7 +89,11 @@ class GroupByView extends StatelessWidget {
                 )
               : ExpansionTile(
                   key: PageStorageKey('$pageStorageId-group-$name'),
+                  dense: true,
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 8),
+                  childrenPadding: EdgeInsets.zero,
                   leading: CircleAvatar(
+                    radius: 16,
                     backgroundColor: const Color(0xFFFBE64E)
                         .withValues(alpha: 0.3),
                     child: Text(
@@ -112,6 +117,9 @@ class GroupByView extends StatelessWidget {
                     'Total: ${tasks.length} • Pending: $pendingCount • Done: $completedCount',
                     style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
                   ),
+                  trailing: groupBy == 'Assignee'
+                      ? const Icon(Icons.chevron_right_rounded)
+                      : null,
                   children: [
                     if (groupBy == 'Assignee')
                       Align(
@@ -128,6 +136,9 @@ class GroupByView extends StatelessWidget {
                     ...tasks.map(
                       (task) => ListTile(
                         dense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                        ),
                         leading: Icon(
                           task.isDone
                               ? Icons.check_circle_outline
@@ -150,7 +161,7 @@ class GroupByView extends StatelessWidget {
                   ],
                 );
           return Container(
-            margin: const EdgeInsets.only(bottom: 12),
+            margin: const EdgeInsets.only(bottom: 4),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),

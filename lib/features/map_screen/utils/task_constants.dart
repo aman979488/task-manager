@@ -10,11 +10,11 @@ class TaskConstants {
 
   static const List<FloatingSheetType> defaultButtonOrder = [
     FloatingSheetType.priority,
+    FloatingSheetType.workType,
     FloatingSheetType.remind,
     FloatingSheetType.assign,
-    FloatingSheetType.deadline,
-    FloatingSheetType.workType,
     FloatingSheetType.clientName,
+    FloatingSheetType.deadline,
     FloatingSheetType.refProject,
   ];
 

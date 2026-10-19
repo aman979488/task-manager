@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../models/task.dart';
 import '../../utils/task_title_formatter.dart';
 import 'task_metadata_badges.dart';
-import 'task_substeps_summary.dart';
 
 class TaskTile extends StatelessWidget {
   const TaskTile({
@@ -89,7 +88,6 @@ class TaskTile extends StatelessWidget {
                       decorationColor: Colors.blueGrey.shade400,
                     ),
                   ),
-                  TaskSubstepsSummary(steps: task.steps, dense: dense),
                   if (description?.isNotEmpty == true)
                     Padding(
                       padding: EdgeInsets.only(top: dense ? 1 : 3),
@@ -124,7 +122,7 @@ class TaskTile extends StatelessWidget {
                 Row(
                   children: [
                     priorityWidget,
-                    SizedBox(width: dense ? 8 : 12),
+                    SizedBox(width: dense ? 14 : 18),
                     InkWell(
                       onTap: onAddSubtask,
                       borderRadius: BorderRadius.circular(20),

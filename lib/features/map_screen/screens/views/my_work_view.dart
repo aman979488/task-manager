@@ -69,10 +69,8 @@ class _MyWorkViewState extends State<MyWorkView> {
       if (sectionIndex >= populatedNames.length) return;
       setState(() {
         final section = populatedNames[sectionIndex];
-        if (sectionIndex == 0 && !_expandedSections.add(section)) {
+        if (!_expandedSections.add(section)) {
           _expandedSections.remove(section);
-        } else if (sectionIndex > 0) {
-          _expandedSections.add(section);
         }
       });
     });
