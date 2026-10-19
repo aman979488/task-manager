@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../viewmodels/auth_viewmodel.dart';
 import '../../models/task.dart';
 import '../../utils/task_date_formatter.dart';
+import '../../utils/task_mention_parser.dart';
 import '../../viewmodels/map_screen_viewmodel.dart';
 import '../widgets/map_task_list_item.dart';
 import 'all_work_view.dart';
@@ -54,6 +55,7 @@ class MapScreenTabViews extends StatelessWidget {
     String? viewType,
     bool dense = false,
     bool showMetadata = false,
+    bool hideTaskMetadata = false,
     bool confirmCompletion = false,
     bool tapCompletesTask = false,
     bool keepInMyDay = false,
@@ -62,9 +64,12 @@ class MapScreenTabViews extends StatelessWidget {
       task: task,
       viewType: viewType ?? viewModel.viewType,
       dense: dense,
-      showMetadata: showMetadata,
+      showMetadata: showMetadata && !hideTaskMetadata,
       taskName: task.title,
-      description: task.note.trim().isNotEmpty ? task.note.trim() : null,
+      description: _taskDescription(
+        task,
+        hideMetadataMentions: hideTaskMetadata,
+      ),
       isSelected: viewModel.isTaskSelected(task),
       onEditPriority: (badgeContext) => onEditPriority(badgeContext, task),
       onToggleDone: () => onToggleTaskDone(
@@ -91,6 +96,7 @@ class MapScreenTabViews extends StatelessWidget {
     int index, {
     bool dense = true,
     bool showMetadata = false,
+    bool hideTaskMetadata = false,
     bool confirmCompletion = false,
     bool tapCompletesTask = false,
     bool keepInMyDay = false,
@@ -104,7 +110,10 @@ class MapScreenTabViews extends StatelessWidget {
             task,
             viewType: effectiveViewType,
             dense: dense,
-            showMetadata: showMetadata || effectiveViewType == 'Detailed list',
+            showMetadata:
+                !hideTaskMetadata &&
+                (showMetadata || effectiveViewType == 'Detailed list'),
+            hideTaskMetadata: hideTaskMetadata,
             confirmCompletion: confirmCompletion,
             tapCompletesTask: tapCompletesTask,
             keepInMyDay: keepInMyDay,
@@ -121,11 +130,28 @@ class MapScreenTabViews extends StatelessWidget {
       task,
       viewType: effectiveViewType,
       dense: dense,
-      showMetadata: showMetadata || effectiveViewType == 'Detailed list',
+      showMetadata:
+          !hideTaskMetadata &&
+          (showMetadata || effectiveViewType == 'Detailed list'),
+      hideTaskMetadata: hideTaskMetadata,
       confirmCompletion: confirmCompletion,
       tapCompletesTask: tapCompletesTask,
       keepInMyDay: keepInMyDay,
     );
+  }
+
+  String? _taskDescription(Task task, {bool hideMetadataMentions = false}) {
+    final note = task.note.trim();
+    if (note.isEmpty) return null;
+    if (!hideMetadataMentions) return note;
+
+    final description = TaskMentionParser.removeMetadataMentions(
+      text: note,
+      assignee: task.assignee,
+      clientName: task.clientName,
+      workType: task.workType,
+    );
+    return description.isEmpty ? null : description;
   }
 
   Widget _buildCalendarView(List<Task> visibleTasks) {
@@ -239,7 +265,7 @@ class MapScreenTabViews extends StatelessWidget {
                     task,
                     index,
                     dense: true,
-                    showMetadata: true,
+                    hideTaskMetadata: true,
                     confirmCompletion: true,
                   ),
                   detailedTaskBuilder: (task) => Column(

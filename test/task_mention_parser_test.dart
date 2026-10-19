@@ -35,4 +35,28 @@ void main() {
   test('matches assignee names without case sensitivity', () {
     expect(TaskMentionParser.matchesSearchQuery('Aman Yadav', 'aman'), isTrue);
   });
+
+  test('removes matching task metadata mentions from descriptions', () {
+    expect(
+      TaskMentionParser.removeMetadataMentions(
+        text: 'Call @Aman Yadav about #Acme +Installation today',
+        assignee: 'Aman Yadav',
+        clientName: 'Acme',
+        workType: 'Installation',
+      ),
+      'Call about today',
+    );
+  });
+
+  test('removes assignee mentions but preserves email addresses', () {
+    expect(
+      TaskMentionParser.removeMetadataMentions(
+        text: 'Email user@example.com and ask @ someone about #other',
+        assignee: 'Aman Yadav',
+        clientName: 'Acme',
+        workType: null,
+      ),
+      'Email user@example.com and ask about #other',
+    );
+  });
 }

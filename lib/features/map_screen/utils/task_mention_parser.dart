@@ -26,11 +26,7 @@ class TaskMentionParser {
           final suffix = text.substring(i + 1, c);
           final query = suffix.trimLeft();
           if (RegExp(r'\s').hasMatch(query)) return null;
-          return TaskMention(
-            start: i,
-            symbol: ch,
-            query: query,
-          );
+          return TaskMention(start: i, symbol: ch, query: query);
         }
         return null;
       }
@@ -69,6 +65,34 @@ class TaskMentionParser {
       }
     }
     return false;
+  }
+
+  static String removeMetadataMentions({
+    required String text,
+    required String? assignee,
+    required String? clientName,
+    required String? workType,
+  }) {
+    var cleaned = text;
+    for (final (symbol, value) in [
+      ('@', assignee),
+      ('#', clientName),
+      ('+', workType),
+    ]) {
+      final normalizedValue = value?.trim();
+      if (normalizedValue == null || normalizedValue.isEmpty) continue;
+
+      final token = RegExp(
+        '(^|\\s)${RegExp.escape(symbol)}\\s*${RegExp.escape(normalizedValue)}(?=\\s|\$)',
+        caseSensitive: false,
+      );
+      cleaned = cleaned.replaceAllMapped(token, (match) => match[1] ?? '');
+    }
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'(^|\s)@\s*[\w.-]+'),
+      (match) => match[1] ?? '',
+    );
+    return cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   static ({String newText, int newCursor}) removeMentionToken({

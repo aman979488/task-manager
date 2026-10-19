@@ -65,6 +65,30 @@ void main() {
     expect(Task.fromMap('call-me', completedTask.toMap()).isInMyDay, isTrue);
   });
 
+  test('My Work includes only my unassigned created tasks', () {
+    final createdUnassigned = Task(
+      'Created unassigned',
+      createdBy: {'uid': 'user-1', 'email': 'user@example.com', 'name': 'Me'},
+    );
+    final createdAssigned = Task(
+      'Created assigned',
+      assignee: 'Priya',
+      createdBy: {'uid': 'user-1', 'email': 'user@example.com', 'name': 'Me'},
+    );
+    final assignedToMe = Task('Assigned to me', assignee: 'Me');
+    final assignedByUidOnly = Task('Assigned by uid', assigneeUid: 'user-1');
+
+    expect(
+      MapScreenViewModel.myTasksForUser(
+        [createdUnassigned, createdAssigned, assignedToMe, assignedByUidOnly],
+        userUid: 'user-1',
+        userEmail: 'user@example.com',
+        userName: 'Me',
+      ),
+      [createdUnassigned],
+    );
+  });
+
   test('Done tasks are ordered by most recently completed', () {
     final olderDone = Task(
       'Older completed',
@@ -177,6 +201,9 @@ void main() {
 
     expect(sections['Urgent Works'], [urgent]);
     expect(sections['Tomorrow Works'], [tomorrow]);
-    expect(sections.values.expand((tasks) => tasks), isNot(contains(completed)));
+    expect(
+      sections.values.expand((tasks) => tasks),
+      isNot(contains(completed)),
+    );
   });
 }

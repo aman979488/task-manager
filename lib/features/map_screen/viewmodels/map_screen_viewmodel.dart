@@ -448,10 +448,24 @@ class MapScreenViewModel extends ChangeNotifier {
   }
 
   List<Task> myTasks(AuthViewModel authViewModel) {
-    final myUid = authViewModel.userUid.trim().toLowerCase();
-    final myEmail = authViewModel.userEmail.trim().toLowerCase();
-    final myName = authViewModel.userName.trim().toLowerCase();
-    return _tasks.where((task) {
+    return myTasksForUser(
+      _tasks,
+      userUid: authViewModel.userUid,
+      userEmail: authViewModel.userEmail,
+      userName: authViewModel.userName,
+    );
+  }
+
+  static List<Task> myTasksForUser(
+    Iterable<Task> tasks, {
+    required String userUid,
+    required String userEmail,
+    required String userName,
+  }) {
+    final myUid = userUid.trim().toLowerCase();
+    final myEmail = userEmail.trim().toLowerCase();
+    final myName = userName.trim().toLowerCase();
+    return tasks.where((task) {
       final creator = task.createdBy;
       var isCreator = false;
       if (creator != null) {
@@ -464,13 +478,9 @@ class MapScreenViewModel extends ChangeNotifier {
                 (email == myEmail || myEmail.contains(email))) ||
             (name.isNotEmpty && (name == myName || myName.contains(name)));
       }
-      final assignee = (task.assignee ?? '').trim().toLowerCase();
-      final isAssignee =
-          assignee.isNotEmpty &&
-          ((myName.isNotEmpty && assignee.contains(myName)) ||
-              (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
-              (myUid.isNotEmpty && assignee.contains(myUid)));
-      return isCreator || isAssignee;
+      final hasAssignee = (task.assignee?.trim().isNotEmpty ?? false) ||
+          (task.assigneeUid?.trim().isNotEmpty ?? false);
+      return isCreator && !hasAssignee;
     }).toList();
   }
 
