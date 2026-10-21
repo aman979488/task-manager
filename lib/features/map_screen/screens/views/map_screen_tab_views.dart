@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:go_router/go_router.dart';
 
 import '../../../../viewmodels/auth_viewmodel.dart';
@@ -11,6 +12,7 @@ import '../widgets/map_task_list_item.dart';
 import 'all_work_view.dart';
 import 'calendar_view.dart';
 import 'done_tasks_view.dart';
+import 'floating_metadata_sheet.dart';
 import 'group_by_assignee_view.dart';
 import 'group_by_view.dart';
 import 'my_day_view.dart';
@@ -44,9 +46,20 @@ class MapScreenTabViews extends StatelessWidget {
   final void Function(BuildContext badgeContext, Task task) onEditPriority;
 
   Widget _refreshableScrollView(Widget child) {
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: Scrollbar(thumbVisibility: kIsWeb, child: child),
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is UserScrollNotification &&
+            notification.metrics.axis == Axis.vertical &&
+            notification.direction != ScrollDirection.idle &&
+            FloatingMetadataSheet.isShowing) {
+          FloatingMetadataSheet.hide();
+        }
+        return false;
+      },
+      child: RefreshIndicator(
+        onRefresh: onRefresh,
+        child: Scrollbar(thumbVisibility: kIsWeb, child: child),
+      ),
     );
   }
 
@@ -335,7 +348,6 @@ class MapScreenTabViews extends StatelessWidget {
             builder: (assignContext) => GroupByAssigneeView(
               groups: MapScreenViewModel.assignedTasksByName(visibleAllTasks),
               pageStorageId: 'assign-tab',
-              openAssigneeOnTap: true,
               refreshable: _refreshableScrollView,
               onOpenAssignee: (name, tasks) => assignContext.push(
                 '/assignee-tasks',
@@ -361,17 +373,6 @@ class MapScreenTabViews extends StatelessWidget {
                 refreshable: _refreshableScrollView,
               ),
             ),
-          Builder(
-            key: const PageStorageKey('overdue-tasks-tab'),
-            builder: (_) => OverdueTasksView(
-              tasks: visibleOverdueTasks,
-              viewType: viewModel.viewType,
-              zoom: viewModel.zoom,
-              taskBuilder: (task, index) => _buildTaskItem(task, index),
-              calendarBuilder: _buildCalendarView,
-              refreshable: _refreshableScrollView,
-            ),
-          ),
           if (hasAdminAccess)
             Builder(
               key: const PageStorageKey('group-by-tab'),
@@ -384,7 +385,6 @@ class MapScreenTabViews extends StatelessWidget {
                   return GroupByAssigneeView(
                     groups: grouped,
                     pageStorageId: 'group-by-${viewModel.groupBy}-tab',
-                    openAssigneeOnTap: true,
                     refreshable: _refreshableScrollView,
                     onOpenAssignee: (name, tasks) => groupByContext.push(
                       '/assignee-tasks',
@@ -414,6 +414,17 @@ class MapScreenTabViews extends StatelessWidget {
                 );
               },
             ),
+          Builder(
+            key: const PageStorageKey('overdue-tasks-tab'),
+            builder: (_) => OverdueTasksView(
+              tasks: visibleOverdueTasks,
+              viewType: viewModel.viewType,
+              zoom: viewModel.zoom,
+              taskBuilder: (task, index) => _buildTaskItem(task, index),
+              calendarBuilder: _buildCalendarView,
+              refreshable: _refreshableScrollView,
+            ),
+          ),
         ],
       ),
     );
