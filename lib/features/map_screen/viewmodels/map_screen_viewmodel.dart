@@ -196,6 +196,7 @@ class MapScreenViewModel extends ChangeNotifier {
   Future<bool> addTask({
     required String title,
     required AuthViewModel authViewModel,
+    Future<void> Function(Task task)? onTaskSaved,
     String? priority,
     String? reminder,
     String? assignee,
@@ -241,7 +242,7 @@ class MapScreenViewModel extends ChangeNotifier {
         _sendAssignmentNotification(assignee, cleanTitle, authViewModel),
       );
     }
-    final saveOperation = _saveNewTask(task);
+    final saveOperation = _saveNewTask(task, onTaskSaved);
     _pendingTaskSaves[task] = saveOperation;
     unawaited(saveOperation);
     _isAddingTask = false;
@@ -291,6 +292,7 @@ class MapScreenViewModel extends ChangeNotifier {
     if (cleanTitle.isEmpty) return;
     final step = TaskStep(title: cleanTitle);
     task.steps.add(step);
+    notifyListeners();
     try {
       final pendingSave = _pendingTaskSaves[task];
       if (pendingSave != null) await pendingSave;
@@ -497,6 +499,19 @@ class MapScreenViewModel extends ChangeNotifier {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final pending = myTasks.where((task) => !task.isDone);
+    List<Task> withPriority(String priority) => pending
+        .where((task) => task.priority?.trim().toLowerCase() == priority)
+        .toList();
+    final urgentWorks = pending
+        .where(
+          (task) => const {
+            'u1',
+            'u2',
+            'u3',
+            'urgent',
+          }.contains(task.priority?.trim().toLowerCase()),
+        )
+        .toList();
     final scheduled = pending
         .where((task) => task.priority?.trim().isEmpty ?? true)
         .map(
@@ -517,6 +532,14 @@ class MapScreenViewModel extends ChangeNotifier {
         (task) => task.priority?.trim().toLowerCase() == 'today',
       ),
     }.toList();
+    final overdueWorks = pending.where((task) {
+      final date = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
+      return date != null &&
+          date.isBefore(now) &&
+          !urgentWorks.contains(task) &&
+          !todayWorks.contains(task);
+    }).toList();
+    bool isOverdue(Task task) => overdueWorks.contains(task);
     final tomorrow = DateTime(now.year, now.month, now.day + 1);
     final tomorrowWorks = <Task>{
       ...scheduled
@@ -530,28 +553,27 @@ class MapScreenViewModel extends ChangeNotifier {
       ...pending.where(
         (task) => task.priority?.trim().toLowerCase() == 'tomorrow',
       ),
-    }.toList();
-    List<Task> withPriority(String priority) => pending
-        .where((task) => task.priority?.trim().toLowerCase() == priority)
-        .toList();
+    }.where((task) => !isOverdue(task)).toList();
     return {
-      'Urgent Works': pending
-          .where(
-            (task) => const {
-              'u1',
-              'u2',
-              'u3',
-              'urgent',
-            }.contains(task.priority?.trim().toLowerCase()),
-          )
-          .toList(),
-      'IMP Works': withPriority('imp'),
+      'Urgent Works': urgentWorks,
       'Today Works': todayWorks,
+      'Overdue Works': overdueWorks,
+      'IMP Works': withPriority('imp')
+          .where((task) => !isOverdue(task))
+          .toList(),
       'Tomorrow Works': tomorrowWorks,
-      'Day Later Works': withPriority('day later'),
-      'Later Works': withPriority('later'),
-      'Process Works': withPriority('process'),
-      'Hold Works': withPriority('hold'),
+      'Later Works': withPriority('later')
+          .where((task) => !isOverdue(task))
+          .toList(),
+      'Day Later Works': withPriority('day later')
+          .where((task) => !isOverdue(task))
+          .toList(),
+      'Process Works': withPriority('process')
+          .where((task) => !isOverdue(task))
+          .toList(),
+      'Hold Works': withPriority('hold')
+          .where((task) => !isOverdue(task))
+          .toList(),
     };
   }
 
@@ -605,10 +627,23 @@ class MapScreenViewModel extends ChangeNotifier {
     return result;
   }
 
-  Future<void> _saveNewTask(Task task) async {
+  Future<void> _saveNewTask(
+    Task task,
+    Future<void> Function(Task task)? onTaskSaved,
+  ) async {
     try {
       await _repository.addTask(task);
       _pendingTasks.remove(task);
+      if (onTaskSaved != null) {
+        try {
+          await onTaskSaved(task);
+        } catch (error) {
+          debugPrint('Error sending scheduled flash message: $error');
+          _lastErrorMessage =
+              'Task saved, but its scheduled flash message could not be set.';
+          notifyListeners();
+        }
+      }
       await _updateHomeWidgetSafely();
     } catch (error) {
       debugPrint('Error adding task: $error');

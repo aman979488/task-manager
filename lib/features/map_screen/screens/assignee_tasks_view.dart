@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 import '../models/task.dart';
 import '../viewmodels/map_screen_viewmodel.dart';
@@ -9,11 +8,13 @@ import 'widgets/task_metadata_badges.dart';
 class AssigneeTasksView extends StatelessWidget {
   final String assigneeName;
   final List<Task> tasks;
+  final ValueChanged<Task> onOpenTask;
 
   const AssigneeTasksView({
     super.key,
     required this.assigneeName,
     required this.tasks,
+    required this.onOpenTask,
   });
 
   static const Color primaryColor = Color(0xFFFBE64E);
@@ -56,9 +57,14 @@ class AssigneeTasksView extends StatelessWidget {
           children: [
             for (final task in sectionTasks)
               ListTile(
+                dense: true,
+                visualDensity: const VisualDensity(
+                  horizontal: -1,
+                  vertical: -1,
+                ),
                 contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+                  horizontal: 8,
+                  vertical: 0,
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -74,7 +80,7 @@ class AssigneeTasksView extends StatelessWidget {
                   task.title,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 15,
+                    fontSize: 13,
                     decoration: task.isDone ? TextDecoration.lineThrough : null,
                     color: task.isDone ? Colors.grey : Colors.black87,
                   ),
@@ -93,7 +99,7 @@ class AssigneeTasksView extends StatelessWidget {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 12,
+                                fontSize: 10,
                                 color: Colors.grey,
                               ),
                             ),
@@ -108,9 +114,7 @@ class AssigneeTasksView extends StatelessWidget {
                   Icons.chevron_right_rounded,
                   color: secondaryColor,
                 ),
-                onTap: () {
-                  context.push('/task', extra: task);
-                },
+                onTap: () => onOpenTask(task),
               ),
           ],
         ),

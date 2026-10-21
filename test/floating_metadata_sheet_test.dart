@@ -53,4 +53,42 @@ void main() {
     FloatingMetadataSheet.hide();
     await tester.pumpAndSettle();
   });
+
+  testWidgets('shows and handles the flash message reminder option', (
+    tester,
+  ) async {
+    var flashOpened = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () {
+                FloatingMetadataSheet.show(
+                  context: context,
+                  buttonContext: context,
+                  type: FloatingSheetType.remind,
+                  onFlashMessage: () async => flashOpened = true,
+                );
+              },
+              child: const Text('Open reminder options'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open reminder options'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'flash');
+    await tester.pumpAndSettle();
+
+    expect(find.text('⚡ Flash message'), findsOneWidget);
+    await tester.tap(find.text('⚡ Flash message'));
+    await tester.pumpAndSettle();
+
+    expect(flashOpened, isTrue);
+    FloatingMetadataSheet.hide();
+  });
 }

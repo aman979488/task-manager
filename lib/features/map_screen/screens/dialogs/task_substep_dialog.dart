@@ -45,16 +45,17 @@ class _AddSubstepDialogState extends State<_AddSubstepDialog> {
     }
 
     setState(() => _isAdding = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final addOperation = widget.onAdd(title);
+    _closeDialog();
     try {
-      await widget.onAdd(title);
-      if (!mounted) return;
-      _controller.clear();
-      setState(() => _isAdding = false);
-      _focusNode.requestFocus();
-    } finally {
-      if (mounted && _isAdding) {
-        setState(() => _isAdding = false);
-      }
+      await addOperation;
+    } catch (error) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('Could not add substep: $error')),
+        );
     }
   }
 

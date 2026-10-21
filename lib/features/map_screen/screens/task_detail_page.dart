@@ -596,13 +596,23 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       },
     );
 
-    if (confirm == true) {
-      setState(() {
-        if (index >= 0 && index < task.steps.length) {
-          task.steps.removeAt(index);
-        }
-      });
+    if (confirm != true || index < 0 || index >= task.steps.length) return;
+
+    final removedStep = task.steps.removeAt(index);
+    setState(() {});
+    widget.onChanged();
+
+    try {
+      await widget.onSave();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => task.steps.insert(index, removedStep));
       widget.onChanged();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('Could not delete substep: $error')),
+        );
     }
   }
 
@@ -1089,21 +1099,33 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       ),
                     ),
                     Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: () => setState(
-                          () =>
-                              _showAdditionalDetails = !_showAdditionalDetails,
-                        ),
-                        icon: Icon(
-                          _showAdditionalDetails
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          color: secondaryColor,
-                        ),
-                        label: Text(
-                          _showAdditionalDetails ? 'View less' : 'View more',
-                          style: const TextStyle(color: secondaryColor),
+                      alignment: Alignment.center,
+                      child: Material(
+                        color: Colors.white,
+                        elevation: 6,
+                        borderRadius: BorderRadius.circular(24),
+                        child: InkWell(
+                          onTap: () => setState(
+                            () => _showAdditionalDetails =
+                                !_showAdditionalDetails,
+                          ),
+                          borderRadius: BorderRadius.circular(24),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 10,
+                            ),
+                            child: Text(
+                              _showAdditionalDetails
+                                  ? 'View less'
+                                  : 'View more',
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),

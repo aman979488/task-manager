@@ -1,9 +1,19 @@
 const {initializeApp} = require("firebase-admin/app");
-const {getFirestore, FieldValue} = require("firebase-admin/firestore");
+const {
+  getFirestore,
+  FieldValue,
+  Timestamp,
+} = require("firebase-admin/firestore");
 const {getMessaging} = require("firebase-admin/messaging");
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {setGlobalOptions} = require("firebase-functions/v2");
+const {
+  onDocumentCreated,
+  onDocumentWritten,
+} = require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {logger} = require("firebase-functions");
+
+setGlobalOptions({region: "asia-south1"});
 
 initializeApp();
 
@@ -254,6 +264,76 @@ exports.deliverTaskNotification = onDocumentCreated(
         });
         logger.error("Unable to deliver task notification", {
           notificationId: event.params.notificationId,
+          error,
+        });
+        throw error;
+      }
+    },
+);
+
+exports.flashScheduler = onSchedule("every 1 minutes", async () => {
+  try {
+    const now = Timestamp.now();
+    const snapshot = await db.collection("flashMessages")
+        .where("status", "==", "scheduled")
+        .where("sendAt", "<=", now)
+        .get();
+
+    for (let offset = 0; offset < snapshot.docs.length; offset += 500) {
+      const batch = db.batch();
+      for (const document of snapshot.docs.slice(offset, offset + 500)) {
+        batch.update(document.ref, {status: "delivered"});
+      }
+      await batch.commit();
+    }
+  } catch (error) {
+    logger.error("Failed to deliver scheduled flash messages", {error});
+    throw error;
+  }
+});
+
+exports.flashPush = onDocumentWritten(
+    "flashMessages/{id}",
+    async (event) => {
+      const before = event.data?.before?.data();
+      const after = event.data?.after?.data();
+      if (!after ||
+          after.status !== "delivered" ||
+          before?.status === "delivered") {
+        return;
+      }
+
+      const recipientUid = after.recipientUid?.toString().trim();
+      if (!recipientUid) return;
+
+      try {
+        const profile = await db.collection("users")
+            .doc(recipientUid)
+            .get();
+        const token = profile.data()?.fcmToken?.toString().trim();
+        if (!token) return;
+
+        await getMessaging().send({
+          token,
+          notification: {
+            title: `⚡ ${after.senderName || "Staff"}`,
+            body: after.text?.toString() || "",
+          },
+          data: {
+            type: "flash",
+            flashId: event.params.id,
+          },
+          android: {
+            priority: "high",
+            notification: {channelId: "task_notifications"},
+          },
+          apns: {
+            payload: {aps: {sound: "default"}},
+          },
+        });
+      } catch (error) {
+        logger.error("Unable to deliver flash message push", {
+          flashId: event.params.id,
           error,
         });
         throw error;

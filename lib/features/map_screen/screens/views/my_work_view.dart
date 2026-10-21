@@ -25,11 +25,12 @@ class _MyWorkViewState extends State<MyWorkView> {
   static const double _sectionHeaderHeight = 48;
   static const _sectionNames = [
     'Urgent Works',
-    'IMP Works',
     'Today Works',
+    'Overdue Works',
+    'IMP Works',
     'Tomorrow Works',
-    'Day Later Works',
     'Later Works',
+    'Day Later Works',
     'Process Works',
     'Hold Works',
   ];

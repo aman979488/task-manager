@@ -1,7 +1,10 @@
 {
   "functions": {
     "source": "functions",
-    "runtime": "nodejs22"
+    "runtime": "nodejs20"
+  },
+  "firestore": {
+    "indexes": "firestore.indexes.json"
   },
   "flutter": {
     "platforms": {

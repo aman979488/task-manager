@@ -216,4 +216,44 @@ void main() {
       isNot(contains(completed)),
     );
   });
+
+  test('my work sections order overdue after today and before IMP', () {
+    final urgent = Task('Urgent task', priority: 'U1');
+    final today = Task('Today task', priority: 'Today');
+    final overdueImp = Task(
+      'Overdue IMP task',
+      priority: 'IMP',
+      deadline: DateTime.now()
+          .subtract(const Duration(days: 1))
+          .toIso8601String(),
+    );
+    final imp = Task('IMP task', priority: 'IMP');
+    final tomorrow = Task('Tomorrow task', priority: 'Tomorrow');
+    final later = Task('Later task', priority: 'Later');
+    final dayLater = Task('Day later task', priority: 'Day Later');
+
+    final sections = MapScreenViewModel.sectionsForWork([
+      urgent,
+      today,
+      overdueImp,
+      imp,
+      tomorrow,
+      later,
+      dayLater,
+    ]);
+
+    expect(sections.keys.toList(), [
+      'Urgent Works',
+      'Today Works',
+      'Overdue Works',
+      'IMP Works',
+      'Tomorrow Works',
+      'Later Works',
+      'Day Later Works',
+      'Process Works',
+      'Hold Works',
+    ]);
+    expect(sections['Overdue Works'], [overdueImp]);
+    expect(sections['IMP Works'], [imp]);
+  });
 }
