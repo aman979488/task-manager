@@ -73,6 +73,7 @@ void main() {
             Task('Urgent task', priority: 'Urgent', assignee: 'Aman'),
             Task('Tomorrow task', priority: 'Tomorrow', assignee: 'Aman'),
           ],
+          onOpenTask: (_) {},
         ),
       ),
     );

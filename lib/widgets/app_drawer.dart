@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+
+import '../viewmodels/auth_viewmodel.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -133,11 +137,12 @@ class AppDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final authViewModel = context.watch<AuthViewModel>();
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          const DrawerHeader(
+          DrawerHeader(
             decoration: BoxDecoration(color: Color(0xFFFBE64E)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -153,8 +158,12 @@ class AppDrawer extends StatelessWidget {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'Welcome!',
-                  style: TextStyle(fontSize: 14, color: Colors.black87),
+                  authViewModel.userName,
+                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+                ),
+                Text(
+                  authViewModel.userEmail,
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
                 ),
               ],
             ),
@@ -187,6 +196,25 @@ class AppDrawer extends StatelessWidget {
             title: const Text('Settings'),
             onTap: () {
               Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Logout'),
+            onTap: () async {
+              Navigator.pop(context);
+              try {
+                await context.read<AuthViewModel>().signOut();
+              } on FirebaseAuthException catch (error) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      error.message ?? 'Could not sign out. Please try again.',
+                    ),
+                  ),
+                );
+              }
             },
           ),
         ],

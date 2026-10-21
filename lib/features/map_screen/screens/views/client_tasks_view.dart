@@ -200,6 +200,7 @@ class _ClientTasksViewState extends State<ClientTasksView> {
                       )
                     else
                       _ClientTaskTable(
+                        clientKey: key,
                         tasks: tasks,
                         onOpenTask: widget.onOpenTask,
                       ),
@@ -215,47 +216,77 @@ class _ClientTasksViewState extends State<ClientTasksView> {
 }
 
 class _ClientTaskTable extends StatelessWidget {
-  const _ClientTaskTable({required this.tasks, required this.onOpenTask});
+  const _ClientTaskTable({
+    required this.clientKey,
+    required this.tasks,
+    required this.onOpenTask,
+  });
 
+  final String clientKey;
   final List<Task> tasks;
   final ValueChanged<Task> onOpenTask;
 
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: DataTable(
-      showCheckboxColumn: false,
-      horizontalMargin: 8,
-      columnSpacing: 12,
-      columns: const [
-        DataColumn(label: Text('Task')),
-        DataColumn(label: Text('Task date')),
-        DataColumn(label: Text('Complete date')),
-        DataColumn(label: Text('Status')),
-      ],
-      rows: tasks
-          .map(
-            (task) => DataRow(
-              onSelectChanged: (_) => onOpenTask(task),
-              cells: [
-                DataCell(
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 220),
-                    child: Text(
-                      task.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-                DataCell(Text(task.createdDate)),
-                DataCell(Text(_completionDate(task.completedAt))),
-                DataCell(Text(task.isDone ? 'Done' : 'Pending')),
-              ],
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+    child: tasks.length > 2
+        ? SizedBox(
+            height: 220,
+            child: ListView.builder(
+              key: PageStorageKey('client-task-list-$clientKey'),
+              primary: false,
+              physics: const ClampingScrollPhysics(),
+              itemCount: tasks.length,
+              itemBuilder: (context, index) => _taskCard(tasks[index]),
             ),
           )
-          .toList(),
+        : Column(children: [for (final task in tasks) _taskCard(task)]),
+  );
+
+  Widget _taskCard(Task task) => Card(
+    margin: const EdgeInsets.only(top: 8),
+    color: Colors.grey.shade50,
+    elevation: 0,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(8),
+      side: BorderSide(color: Colors.grey.shade200),
     ),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => onOpenTask(task),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              task.title,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            _detailRow('Task date', task.createdDate),
+            const SizedBox(height: 4),
+            _detailRow('Complete date', _completionDate(task.completedAt)),
+            const SizedBox(height: 4),
+            _detailRow('Status', task.isDone ? 'Done' : 'Pending'),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _detailRow(String label, String value) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(
+        width: 104,
+        child: Text(
+          label,
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+        ),
+      ),
+      Expanded(child: Text(value, style: const TextStyle(fontSize: 12))),
+    ],
   );
 
   String _completionDate(int? completedAt) {

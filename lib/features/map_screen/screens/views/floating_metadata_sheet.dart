@@ -6,6 +6,7 @@ import '../../models/floating_sheet_type.dart';
 import '../../models/quick_date_time_option.dart';
 import '../../utils/task_constants.dart';
 import '../../utils/task_mention_parser.dart';
+import '../../../flash/flash_alert_service.dart';
 import 'date_time_picker_dialog.dart';
 
 class FloatingMetadataSheet {
@@ -38,6 +39,7 @@ class FloatingMetadataSheet {
     Future<List<String>> Function()? loadProjects,
     Future<List<String>> Function()? loadAssignees,
     void Function(String)? onSelected,
+    Future<void> Function()? onFlashMessage,
     VoidCallback? onDone,
     bool Function()? shouldShow,
     String Function()? searchQuery,
@@ -104,6 +106,11 @@ class FloatingMetadataSheet {
           options = TaskConstants.priorityOptions;
           break;
         case FloatingSheetType.remind:
+          options = [
+            ...QuickDateTimeOptions.labels(),
+            if (onFlashMessage != null) kFlashOption,
+          ];
+          break;
         case FloatingSheetType.deadline:
           options = QuickDateTimeOptions.labels();
           break;
@@ -176,6 +183,13 @@ class FloatingMetadataSheet {
                 )
               : null,
           onTap: () async {
+            if (type == FloatingSheetType.remind &&
+                opt == kFlashOption &&
+                onFlashMessage != null) {
+              hide();
+              await onFlashMessage();
+              return;
+            }
             final now = DateTime.now();
             final lower = opt.toLowerCase();
             String finalVal = opt;

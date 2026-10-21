@@ -290,24 +290,31 @@ class MapScreenTabViews extends StatelessWidget {
             ),
           ),
           Builder(
+            key: const PageStorageKey('done-tasks-tab'),
+            builder: (_) => DoneTasksView(
+              tasks: visibleDoneTasks,
+              viewType: viewModel.viewType,
+              zoom: viewModel.zoom,
+              taskBuilder: (task, index) => _buildTaskItem(task, index),
+              calendarBuilder: _buildCalendarView,
+              refreshable: _refreshableScrollView,
+            ),
+          ),
+          Builder(
             key: const PageStorageKey('assign-tab'),
             builder: (assignContext) => GroupByAssigneeView(
               groups: MapScreenViewModel.assignedTasksByName(visibleAllTasks),
               pageStorageId: 'assign-tab',
+              openAssigneeOnTap: true,
               refreshable: _refreshableScrollView,
               onOpenAssignee: (name, tasks) => assignContext.push(
                 '/assignee-tasks',
-                extra: {'assigneeName': name, 'tasks': tasks},
+                extra: {
+                  'assigneeName': name,
+                  'tasks': tasks,
+                  'onOpenTask': onOpenTask,
+                },
               ),
-              onOpenTask: onOpenTask,
-            ),
-          ),
-          Builder(
-            key: const PageStorageKey('clients-tab'),
-            builder: (_) => ClientTasksView(
-              tasks: visibleAllTasks,
-              loadClients: viewModel.loadClients,
-              refreshable: _refreshableScrollView,
               onOpenTask: onOpenTask,
             ),
           ),
@@ -324,14 +331,12 @@ class MapScreenTabViews extends StatelessWidget {
             ),
           ),
           Builder(
-            key: const PageStorageKey('done-tasks-tab'),
-            builder: (_) => DoneTasksView(
-              tasks: visibleDoneTasks,
-              viewType: viewModel.viewType,
-              zoom: viewModel.zoom,
-              taskBuilder: (task, index) => _buildTaskItem(task, index),
-              calendarBuilder: _buildCalendarView,
+            key: const PageStorageKey('clients-tab'),
+            builder: (_) => ClientTasksView(
+              tasks: visibleAllTasks,
+              loadClients: viewModel.loadClients,
               refreshable: _refreshableScrollView,
+              onOpenTask: onOpenTask,
             ),
           ),
           Builder(
@@ -370,7 +375,11 @@ class MapScreenTabViews extends StatelessWidget {
                   refreshable: _refreshableScrollView,
                   onOpenAssignee: (name, tasks) => groupByContext.push(
                     '/assignee-tasks',
-                    extra: {'assigneeName': name, 'tasks': tasks},
+                    extra: {
+                      'assigneeName': name,
+                      'tasks': tasks,
+                      'onOpenTask': onOpenTask,
+                    },
                   ),
                   onOpenTask: onOpenTask,
                 );
@@ -382,7 +391,11 @@ class MapScreenTabViews extends StatelessWidget {
                 refreshable: _refreshableScrollView,
                 onOpenAssignee: (name, tasks) => groupByContext.push(
                   '/assignee-tasks',
-                  extra: {'assigneeName': name, 'tasks': tasks},
+                  extra: {
+                    'assigneeName': name,
+                    'tasks': tasks,
+                    'onOpenTask': onOpenTask,
+                  },
                 ),
                 onOpenTask: onOpenTask,
               );

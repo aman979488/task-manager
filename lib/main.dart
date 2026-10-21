@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, TargetPlatform;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'firebase_options.dart';
@@ -19,16 +20,19 @@ void main() async {
   }
   final notificationService = NotificationService();
   await notificationService.initialize();
+  final authViewModel = AuthViewModel(notificationService: notificationService);
   runApp(
-    ChangeNotifierProvider<AuthViewModel>(
-      create: (_) => AuthViewModel(notificationService: notificationService),
-      child: const MyApp(),
+    ChangeNotifierProvider<AuthViewModel>.value(
+      value: authViewModel,
+      child: MyApp(router: AppRouter.create(authViewModel)),
     ),
   );
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, required this.router});
+
+  final GoRouter router;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +43,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFBE64E)),
         useMaterial3: true,
       ),
-      routerConfig: AppRouter.router,
+      routerConfig: router,
     );
   }
 }

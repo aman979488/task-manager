@@ -103,16 +103,26 @@ class NotificationService {
   }
 
   Future<void> _saveToken(String uid, String token) async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('users')
+    final users = FirebaseFirestore.instance.collection('users');
+    final userRef = users.doc(uid);
+    final user = await userRef.get();
+    if (user.exists) {
+      await userRef.set({
+        'fcmToken': token,
+        'fcmTokens': FieldValue.arrayUnion([token]),
+      }, SetOptions(merge: true));
+      return;
+    }
+
+    final legacyProfile = await users
         .where('uid', isEqualTo: uid)
         .limit(1)
         .get();
-    if (snapshot.docs.isEmpty) {
+    if (legacyProfile.docs.isEmpty) {
       throw StateError('No staff profile found for authenticated user $uid.');
     }
 
-    await snapshot.docs.first.reference.set({
+    await legacyProfile.docs.first.reference.set({
       'fcmToken': token,
       'fcmTokens': FieldValue.arrayUnion([token]),
     }, SetOptions(merge: true));
@@ -120,6 +130,7 @@ class NotificationService {
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {
     if (!_isMobile) return;
+    if (message.data['type'] == 'flash') return;
     final notification = message.notification;
     if (notification == null) return;
 

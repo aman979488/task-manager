@@ -1,12 +1,15 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+    show debugPrint, defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../viewmodels/auth_viewmodel.dart';
+import '../../../flash/flash_alert_service.dart';
+import '../../../flash/flash_compose_sheet.dart';
 import '../../models/floating_sheet_type.dart';
 import '../../models/quick_date_time_option.dart';
 import '../../utils/task_constants.dart';
@@ -81,6 +84,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
   String? _activePickerSymbol;
   String _mentionSourceText = '';
   int _highlightedIndex = 0;
+  FlashDraft? _scheduledFlash;
 
   @override
   void initState() {
@@ -119,6 +123,98 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     }
   }
 
+  Future<void> _openFlashCompose({bool removeMention = false}) async {
+    if (removeMention && _mentionStart >= 0) {
+      final tokenResult = TaskMentionParser.removeMentionToken(
+        text: _taskNameController.text,
+        start: _mentionStart,
+        end: _mentionEnd,
+      );
+      _taskNameController.value = TextEditingValue(
+        text: tokenResult.newText,
+        selection: TextSelection.collapsed(offset: tokenResult.newCursor),
+      );
+      setState(() {
+        _mentionQuery = null;
+        _mentionStart = -1;
+        _mentionEnd = -1;
+        _activePickerSymbol = null;
+      });
+      FloatingMetadataSheet.hide();
+    }
+
+    final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+    if (!authViewModel.loggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to send a flash message.')),
+      );
+      return;
+    }
+
+    final reminder = Provider.of<AddTaskViewModel>(
+      context,
+      listen: false,
+    ).reminder;
+    final draft = await showFlashComposeSheet(
+      context,
+      reminderAt: DateTime.tryParse(reminder ?? ''),
+      senderUid: authViewModel.userUid,
+      pickTime: () => showDateTimePickerWithTabs(
+        context,
+        initial: DateTime.tryParse(reminder ?? ''),
+      ),
+    );
+    if (draft == null || !mounted) return;
+
+    if (draft.sendAt == null) {
+      try {
+        await FlashAlertService.send(
+          draft,
+          senderUid: authViewModel.userUid,
+          senderName: authViewModel.userName,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Flash message sent to ${draft.recipient.name}.'),
+            ),
+          );
+        }
+      } on FirebaseException catch (error) {
+        debugPrint('Could not send flash message: $error');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Could not send the flash message. Please try again.',
+              ),
+            ),
+          );
+        }
+      } catch (error) {
+        debugPrint('Unexpected error sending flash message: $error');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Could not send the flash message. Please try again.',
+              ),
+            ),
+          );
+        }
+      }
+    } else {
+      setState(() => _scheduledFlash = draft);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The flash message will be scheduled when you save the task.',
+          ),
+        ),
+      );
+    }
+  }
+
   Future<List<String>> _loadMentionSource(String symbol) async {
     final mapVm = Provider.of<MapScreenViewModel>(context, listen: false);
     switch (symbol) {
@@ -127,8 +223,9 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       case '@':
         return mapVm.loadAssignees();
       case '!':
-      case '*':
         return QuickDateTimeOptions.labels();
+      case '*':
+        return [...QuickDateTimeOptions.labels(), kFlashOption];
       case '+':
         return mapVm.loadWorkTypes();
       case '#':
@@ -144,6 +241,30 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     final symbol = _mentionSymbol;
     final type = TaskMentionParser.typeForSymbol(symbol);
     if (type == null) return;
+
+    if (type == FloatingSheetType.remind && selectedOption == kFlashOption) {
+      final currentText = _mentionSourceText.isNotEmpty
+          ? _mentionSourceText
+          : _taskNameController.text;
+      final tokenResult = TaskMentionParser.removeMentionToken(
+        text: currentText,
+        start: _mentionStart,
+        end: _mentionEnd,
+      );
+      setState(() {
+        _mentionQuery = null;
+        _mentionStart = -1;
+        _mentionEnd = -1;
+        _activePickerSymbol = null;
+      });
+      _taskNameController.value = TextEditingValue(
+        text: tokenResult.newText,
+        selection: TextSelection.collapsed(offset: tokenResult.newCursor),
+      );
+      FloatingMetadataSheet.hide();
+      await _openFlashCompose();
+      return;
+    }
 
     var finalValue = selectedOption;
     if (type == FloatingSheetType.deadline ||
@@ -247,6 +368,9 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       closeOnSelect: isMulti,
       selectedValues: currentSelections,
       focusNodeToKeep: _focusNode,
+      onFlashMessage: type == FloatingSheetType.remind
+          ? () => _openFlashCompose(removeMention: _mentionSymbol == '*')
+          : null,
       onSelected: (val) {
         if (type == FloatingSheetType.assign) {
           addVm.addAssignee(val);
@@ -339,11 +463,12 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       },
     );
   }
+
   String _capitalizeFirst(String text) {
-  final t = text.trim();
-  if (t.isEmpty) return t;
-  return t[0].toUpperCase() + t.substring(1);
-}
+    final t = text.trim();
+    if (t.isEmpty) return t;
+    return t[0].toUpperCase() + t.substring(1);
+  }
 
   Future<void> _handleSubmit() async {
     final title = _capitalizeFirst(_taskNameController.text);
@@ -352,14 +477,23 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     final authVm = Provider.of<AuthViewModel>(context, listen: false);
     final mapVm = Provider.of<MapScreenViewModel>(context, listen: false);
     final addVm = Provider.of<AddTaskViewModel>(context, listen: false);
+    final scheduledFlash = _scheduledFlash;
 
     final success = await addVm.submitTask(
       title: title,
       authViewModel: authVm,
       mapViewModel: mapVm,
+      onTaskSaved: scheduledFlash == null
+          ? null
+          : (task) => FlashAlertService.send(
+              scheduledFlash.copyWith(taskId: task.id),
+              senderUid: authVm.userUid,
+              senderName: authVm.userName,
+            ),
     );
 
     if (success && mounted) {
+      _scheduledFlash = null;
       _taskNameController.clear();
       Navigator.of(context).pop();
     }
@@ -661,6 +795,13 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
                                         ? addVm.selectedAssignees
                                         : null,
                                     focusNodeToKeep: _focusNode,
+                                    onFlashMessage:
+                                        pickerType == FloatingSheetType.remind
+                                        ? () => _openFlashCompose(
+                                            removeMention:
+                                                _mentionSymbol == '*',
+                                          )
+                                        : null,
                                     onSelected: (opt) {
                                       if (pickerType ==
                                           FloatingSheetType.assign) {

@@ -3,13 +3,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../viewmodels/auth_viewmodel.dart';
 import '../models/floating_sheet_type.dart';
+import '../models/task.dart';
 import '../utils/task_constants.dart';
 import 'map_screen_viewmodel.dart';
 
 class AddTaskViewModel extends ChangeNotifier {
   final Map<FloatingSheetType, String?> _metadata = {};
   final List<FloatingSheetType> _metadataOrder = [];
-  List<FloatingSheetType> _buttonOrder = List.from(TaskConstants.defaultButtonOrder);
+  List<FloatingSheetType> _buttonOrder = List.from(
+    TaskConstants.defaultButtonOrder,
+  );
 
   List<FloatingSheetType> get buttonOrder => List.unmodifiable(_buttonOrder);
 
@@ -79,7 +82,9 @@ class AddTaskViewModel extends ChangeNotifier {
 
   void addAssignee(String name) {
     final current = selectedAssignees;
-    if (!current.any((element) => element.toLowerCase() == name.toLowerCase())) {
+    if (!current.any(
+      (element) => element.toLowerCase() == name.toLowerCase(),
+    )) {
       current.add(name);
       setValue(FloatingSheetType.assign, current.join(', '));
     }
@@ -87,7 +92,9 @@ class AddTaskViewModel extends ChangeNotifier {
 
   void removeAssignee(String name) {
     final current = selectedAssignees;
-    current.removeWhere((element) => element.toLowerCase() == name.toLowerCase());
+    current.removeWhere(
+      (element) => element.toLowerCase() == name.toLowerCase(),
+    );
     setValue(
       FloatingSheetType.assign,
       current.isEmpty ? null : current.join(', '),
@@ -98,6 +105,7 @@ class AddTaskViewModel extends ChangeNotifier {
     required String title,
     required AuthViewModel authViewModel,
     required MapScreenViewModel mapViewModel,
+    Future<void> Function(Task task)? onTaskSaved,
   }) async {
     final cleanTitle = title.trim();
     if (cleanTitle.isEmpty) return false;
@@ -105,6 +113,7 @@ class AddTaskViewModel extends ChangeNotifier {
     final added = await mapViewModel.addTask(
       title: cleanTitle,
       authViewModel: authViewModel,
+      onTaskSaved: onTaskSaved,
       priority: priority,
       reminder: reminder,
       assignee: assignee,
