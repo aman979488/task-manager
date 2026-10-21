@@ -78,6 +78,8 @@ class AssigneeTasksView extends StatelessWidget {
                 ),
                 title: Text(
                   task.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,

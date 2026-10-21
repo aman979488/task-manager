@@ -12,6 +12,7 @@ class MapTaskListItem extends StatelessWidget {
     required this.viewType,
     this.dense = false,
     this.showMetadata = false,
+    this.taskNameMaxLines,
     required this.isSelected,
     required this.taskName,
     required this.description,
@@ -28,6 +29,7 @@ class MapTaskListItem extends StatelessWidget {
   final String viewType;
   final bool dense;
   final bool showMetadata;
+  final int? taskNameMaxLines;
   final bool isSelected;
   final String taskName;
   final String? description;
@@ -47,6 +49,7 @@ class MapTaskListItem extends StatelessWidget {
         taskName: taskName,
         description: description,
         showMetadata: showMetadata,
+        taskNameMaxLines: taskNameMaxLines ?? 1,
         isSelected: isSelected,
         dense: dense,
         onToggleSelection: readOnly ? _ignoreAction : onToggleSelection,
@@ -82,6 +85,7 @@ class MapTaskListItem extends StatelessWidget {
       taskName: taskName,
       description: description,
       showMetadata: showMetadata,
+      taskNameMaxLines: taskNameMaxLines ?? 1,
       priorityWidget: Builder(
         builder: (badgeContext) => _priorityBadge(
           compact: dense,

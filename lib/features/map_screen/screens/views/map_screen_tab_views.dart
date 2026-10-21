@@ -74,12 +74,14 @@ class MapScreenTabViews extends StatelessWidget {
     bool keepInMyDay = false,
     bool priorityEditable = true,
     bool readOnly = false,
+    int? taskNameMaxLines,
   }) {
     return MapTaskListItem(
       task: task,
       viewType: viewType ?? viewModel.viewType,
       dense: dense,
       showMetadata: showMetadata && !hideTaskMetadata,
+      taskNameMaxLines: taskNameMaxLines,
       taskName: task.title,
       description: _taskDescription(
         task,
@@ -120,6 +122,7 @@ class MapScreenTabViews extends StatelessWidget {
     bool priorityEditable = true,
     bool readOnly = false,
     String? viewType,
+    int? taskNameMaxLines,
   }) {
     final effectiveViewType = viewType ?? viewModel.viewType;
     if (effectiveViewType == 'Detailed list') {
@@ -138,6 +141,7 @@ class MapScreenTabViews extends StatelessWidget {
             keepInMyDay: keepInMyDay,
             priorityEditable: priorityEditable,
             readOnly: readOnly,
+            taskNameMaxLines: taskNameMaxLines,
           ),
           Container(
             height: 1,
@@ -160,6 +164,7 @@ class MapScreenTabViews extends StatelessWidget {
       keepInMyDay: keepInMyDay,
       priorityEditable: priorityEditable,
       readOnly: readOnly,
+      taskNameMaxLines: taskNameMaxLines,
     );
   }
 
@@ -224,6 +229,7 @@ class MapScreenTabViews extends StatelessWidget {
         dense: true,
         hideTaskMetadata: true,
         confirmCompletion: true,
+        taskNameMaxLines: 1,
       ),
       detailedTaskBuilder: (task) => Column(
         children: [
@@ -233,6 +239,7 @@ class MapScreenTabViews extends StatelessWidget {
             dense: true,
             showMetadata: false,
             hideTaskMetadata: true,
+            taskNameMaxLines: 1,
             confirmCompletion: true,
           ),
           Container(
