@@ -436,10 +436,13 @@ class MapScreenViewModel extends ChangeNotifier {
       if (task.priority?.trim().toLowerCase() == 'today') return true;
 
       final scheduled = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
-      return scheduled != null &&
-          scheduled.year == today.year &&
-          scheduled.month == today.month &&
-          scheduled.day == today.day;
+      if (scheduled == null) return false;
+      final scheduledDate = DateTime(
+        scheduled.year,
+        scheduled.month,
+        scheduled.day,
+      );
+      return !scheduledDate.isAfter(today);
     }).toList();
   }
 

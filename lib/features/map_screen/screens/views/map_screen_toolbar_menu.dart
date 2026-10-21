@@ -111,7 +111,9 @@ class MapScreenToolbarMenu {
           selected: viewModel.groupBy,
           onSelected: (value) {
             viewModel.setGroupBy(value);
-            tabController.animateTo(8);
+            if (tabController.length > 5) {
+              tabController.animateTo(tabController.length - 1);
+            }
           },
         );
         break;

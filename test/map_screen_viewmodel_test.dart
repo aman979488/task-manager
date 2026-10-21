@@ -10,7 +10,7 @@ void main() {
     expect(TaskConstants.priorityOptions, isNot(contains('Urgent')));
   });
 
-  test('My Day includes today-priority and tasks scheduled today', () {
+  test('My Day includes today-priority and overdue scheduled tasks', () {
     final todayByPriority = Task('Today priority', priority: ' TODAY ');
     final todayByDeadline = Task(
       'Today deadline',
@@ -20,18 +20,23 @@ void main() {
       'Today reminder',
       reminder: DateTime(2026, 10, 14, 9).toIso8601String(),
     );
+    final yesterdayDeadline = Task(
+      'Yesterday deadline',
+      deadline: DateTime(2026, 10, 13, 17).toIso8601String(),
+    );
 
     expect(
       MapScreenViewModel.myDayTasks([
         todayByPriority,
         todayByDeadline,
         todayByReminder,
+        yesterdayDeadline,
       ], now: now),
-      [todayByPriority, todayByDeadline, todayByReminder],
+      [todayByPriority, todayByDeadline, todayByReminder, yesterdayDeadline],
     );
   });
 
-  test('My Day excludes completed and other-day tasks', () {
+  test('My Day excludes completed and future-date tasks', () {
     final completedToday = Task(
       'Completed today',
       isDone: true,

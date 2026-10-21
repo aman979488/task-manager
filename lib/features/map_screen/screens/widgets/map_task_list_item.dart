@@ -16,6 +16,8 @@ class MapTaskListItem extends StatelessWidget {
     required this.taskName,
     required this.description,
     required this.onEditPriority,
+    this.priorityEditable = true,
+    this.readOnly = false,
     required this.onToggleDone,
     required this.onToggleSelection,
     required this.onOpen,
@@ -30,6 +32,8 @@ class MapTaskListItem extends StatelessWidget {
   final String taskName;
   final String? description;
   final ValueChanged<BuildContext> onEditPriority;
+  final bool priorityEditable;
+  final bool readOnly;
   final VoidCallback onToggleDone;
   final VoidCallback onToggleSelection;
   final VoidCallback onOpen;
@@ -45,8 +49,8 @@ class MapTaskListItem extends StatelessWidget {
         showMetadata: showMetadata,
         isSelected: isSelected,
         dense: dense,
-        onToggleSelection: onToggleSelection,
-        onOpen: onOpen,
+        onToggleSelection: readOnly ? _ignoreAction : onToggleSelection,
+        onOpen: readOnly ? _ignoreAction : onOpen,
       );
     }
 
@@ -60,12 +64,14 @@ class MapTaskListItem extends StatelessWidget {
         dense: dense,
         priorityBadge: _priorityBadge(
           compact: true,
-          onTap: () => onEditPriority(context),
+          onTap: priorityEditable && !readOnly
+              ? () => onEditPriority(context)
+              : _ignoreAction,
         ),
-        onToggleDone: onToggleDone,
-        onAddSubtask: onAddSubtask,
-        onToggleSelection: onToggleSelection,
-        onOpen: onOpen,
+        onToggleDone: readOnly ? _ignoreAction : onToggleDone,
+        onAddSubtask: readOnly ? _ignoreAction : onAddSubtask,
+        onToggleSelection: readOnly ? _ignoreAction : onToggleSelection,
+        onOpen: readOnly ? _ignoreAction : onOpen,
       );
     }
 
@@ -79,15 +85,19 @@ class MapTaskListItem extends StatelessWidget {
       priorityWidget: Builder(
         builder: (badgeContext) => _priorityBadge(
           compact: dense,
-          onTap: () => onEditPriority(badgeContext),
+          onTap: priorityEditable && !readOnly
+              ? () => onEditPriority(badgeContext)
+              : _ignoreAction,
         ),
       ),
-      onToggleDone: onToggleDone,
-      onToggleSelection: onToggleSelection,
-      onOpen: onOpen,
-      onAddSubtask: onAddSubtask,
+      onToggleDone: readOnly ? _ignoreAction : onToggleDone,
+      onToggleSelection: readOnly ? _ignoreAction : onToggleSelection,
+      onOpen: readOnly ? _ignoreAction : onOpen,
+      onAddSubtask: readOnly ? _ignoreAction : onAddSubtask,
     );
   }
+
+  static void _ignoreAction() {}
 
   Widget _priorityBadge({required bool compact, required VoidCallback onTap}) {
     final priority = task.priority?.trim();

@@ -3,8 +3,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:task_manager/features/map_screen/models/task.dart';
 import 'package:task_manager/features/map_screen/screens/assignee_tasks_view.dart';
 import 'package:task_manager/features/map_screen/screens/views/group_by_assignee_view.dart';
+import 'package:task_manager/features/map_screen/screens/views/my_work_view.dart';
 
 void main() {
+  testWidgets('My Work layout expands dynamically named assignee sections', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MyWorkView(
+            sections: {
+              'Aman': [Task('Aman task', assignee: 'Aman')],
+            },
+            sectionNames: const ['Aman'],
+            taskResultsBuilder: (tasks) =>
+                Column(children: [for (final task in tasks) Text(task.title)]),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('AMAN'), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
+  });
+
   testWidgets('assignee groups expand to show their tasks', (tester) async {
     final amanTasks = [
       Task('Aman task 1', assignee: 'Aman'),
@@ -33,11 +56,12 @@ void main() {
     expect(find.text('Aman task 2'), findsOneWidget);
   });
 
-  testWidgets('tapping an assign-tab card expands tasks inline', (
+  testWidgets('tapping an assign row opens the assignee task view', (
     tester,
   ) async {
     final amanTasks = [Task('Aman task', assignee: 'Aman')];
-    var openedAssigneeView = false;
+    String? openedAssigneeName;
+    List<Task>? openedTasks;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -45,8 +69,10 @@ void main() {
           body: GroupByAssigneeView(
             groups: {'Aman': amanTasks},
             pageStorageId: 'assign',
+            openAssigneeOnTap: true,
             onOpenAssignee: (name, tasks) {
-              openedAssigneeView = true;
+              openedAssigneeName = name;
+              openedTasks = tasks;
             },
             onOpenTask: (_) {},
             refreshable: (child) => child,
@@ -58,8 +84,10 @@ void main() {
     await tester.tap(find.text('Aman').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Aman task'), findsOneWidget);
-    expect(openedAssigneeView, isFalse);
+    expect(openedAssigneeName, 'Aman');
+    expect(openedTasks, amanTasks);
+    expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
+    expect(find.text('Aman task'), findsNothing);
   });
 
   testWidgets('assignee task view groups tasks into My Work sections', (

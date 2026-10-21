@@ -56,4 +56,38 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     }
   });
+
+  testWidgets('completed task priority badge does not open the editor', (
+    tester,
+  ) async {
+    var editCount = 0;
+    var openCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MapTaskListItem(
+            task: Task('Completed task', priority: 'U1', isDone: true),
+            viewType: 'Detailed list',
+            isSelected: false,
+            taskName: 'Completed task',
+            description: null,
+            onEditPriority: (_) => editCount++,
+            readOnly: true,
+            onToggleDone: () {},
+            onToggleSelection: () {},
+            onOpen: () => openCount++,
+            onAddSubtask: () {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('U1'));
+    await tester.tap(find.text('Completed task'));
+    expect(editCount, 0);
+    expect(openCount, 0);
+    expect(find.text('U1'), findsOneWidget);
+    expect(find.text('Completed task'), findsOneWidget);
+  });
 }

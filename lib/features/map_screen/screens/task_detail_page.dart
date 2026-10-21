@@ -1100,31 +1100,39 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
                     Align(
                       alignment: Alignment.center,
-                      child: Material(
-                        color: Colors.white,
-                        elevation: 6,
-                        borderRadius: BorderRadius.circular(24),
-                        child: InkWell(
-                          onTap: () => setState(
-                            () => _showAdditionalDetails =
-                                !_showAdditionalDetails,
+                      child: InkWell(
+                        onTap: () => setState(
+                          () =>
+                              _showAdditionalDetails = !_showAdditionalDetails,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
                           ),
-                          borderRadius: BorderRadius.circular(24),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 10,
-                            ),
-                            child: Text(
-                              _showAdditionalDetails
-                                  ? 'View less'
-                                  : 'View more',
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _showAdditionalDetails
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                color: Colors.black87,
+                                size: 24,
                               ),
-                            ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _showAdditionalDetails
+                                    ? 'View less'
+                                    : 'View more',
+                                style: const TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

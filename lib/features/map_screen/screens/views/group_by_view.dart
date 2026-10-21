@@ -57,10 +57,14 @@ class GroupByView extends StatelessWidget {
           final tasks = groups[name]!;
           final completedCount = tasks.where((task) => task.isDone).length;
           final pendingCount = tasks.length - completedCount;
-          final cardContents = openAssigneeOnTap && groupBy == 'Assignee'
+          final isAssigneeList = openAssigneeOnTap && groupBy == 'Assignee';
+          final cardContents = isAssigneeList
               ? ListTile(
+                  dense: true,
+                  minVerticalPadding: 8,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                   leading: CircleAvatar(
-                    radius: 16,
+                    radius: 14,
                     backgroundColor: const Color(0xFFFBE64E)
                         .withValues(alpha: 0.3),
                     child: Text(
@@ -160,6 +164,14 @@ class GroupByView extends StatelessWidget {
                     ),
                   ],
                 );
+          if (isAssigneeList) {
+            return Column(
+              children: [
+                cardContents,
+                Divider(height: 1, thickness: 1, color: Colors.grey.shade200),
+              ],
+            );
+          }
           return Container(
             margin: const EdgeInsets.only(bottom: 4),
             decoration: BoxDecoration(
