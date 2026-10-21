@@ -10,11 +10,13 @@ class MyWorkView extends StatefulWidget {
     super.key,
     required this.sections,
     required this.taskResultsBuilder,
+    this.sectionNames,
     this.emptyMessage = 'No tasks in My Work.',
   });
 
   final Map<String, List<Task>> sections;
   final Widget Function(List<Task> tasks) taskResultsBuilder;
+  final List<String>? sectionNames;
   final String emptyMessage;
 
   @override
@@ -23,7 +25,7 @@ class MyWorkView extends StatefulWidget {
 
 class _MyWorkViewState extends State<MyWorkView> {
   static const double _sectionHeaderHeight = 48;
-  static const _sectionNames = [
+  static const _defaultSectionNames = [
     'Urgent Works',
     'Today Works',
     'Overdue Works',
@@ -34,6 +36,8 @@ class _MyWorkViewState extends State<MyWorkView> {
     'Process Works',
     'Hold Works',
   ];
+
+  List<String> get _sectionNames => widget.sectionNames ?? _defaultSectionNames;
 
   final Set<String> _expandedSections = {};
   final ScrollController _scrollController = ScrollController();
@@ -189,7 +193,6 @@ class _MyWorkViewState extends State<MyWorkView> {
   Widget _buildSection(String name, List<String> populatedNames) {
     final tasks = widget.sections[name] ?? const <Task>[];
     final isExpanded = _expandedSections.contains(name);
-    final color = _sectionColor(name);
     return Column(
       children: [
         KeyedSubtree(
@@ -237,7 +240,7 @@ class _MyWorkViewState extends State<MyWorkView> {
                 name.replaceFirst(RegExp(r' Works$'), '').toUpperCase(),
                 style: TextStyle(
                   color: color,
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.4,
                 ),
@@ -256,7 +259,7 @@ class _MyWorkViewState extends State<MyWorkView> {
                   style: TextStyle(
                     color: color,
                     fontWeight: FontWeight.w700,
-                    fontSize: 10,
+                    fontSize: 12,
                   ),
                 ),
               ),

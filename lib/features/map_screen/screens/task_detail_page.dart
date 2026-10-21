@@ -254,11 +254,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final RenderBox button = buttonContext.findRenderObject() as RenderBox;
     final RenderBox overlayBox =
         overlayState.context.findRenderObject() as RenderBox;
-    final Offset buttonPosition = button.localToGlobal(
-      Offset.zero,
-      ancestor: overlayBox,
-    );
-    final Size buttonSize = button.size;
 
     List<Widget> tilesFor(String key) {
       switch (key) {
@@ -330,197 +325,235 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         resolvedKey == 'clientName' ||
         resolvedKey == 'refProject';
 
-    const double menuWidth = 260;
-    const double padding = 8;
-
-    double left = buttonPosition.dx + buttonSize.width - menuWidth;
-    if (left < padding) left = padding;
-
-    double top = buttonPosition.dy + buttonSize.height + padding;
+    const double maxMenuWidth = 260;
+    const double horizontalPadding = 4;
+    const double verticalPadding = 8;
+    const double optionRowHeight = 56;
+    const int visibleOptionCount = 3;
 
     _overlayEntry = OverlayEntry(
       builder: (context) {
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: _hideOverlay,
-                behavior: HitTestBehavior.translucent,
-                child: const SizedBox.shrink(),
-              ),
-            ),
-            Positioned(
-              left: left,
-              top: top,
-              child: Material(
-                color: Colors.white,
-                elevation: 6,
-                borderRadius: BorderRadius.circular(12),
-                child: SizedBox(
-                  width: menuWidth,
-                  child: StatefulBuilder(
-                    builder: (context, setOverlayState) {
-                      final allTiles = tileWidgets;
-                      final filteredTiles =
-                          hasSearchBar && _searchQuery.isNotEmpty
-                          ? allTiles.where((tile) {
-                              if (tile is! ListTile) return true;
-                              final text = (tile.title as Text).data ?? '';
-                              return text.toLowerCase().contains(
-                                _searchQuery.toLowerCase(),
-                              );
-                            }).toList()
-                          : allTiles;
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final currentButtonPosition = button.localToGlobal(
+              Offset.zero,
+              ancestor: overlayBox,
+            );
+            final menuWidth = (constraints.maxWidth - horizontalPadding * 2)
+                .clamp(0.0, maxMenuWidth)
+                .toDouble();
+            final spaceAbove = (currentButtonPosition.dy - verticalPadding)
+                .clamp(0.0, constraints.maxHeight)
+                .toDouble();
+            final menuMaxHeight = spaceAbove;
+            final maxOptionListHeight =
+                (menuMaxHeight - (hasSearchBar ? 72 : 0))
+                    .clamp(0.0, optionRowHeight * visibleOptionCount)
+                    .toDouble();
 
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (hasSearchBar)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
-                              child: TextField(
-                                controller: _searchController,
-                                autofocus: true,
-                                decoration: InputDecoration(
-                                  hintText: 'Search...',
-                                  hintStyle: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey.shade400,
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: GestureDetector(
+                    onTap: _hideOverlay,
+                    behavior: HitTestBehavior.translucent,
+                    child: const SizedBox.shrink(),
+                  ),
+                ),
+                Positioned(
+                  right: horizontalPadding,
+                  bottom:
+                      constraints.maxHeight -
+                      currentButtonPosition.dy +
+                      verticalPadding,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: menuMaxHeight),
+                    child: Material(
+                      color: Colors.white,
+                      elevation: 6,
+                      borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        width: menuWidth,
+                        child: StatefulBuilder(
+                          builder: (context, setOverlayState) {
+                            final allTiles = tileWidgets;
+                            final filteredTiles =
+                                hasSearchBar && _searchQuery.isNotEmpty
+                                ? allTiles.where((tile) {
+                                    if (tile is! ListTile) return true;
+                                    final text =
+                                        (tile.title as Text).data ?? '';
+                                    return text.toLowerCase().contains(
+                                      _searchQuery.toLowerCase(),
+                                    );
+                                  }).toList()
+                                : allTiles;
+                            final optionListHeight =
+                                (filteredTiles.length * optionRowHeight)
+                                    .clamp(0.0, maxOptionListHeight)
+                                    .toDouble();
+
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (hasSearchBar)
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      10,
+                                      10,
+                                      10,
+                                      6,
+                                    ),
+                                    child: TextField(
+                                      controller: _searchController,
+                                      autofocus: true,
+                                      decoration: InputDecoration(
+                                        hintText: 'Search...',
+                                        hintStyle: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey.shade400,
+                                        ),
+                                        prefixIcon: Icon(
+                                          Icons.search,
+                                          size: 18,
+                                          color: Colors.grey.shade500,
+                                        ),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 8,
+                                            ),
+                                        isDense: true,
+                                        filled: true,
+                                        fillColor: Colors.grey.shade100,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                      ),
+                                      onChanged: (val) {
+                                        _searchQuery = val;
+                                        setOverlayState(() {});
+                                      },
+                                    ),
                                   ),
-                                  prefixIcon: Icon(
-                                    Icons.search,
-                                    size: 18,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 8,
-                                  ),
-                                  isDense: true,
-                                  filled: true,
-                                  fillColor: Colors.grey.shade100,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                ),
-                                onChanged: (val) {
-                                  _searchQuery = val;
-                                  setOverlayState(() {});
-                                },
-                              ),
-                            ),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxHeight: 220),
-                            child: filteredTiles.isEmpty
-                                ? Padding(
+                                if (filteredTiles.isEmpty)
+                                  Padding(
                                     padding: const EdgeInsets.all(16),
                                     child: Text(
                                       'No results found',
                                       style: TextStyle(
-                                        fontSize: 13,
+                                        fontSize: 14,
                                         color: Colors.grey.shade500,
                                       ),
                                     ),
                                   )
-                                : ListView(
-                                    padding: EdgeInsets.zero,
-                                    shrinkWrap: true,
-                                    children: filteredTiles.map((tile) {
-                                      return InkWell(
-                                        onTap: () async {
-                                          if (tile is ListTile) {
-                                            final label =
-                                                (tile.title as Text).data ?? '';
+                                else
+                                  SizedBox(
+                                    height: optionListHeight,
+                                    child: ListView(
+                                      padding: EdgeInsets.zero,
+                                      children: filteredTiles.map((tile) {
+                                        return InkWell(
+                                          onTap: () async {
+                                            if (tile is ListTile) {
+                                              final label =
+                                                  (tile.title as Text).data ??
+                                                  '';
 
-                                            if (resolvedKey == 'reminder' ||
-                                                resolvedKey == 'deadline') {
-                                              DateTime? computed;
+                                              if (resolvedKey == 'reminder' ||
+                                                  resolvedKey == 'deadline') {
+                                                DateTime? computed;
 
-                                              if (label.toLowerCase().contains(
-                                                'custom',
-                                              )) {
-                                                _hideOverlay();
-                                                computed =
-                                                    await showDateTimePickerWithTabs(
-                                                      context,
-                                                    );
+                                                if (label
+                                                    .toLowerCase()
+                                                    .contains('custom')) {
+                                                  _hideOverlay();
+                                                  computed =
+                                                      await showDateTimePickerWithTabs(
+                                                        context,
+                                                      );
+                                                } else {
+                                                  computed =
+                                                      QuickDateTimeOptions.resolve(
+                                                        label,
+                                                      );
+                                                }
+
+                                                if (computed != null) {
+                                                  final iso = computed
+                                                      .toIso8601String();
+                                                  setState(() {
+                                                    if (resolvedKey ==
+                                                        'reminder') {
+                                                      task.reminder = iso;
+                                                    } else {
+                                                      task.deadline = iso;
+                                                    }
+                                                  });
+                                                  widget.onChanged();
+                                                }
                                               } else {
-                                                computed =
-                                                    QuickDateTimeOptions.resolve(
-                                                      label,
-                                                    );
-                                              }
-
-                                              if (computed != null) {
-                                                final iso = computed
-                                                    .toIso8601String();
                                                 setState(() {
-                                                  if (resolvedKey ==
-                                                      'reminder') {
-                                                    task.reminder = iso;
-                                                  } else {
-                                                    task.deadline = iso;
+                                                  switch (resolvedKey) {
+                                                    case 'priority':
+                                                      task.priority = label;
+                                                      task.priorityUpdatedAt =
+                                                          DateTime.now()
+                                                              .millisecondsSinceEpoch;
+                                                      break;
+                                                    case 'assignee':
+                                                      task.assignee = label;
+                                                      _sendTaskAssignmentNotification(
+                                                        label,
+                                                        task.title,
+                                                        context,
+                                                      );
+                                                      break;
+                                                    case 'workType':
+                                                      task.workType = label;
+                                                      break;
+                                                    case 'clientName':
+                                                      task.clientName = label;
+                                                      break;
+                                                    case 'refProject':
+                                                      task.refProject = label;
+                                                      break;
+                                                    case 'folder':
+                                                      task.folder = label;
+                                                      break;
+                                                    default:
+                                                      break;
                                                   }
                                                 });
                                                 widget.onChanged();
                                               }
-                                            } else {
-                                              setState(() {
-                                                switch (resolvedKey) {
-                                                  case 'priority':
-                                                    task.priority = label;
-                                                    task.priorityUpdatedAt =
-                                                        DateTime.now()
-                                                            .millisecondsSinceEpoch;
-                                                    break;
-                                                  case 'assignee':
-                                                    task.assignee = label;
-                                                    _sendTaskAssignmentNotification(
-                                                      label,
-                                                      task.title,
-                                                      context,
-                                                    );
-                                                    break;
-                                                  case 'workType':
-                                                    task.workType = label;
-                                                    break;
-                                                  case 'clientName':
-                                                    task.clientName = label;
-                                                    break;
-                                                  case 'refProject':
-                                                    task.refProject = label;
-                                                    break;
-                                                  case 'folder':
-                                                    task.folder = label;
-                                                    break;
-                                                  default:
-                                                    break;
-                                                }
-                                              });
-                                              widget.onChanged();
-                                            }
 
-                                            _searchController.clear();
-                                            _searchQuery = '';
-                                            _hideOverlay();
-                                          } else {
-                                            _hideOverlay();
-                                          }
-                                        },
-                                        child: tile,
-                                      );
-                                    }).toList(),
+                                              _searchController.clear();
+                                              _searchQuery = '';
+                                              _hideOverlay();
+                                            } else {
+                                              _hideOverlay();
+                                            }
+                                          },
+                                          child: tile,
+                                        );
+                                      }).toList(),
+                                    ),
                                   ),
-                          ),
-                        ],
-                      );
-                    },
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         );
       },
     );
@@ -649,7 +682,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     child: Text(
                       step.title,
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: 16,
                         decoration: step.isDone
                             ? TextDecoration.lineThrough
                             : TextDecoration.none,
@@ -710,8 +743,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   Widget _infoTrailing(String? value) {
     if (value == null || value.isEmpty) {
       return Text(
-        "None",
-        style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+        'None',
+        style: TextStyle(color: Colors.grey.shade500, fontSize: 14),
       );
     }
 
@@ -739,7 +772,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         style: const TextStyle(
           color: secondaryColor,
           fontWeight: FontWeight.w600,
-          fontSize: 13,
+          fontSize: 14,
         ),
       );
     } catch (_) {
@@ -748,7 +781,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         style: const TextStyle(
           color: secondaryColor,
           fontWeight: FontWeight.w600,
-          fontSize: 13,
+          fontSize: 14,
         ),
       );
     }
@@ -790,7 +823,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       child: Text(
         p,
         style: const TextStyle(
-          fontSize: 13,
+          fontSize: 14,
           color: secondaryColor,
           fontWeight: FontWeight.w600,
         ),
@@ -895,7 +928,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                     border: InputBorder.none,
                                   ),
                                   style: const TextStyle(
-                                    fontSize: 20,
+                                    fontSize: 24,
                                     fontWeight: FontWeight.w600,
                                   ),
                                   onSubmitted: _saveTitle,
@@ -910,7 +943,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                   child: Text(
                                     capitalizeFirstCharacter(task.title),
                                     style: TextStyle(
-                                      fontSize: 20,
+                                      fontSize: 24,
                                       fontWeight: FontWeight.w600,
                                       decoration: task.isDone
                                           ? TextDecoration.lineThrough
@@ -983,7 +1016,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                 "Add step",
                                 style: TextStyle(
                                   color: secondaryColor,
-                                  fontSize: 15,
+                                  fontSize: 16,
                                 ),
                               ),
                             ],
@@ -1100,31 +1133,39 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
                     Align(
                       alignment: Alignment.center,
-                      child: Material(
-                        color: Colors.white,
-                        elevation: 6,
-                        borderRadius: BorderRadius.circular(24),
-                        child: InkWell(
-                          onTap: () => setState(
-                            () => _showAdditionalDetails =
-                                !_showAdditionalDetails,
+                      child: InkWell(
+                        onTap: () => setState(
+                          () =>
+                              _showAdditionalDetails = !_showAdditionalDetails,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
                           ),
-                          borderRadius: BorderRadius.circular(24),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 10,
-                            ),
-                            child: Text(
-                              _showAdditionalDetails
-                                  ? 'View less'
-                                  : 'View more',
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _showAdditionalDetails
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                color: Colors.black87,
+                                size: 24,
                               ),
-                            ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _showAdditionalDetails
+                                    ? 'View less'
+                                    : 'View more',
+                                style: const TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

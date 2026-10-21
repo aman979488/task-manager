@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:go_router/go_router.dart';
 
 import '../../../../viewmodels/auth_viewmodel.dart';
@@ -10,20 +11,20 @@ import '../../viewmodels/map_screen_viewmodel.dart';
 import '../widgets/map_task_list_item.dart';
 import 'all_work_view.dart';
 import 'calendar_view.dart';
-import 'client_tasks_view.dart';
 import 'done_tasks_view.dart';
+import 'floating_metadata_sheet.dart';
 import 'group_by_assignee_view.dart';
 import 'group_by_view.dart';
 import 'my_day_view.dart';
 import 'my_work_task_results_view.dart';
 import 'my_work_view.dart';
 import 'overdue_tasks_view.dart';
-import 'pending_tasks_view.dart';
 
 class MapScreenTabViews extends StatelessWidget {
   const MapScreenTabViews({
     super.key,
     required this.tabController,
+    required this.hasAdminAccess,
     required this.viewModel,
     required this.authViewModel,
     required this.onOpenTask,
@@ -34,6 +35,7 @@ class MapScreenTabViews extends StatelessWidget {
   });
 
   final TabController tabController;
+  final bool hasAdminAccess;
   final MapScreenViewModel viewModel;
   final AuthViewModel authViewModel;
   final void Function(Task task) onOpenTask;
@@ -44,9 +46,20 @@ class MapScreenTabViews extends StatelessWidget {
   final void Function(BuildContext badgeContext, Task task) onEditPriority;
 
   Widget _refreshableScrollView(Widget child) {
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: Scrollbar(thumbVisibility: kIsWeb, child: child),
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is UserScrollNotification &&
+            notification.metrics.axis == Axis.vertical &&
+            notification.direction != ScrollDirection.idle &&
+            FloatingMetadataSheet.isShowing) {
+          FloatingMetadataSheet.hide();
+        }
+        return false;
+      },
+      child: RefreshIndicator(
+        onRefresh: onRefresh,
+        child: Scrollbar(thumbVisibility: kIsWeb, child: child),
+      ),
     );
   }
 
@@ -59,12 +72,16 @@ class MapScreenTabViews extends StatelessWidget {
     bool confirmCompletion = false,
     bool tapCompletesTask = false,
     bool keepInMyDay = false,
+    bool priorityEditable = true,
+    bool readOnly = false,
+    int? taskNameMaxLines,
   }) {
     return MapTaskListItem(
       task: task,
       viewType: viewType ?? viewModel.viewType,
       dense: dense,
       showMetadata: showMetadata && !hideTaskMetadata,
+      taskNameMaxLines: taskNameMaxLines,
       taskName: task.title,
       description: _taskDescription(
         task,
@@ -72,6 +89,8 @@ class MapScreenTabViews extends StatelessWidget {
       ),
       isSelected: viewModel.isTaskSelected(task),
       onEditPriority: (badgeContext) => onEditPriority(badgeContext, task),
+      priorityEditable: priorityEditable,
+      readOnly: readOnly,
       onToggleDone: () => onToggleTaskDone(
         task,
         confirmCompletion: confirmCompletion,
@@ -100,7 +119,10 @@ class MapScreenTabViews extends StatelessWidget {
     bool confirmCompletion = false,
     bool tapCompletesTask = false,
     bool keepInMyDay = false,
+    bool priorityEditable = true,
+    bool readOnly = false,
     String? viewType,
+    int? taskNameMaxLines,
   }) {
     final effectiveViewType = viewType ?? viewModel.viewType;
     if (effectiveViewType == 'Detailed list') {
@@ -117,6 +139,9 @@ class MapScreenTabViews extends StatelessWidget {
             confirmCompletion: confirmCompletion,
             tapCompletesTask: tapCompletesTask,
             keepInMyDay: keepInMyDay,
+            priorityEditable: priorityEditable,
+            readOnly: readOnly,
+            taskNameMaxLines: taskNameMaxLines,
           ),
           Container(
             height: 1,
@@ -137,6 +162,9 @@ class MapScreenTabViews extends StatelessWidget {
       confirmCompletion: confirmCompletion,
       tapCompletesTask: tapCompletesTask,
       keepInMyDay: keepInMyDay,
+      priorityEditable: priorityEditable,
+      readOnly: readOnly,
+      taskNameMaxLines: taskNameMaxLines,
     );
   }
 
@@ -154,7 +182,11 @@ class MapScreenTabViews extends StatelessWidget {
     return description.isEmpty ? null : description;
   }
 
-  Widget _buildCalendarView(List<Task> visibleTasks) {
+  Widget _buildCalendarView(
+    List<Task> visibleTasks, {
+    bool priorityEditable = true,
+    bool readOnly = false,
+  }) {
     return CalendarView(
       tasks: visibleTasks,
       selectedDate: viewModel.calendarDate,
@@ -169,6 +201,8 @@ class MapScreenTabViews extends StatelessWidget {
             viewType: 'Detailed list',
             dense: true,
             showMetadata: true,
+            priorityEditable: priorityEditable,
+            readOnly: readOnly,
           ),
           Container(
             height: 1,
@@ -180,6 +214,59 @@ class MapScreenTabViews extends StatelessWidget {
     );
   }
 
+  Widget _buildMyWorkTaskResults(List<Task> sectionTasks) {
+    return MyWorkTaskResultsView(
+      tasks: viewModel.getVisibleTasks(source: sectionTasks),
+      viewType: viewModel.viewType,
+      zoom: viewModel.zoom,
+      selectedDate: viewModel.calendarDate,
+      onDateChanged: viewModel.setCalendarDate,
+      scheduledDate: (task) =>
+          TaskDateFormatter.scheduledDate(task.deadline, task.reminder),
+      taskBuilder: (task, index) => _buildTaskItem(
+        task,
+        index,
+        dense: true,
+        hideTaskMetadata: true,
+        confirmCompletion: true,
+        taskNameMaxLines: 1,
+      ),
+      detailedTaskBuilder: (task) => Column(
+        children: [
+          _buildMapTaskListItem(
+            task,
+            viewType: 'Detailed list',
+            dense: true,
+            showMetadata: false,
+            hideTaskMetadata: true,
+            taskNameMaxLines: 1,
+            confirmCompletion: true,
+          ),
+          Container(
+            height: 1,
+            margin: const EdgeInsets.only(left: 15, right: 15),
+            color: Colors.grey.withAlpha(15),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMyWorkSections(
+    Map<String, List<Task>> sections, {
+    List<String>? sectionNames,
+    String emptyMessage = 'No tasks in My Work.',
+  }) {
+    return _refreshableScrollView(
+      MyWorkView(
+        sections: sections,
+        sectionNames: sectionNames,
+        emptyMessage: emptyMessage,
+        taskResultsBuilder: _buildMyWorkTaskResults,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final allTasks = viewModel.tasks;
@@ -187,13 +274,10 @@ class MapScreenTabViews extends StatelessWidget {
     final myDayTasks = MapScreenViewModel.myDayTasks(myTasks);
     final doneTasks = viewModel.doneTasks();
     final overdueTasks = viewModel.overdueTasks();
-    final pendingTasks = viewModel.pendingTasks();
-
     final visibleAllTasks = viewModel.getVisibleTasks(source: allTasks);
     final visibleMyDayTasks = viewModel.getVisibleTasks(source: myDayTasks);
     final visibleDoneTasks = viewModel.getVisibleTasks(source: doneTasks);
     final visibleOverdueTasks = viewModel.getVisibleTasks(source: overdueTasks);
-    final visiblePendingTasks = viewModel.getVisibleTasks(source: pendingTasks);
 
     return MediaQuery(
       data: MediaQuery.of(context)
@@ -236,7 +320,7 @@ class MapScreenTabViews extends StatelessWidget {
                   task.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13),
+                  style: const TextStyle(fontSize: 14),
                 ),
                 trailing: IconButton(
                   tooltip: 'Add to My Day',
@@ -250,44 +334,8 @@ class MapScreenTabViews extends StatelessWidget {
           ),
           Builder(
             key: const PageStorageKey('my-work-tab'),
-            builder: (_) => _refreshableScrollView(
-              MyWorkView(
-                sections: viewModel.myWorkSections(myTasks),
-                taskResultsBuilder: (secTasks) => MyWorkTaskResultsView(
-                  tasks: viewModel.getVisibleTasks(source: secTasks),
-                  viewType: viewModel.viewType,
-                  zoom: viewModel.zoom,
-                  selectedDate: viewModel.calendarDate,
-                  onDateChanged: viewModel.setCalendarDate,
-                  scheduledDate: (t) =>
-                      TaskDateFormatter.scheduledDate(t.deadline, t.reminder),
-                  taskBuilder: (task, index) => _buildTaskItem(
-                    task,
-                    index,
-                    dense: true,
-                    hideTaskMetadata: true,
-                    confirmCompletion: true,
-                  ),
-                  detailedTaskBuilder: (task) => Column(
-                    children: [
-                      _buildMapTaskListItem(
-                        task,
-                        viewType: 'Detailed list',
-                        dense: true,
-                        showMetadata: false,
-                        hideTaskMetadata: true,
-                        confirmCompletion: true,
-                      ),
-                      Container(
-                        height: 1,
-                        margin: const EdgeInsets.only(left: 15, right: 15),
-                        color: Colors.grey.withAlpha(15),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            builder: (_) =>
+                _buildMyWorkSections(viewModel.myWorkSections(myTasks)),
           ),
           Builder(
             key: const PageStorageKey('done-tasks-tab'),
@@ -295,8 +343,10 @@ class MapScreenTabViews extends StatelessWidget {
               tasks: visibleDoneTasks,
               viewType: viewModel.viewType,
               zoom: viewModel.zoom,
-              taskBuilder: (task, index) => _buildTaskItem(task, index),
-              calendarBuilder: _buildCalendarView,
+              taskBuilder: (task, index) =>
+                  _buildTaskItem(task, index, readOnly: true),
+              calendarBuilder: (tasks) =>
+                  _buildCalendarView(tasks, readOnly: true),
               refreshable: _refreshableScrollView,
             ),
           ),
@@ -305,7 +355,6 @@ class MapScreenTabViews extends StatelessWidget {
             builder: (assignContext) => GroupByAssigneeView(
               groups: MapScreenViewModel.assignedTasksByName(visibleAllTasks),
               pageStorageId: 'assign-tab',
-              openAssigneeOnTap: true,
               refreshable: _refreshableScrollView,
               onOpenAssignee: (name, tasks) => assignContext.push(
                 '/assignee-tasks',
@@ -318,59 +367,46 @@ class MapScreenTabViews extends StatelessWidget {
               onOpenTask: onOpenTask,
             ),
           ),
-          Builder(
-            key: const PageStorageKey('all-work-tab'),
-            builder: (_) => AllWorkView(
-              tasks: visibleAllTasks,
-              viewType: viewModel.viewType,
-              zoom: viewModel.zoom,
-              taskBuilder: (task, index) =>
-                  _buildTaskItem(task, index, dense: true),
-              calendarBuilder: _buildCalendarView,
-              refreshable: _refreshableScrollView,
+          if (hasAdminAccess)
+            Builder(
+              key: const PageStorageKey('all-work-tab'),
+              builder: (_) => AllWorkView(
+                tasks: visibleAllTasks,
+                viewType: viewModel.viewType,
+                zoom: viewModel.zoom,
+                taskBuilder: (task, index) =>
+                    _buildTaskItem(task, index, dense: true),
+                calendarBuilder: _buildCalendarView,
+                refreshable: _refreshableScrollView,
+              ),
             ),
-          ),
-          Builder(
-            key: const PageStorageKey('clients-tab'),
-            builder: (_) => ClientTasksView(
-              tasks: visibleAllTasks,
-              loadClients: viewModel.loadClients,
-              refreshable: _refreshableScrollView,
-              onOpenTask: onOpenTask,
-            ),
-          ),
-          Builder(
-            key: const PageStorageKey('overdue-tasks-tab'),
-            builder: (_) => OverdueTasksView(
-              tasks: visibleOverdueTasks,
-              viewType: viewModel.viewType,
-              zoom: viewModel.zoom,
-              taskBuilder: (task, index) => _buildTaskItem(task, index),
-              calendarBuilder: _buildCalendarView,
-              refreshable: _refreshableScrollView,
-            ),
-          ),
-          Builder(
-            key: const PageStorageKey('pending-tasks-tab'),
-            builder: (_) => PendingTasksView(
-              tasks: visiblePendingTasks,
-              viewType: viewModel.viewType,
-              zoom: viewModel.zoom,
-              taskBuilder: (task, index) => _buildTaskItem(task, index),
-              calendarBuilder: _buildCalendarView,
-              refreshable: _refreshableScrollView,
-            ),
-          ),
-          Builder(
-            key: const PageStorageKey('group-by-tab'),
-            builder: (groupByContext) {
-              final grouped = MapScreenViewModel.groupTasks(
-                visibleAllTasks,
-                viewModel.groupBy,
-              );
-              if (viewModel.groupBy == 'Assignee') {
-                return GroupByAssigneeView(
+          if (hasAdminAccess)
+            Builder(
+              key: const PageStorageKey('group-by-tab'),
+              builder: (groupByContext) {
+                final grouped = MapScreenViewModel.groupTasks(
+                  visibleAllTasks,
+                  viewModel.groupBy,
+                );
+                if (viewModel.groupBy == 'Assignee') {
+                  return GroupByAssigneeView(
+                    groups: grouped,
+                    pageStorageId: 'group-by-${viewModel.groupBy}-tab',
+                    refreshable: _refreshableScrollView,
+                    onOpenAssignee: (name, tasks) => groupByContext.push(
+                      '/assignee-tasks',
+                      extra: {
+                        'assigneeName': name,
+                        'tasks': tasks,
+                        'onOpenTask': onOpenTask,
+                      },
+                    ),
+                    onOpenTask: onOpenTask,
+                  );
+                }
+                return GroupByView(
                   groups: grouped,
+                  groupBy: viewModel.groupBy,
                   pageStorageId: 'group-by-${viewModel.groupBy}-tab',
                   refreshable: _refreshableScrollView,
                   onOpenAssignee: (name, tasks) => groupByContext.push(
@@ -383,23 +419,18 @@ class MapScreenTabViews extends StatelessWidget {
                   ),
                   onOpenTask: onOpenTask,
                 );
-              }
-              return GroupByView(
-                groups: grouped,
-                groupBy: viewModel.groupBy,
-                pageStorageId: 'group-by-${viewModel.groupBy}-tab',
-                refreshable: _refreshableScrollView,
-                onOpenAssignee: (name, tasks) => groupByContext.push(
-                  '/assignee-tasks',
-                  extra: {
-                    'assigneeName': name,
-                    'tasks': tasks,
-                    'onOpenTask': onOpenTask,
-                  },
-                ),
-                onOpenTask: onOpenTask,
-              );
-            },
+              },
+            ),
+          Builder(
+            key: const PageStorageKey('overdue-tasks-tab'),
+            builder: (_) => OverdueTasksView(
+              tasks: visibleOverdueTasks,
+              viewType: viewModel.viewType,
+              zoom: viewModel.zoom,
+              taskBuilder: (task, index) => _buildTaskItem(task, index),
+              calendarBuilder: _buildCalendarView,
+              refreshable: _refreshableScrollView,
+            ),
           ),
         ],
       ),

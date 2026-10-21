@@ -19,7 +19,8 @@ Future<void> showTaskSymbolHelpDialog(BuildContext context) {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              for (final (symbol, title, description) in TaskConstants.shortcutsHelp)
+              for (final (symbol, title, description)
+                  in TaskConstants.shortcutsHelp)
                 ListTile(
                   dense: true,
                   visualDensity: const VisualDensity(vertical: -2),
@@ -30,15 +31,15 @@ Future<void> showTaskSymbolHelpDialog(BuildContext context) {
                       symbol,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                        fontSize: 20,
+                        fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-                  title: Text(title, style: const TextStyle(fontSize: 13)),
+                  title: Text(title, style: const TextStyle(fontSize: 14)),
                   subtitle: Text(
                     description,
-                    style: const TextStyle(fontSize: 11, height: 1.1),
+                    style: const TextStyle(fontSize: 12, height: 1.1),
                   ),
                 ),
               const ListTile(
@@ -49,10 +50,10 @@ Future<void> showTaskSymbolHelpDialog(BuildContext context) {
                   width: 28,
                   child: Icon(Icons.folder_outlined, size: 20),
                 ),
-                title: Text('Folder', style: TextStyle(fontSize: 13)),
+                title: Text('Folder', style: TextStyle(fontSize: 14)),
                 subtitle: Text(
                   'Folder does not have a text shortcut symbol.',
-                  style: TextStyle(fontSize: 11, height: 1.1),
+                  style: TextStyle(fontSize: 12, height: 1.1),
                 ),
               ),
             ],

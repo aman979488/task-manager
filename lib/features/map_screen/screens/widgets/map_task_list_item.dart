@@ -12,10 +12,13 @@ class MapTaskListItem extends StatelessWidget {
     required this.viewType,
     this.dense = false,
     this.showMetadata = false,
+    this.taskNameMaxLines,
     required this.isSelected,
     required this.taskName,
     required this.description,
     required this.onEditPriority,
+    this.priorityEditable = true,
+    this.readOnly = false,
     required this.onToggleDone,
     required this.onToggleSelection,
     required this.onOpen,
@@ -26,10 +29,13 @@ class MapTaskListItem extends StatelessWidget {
   final String viewType;
   final bool dense;
   final bool showMetadata;
+  final int? taskNameMaxLines;
   final bool isSelected;
   final String taskName;
   final String? description;
   final ValueChanged<BuildContext> onEditPriority;
+  final bool priorityEditable;
+  final bool readOnly;
   final VoidCallback onToggleDone;
   final VoidCallback onToggleSelection;
   final VoidCallback onOpen;
@@ -43,10 +49,11 @@ class MapTaskListItem extends StatelessWidget {
         taskName: taskName,
         description: description,
         showMetadata: showMetadata,
+        taskNameMaxLines: taskNameMaxLines ?? 1,
         isSelected: isSelected,
         dense: dense,
-        onToggleSelection: onToggleSelection,
-        onOpen: onOpen,
+        onToggleSelection: readOnly ? _ignoreAction : onToggleSelection,
+        onOpen: readOnly ? _ignoreAction : onOpen,
       );
     }
 
@@ -60,12 +67,14 @@ class MapTaskListItem extends StatelessWidget {
         dense: dense,
         priorityBadge: _priorityBadge(
           compact: true,
-          onTap: () => onEditPriority(context),
+          onTap: priorityEditable && !readOnly
+              ? () => onEditPriority(context)
+              : _ignoreAction,
         ),
-        onToggleDone: onToggleDone,
-        onAddSubtask: onAddSubtask,
-        onToggleSelection: onToggleSelection,
-        onOpen: onOpen,
+        onToggleDone: readOnly ? _ignoreAction : onToggleDone,
+        onAddSubtask: readOnly ? _ignoreAction : onAddSubtask,
+        onToggleSelection: readOnly ? _ignoreAction : onToggleSelection,
+        onOpen: readOnly ? _ignoreAction : onOpen,
       );
     }
 
@@ -76,18 +85,23 @@ class MapTaskListItem extends StatelessWidget {
       taskName: taskName,
       description: description,
       showMetadata: showMetadata,
+      taskNameMaxLines: taskNameMaxLines ?? 1,
       priorityWidget: Builder(
         builder: (badgeContext) => _priorityBadge(
           compact: dense,
-          onTap: () => onEditPriority(badgeContext),
+          onTap: priorityEditable && !readOnly
+              ? () => onEditPriority(badgeContext)
+              : _ignoreAction,
         ),
       ),
-      onToggleDone: onToggleDone,
-      onToggleSelection: onToggleSelection,
-      onOpen: onOpen,
-      onAddSubtask: onAddSubtask,
+      onToggleDone: readOnly ? _ignoreAction : onToggleDone,
+      onToggleSelection: readOnly ? _ignoreAction : onToggleSelection,
+      onOpen: readOnly ? _ignoreAction : onOpen,
+      onAddSubtask: readOnly ? _ignoreAction : onAddSubtask,
     );
   }
+
+  static void _ignoreAction() {}
 
   Widget _priorityBadge({required bool compact, required VoidCallback onTap}) {
     final priority = task.priority?.trim();
@@ -119,7 +133,7 @@ class MapTaskListItem extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 12,
                   color: color,
                   fontWeight: FontWeight.w700,
                 ),
@@ -130,7 +144,7 @@ class MapTaskListItem extends StatelessWidget {
                   priority != null && priority.isNotEmpty ? priority : 'None',
                   maxLines: 1,
                   style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 14,
                     color: Color(0xFF6B5800),
                     fontWeight: FontWeight.w700,
                   ),

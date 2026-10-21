@@ -11,6 +11,7 @@ class TaskTile extends StatelessWidget {
     required this.isSelected,
     this.dense = false,
     this.showMetadata = false,
+    this.taskNameMaxLines = 1,
     required this.taskName,
     required this.description,
     required this.priorityWidget,
@@ -24,6 +25,7 @@ class TaskTile extends StatelessWidget {
   final bool isSelected;
   final bool dense;
   final bool showMetadata;
+  final int? taskNameMaxLines;
   final String taskName;
   final String? description;
   final Widget priorityWidget;
@@ -35,9 +37,9 @@ class TaskTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: EdgeInsets.symmetric(
-  horizontal: dense ? 2 : 4,
-  vertical: dense ? 0 : 2,
-),
+      horizontal: dense ? 2 : 4,
+      vertical: dense ? 0 : 2,
+    ),
     child: InkWell(
       onLongPress: onToggleSelection,
       onTap: onOpen,
@@ -78,8 +80,12 @@ class TaskTile extends StatelessWidget {
                 children: [
                   Text(
                     capitalizeFirstCharacter(taskName),
+                    maxLines: taskNameMaxLines,
+                    overflow: taskNameMaxLines == null
+                        ? null
+                        : TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: dense ? 13 : 15,
+                      fontSize: dense ? 14 : 16,
                       fontWeight: FontWeight.w600,
                       color: const Color(0xFF26364A),
                       decoration: task.isDone
@@ -96,7 +102,7 @@ class TaskTile extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: dense ? 10 : 12,
+                          fontSize: 12,
                           height: 1.25,
                           color: task.isDone
                               ? Colors.grey.shade500

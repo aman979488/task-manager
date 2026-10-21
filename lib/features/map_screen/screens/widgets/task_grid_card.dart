@@ -12,6 +12,7 @@ class TaskGridCard extends StatelessWidget {
     required this.isSelected,
     this.dense = false,
     this.showMetadata = false,
+    this.taskNameMaxLines = 1,
     required this.onToggleSelection,
     required this.onOpen,
   });
@@ -22,6 +23,7 @@ class TaskGridCard extends StatelessWidget {
   final bool isSelected;
   final bool dense;
   final bool showMetadata;
+  final int taskNameMaxLines;
   final VoidCallback onToggleSelection;
   final VoidCallback onOpen;
 
@@ -61,7 +63,7 @@ class TaskGridCard extends StatelessWidget {
                     style: TextStyle(
                       color: Color(0xFF6B5800),
                       fontWeight: FontWeight.w600,
-                      fontSize: dense ? 10 : 12,
+                      fontSize: 12,
                     ),
                   ),
               ],
@@ -69,11 +71,11 @@ class TaskGridCard extends StatelessWidget {
             SizedBox(height: dense ? 6 : 10),
             Text(
               taskName,
-              maxLines: 3,
+              maxLines: taskNameMaxLines,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                fontSize: dense ? 13 : 14,
+                fontSize: 14,
                 decoration: task.isDone ? TextDecoration.lineThrough : null,
               ),
             ),
@@ -83,10 +85,7 @@ class TaskGridCard extends StatelessWidget {
                 description!,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: dense ? 10 : 12,
-                  color: Colors.grey.shade600,
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
             if (showMetadata &&
                 (task.assignee?.trim().isNotEmpty == true ||
