@@ -133,7 +133,7 @@ class MapTaskListItem extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 10,
                   color: color,
                   fontWeight: FontWeight.w700,
                 ),
@@ -144,7 +144,7 @@ class MapTaskListItem extends StatelessWidget {
                   priority != null && priority.isNotEmpty ? priority : 'None',
                   maxLines: 1,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 13,
                     color: Color(0xFF6B5800),
                     fontWeight: FontWeight.w700,
                   ),

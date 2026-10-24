@@ -55,7 +55,7 @@ class CompactTaskTile extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: dense ? 14 : 16,
+          fontSize: dense ? 13 : 15,
           fontWeight: FontWeight.w600,
           color: const Color(0xFF26364A),
           decoration: task.isDone ? TextDecoration.lineThrough : null,
@@ -73,7 +73,7 @@ class CompactTaskTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: dense ? 10 : 12,
                       color: Colors.blueGrey.shade500,
                       height: 1.25,
                     ),

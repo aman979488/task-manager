@@ -251,12 +251,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               labelColor: Colors.black,
               labelStyle: const TextStyle(
                 fontWeight: FontWeight.w900,
-                fontSize: 12,
+                fontSize: 11,
               ),
               unselectedLabelColor: Colors.grey.shade500,
               unselectedLabelStyle: const TextStyle(
                 fontWeight: FontWeight.w600,
-                fontSize: 12,
+                fontSize: 11,
               ),
               labelPadding: const EdgeInsets.symmetric(horizontal: 12),
               tabs: [

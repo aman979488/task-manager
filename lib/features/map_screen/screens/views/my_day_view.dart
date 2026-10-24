@@ -192,7 +192,7 @@ class _MyDayViewState extends State<MyDayView> {
                               .narrowWeekdays[day.weekday % 7],
                           style: TextStyle(
                             color: Colors.grey.shade600,
-                            fontSize: 12,
+                            fontSize: 11,
                           ),
                         ),
                         Text(
@@ -259,7 +259,7 @@ class _MyDayViewState extends State<MyDayView> {
                                 maxLines: 3,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 10,
                                   color: Color(0xFF26364A),
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -296,7 +296,7 @@ class _MyDayViewState extends State<MyDayView> {
                                           child: Text(
                                             '${hour.toString().padLeft(2, '0')}:00',
                                             style: TextStyle(
-                                              fontSize: 12,
+                                              fontSize: 10,
                                               color: Colors.grey.shade600,
                                             ),
                                           ),
@@ -471,7 +471,7 @@ class _MyDayViewState extends State<MyDayView> {
                                 child: Text(
                                   'Suggestions',
                                   style: TextStyle(
-                                    fontSize: 16,
+                                    fontSize: 18,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -505,7 +505,7 @@ class _MyDayViewState extends State<MyDayView> {
                           child: Text(
                             entry.key,
                             style: const TextStyle(
-                              fontSize: 16,
+                              fontSize: 15,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -590,7 +590,7 @@ class _MyDayViewState extends State<MyDayView> {
                     const Text(
                       'My Day',
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: 22,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -745,7 +745,7 @@ class _MyDayViewState extends State<MyDayView> {
                               ? Colors.white60
                               : Colors.white,
                           fontWeight: FontWeight.w600,
-                          fontSize: 14,
+                          fontSize: 13,
                         ),
                       ),
                     ],

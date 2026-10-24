@@ -40,7 +40,7 @@ class AssigneeTasksView extends StatelessWidget {
               style: const TextStyle(
                 color: secondaryColor,
                 fontWeight: FontWeight.bold,
-                fontSize: 16,
+                fontSize: 18,
               ),
             ),
             Text(
@@ -82,7 +82,7 @@ class AssigneeTasksView extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                    fontSize: 13,
                     decoration: task.isDone ? TextDecoration.lineThrough : null,
                     color: task.isDone ? Colors.grey : Colors.black87,
                   ),
@@ -101,7 +101,7 @@ class AssigneeTasksView extends StatelessWidget {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 12,
+                                fontSize: 10,
                                 color: Colors.grey,
                               ),
                             ),

@@ -119,7 +119,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
           children: [
             const Text(
               '⚡ Flash message',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 16),
             if (_isLoadingStaff)

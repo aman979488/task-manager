@@ -184,13 +184,13 @@ class _ClientTasksViewState extends State<ClientTasksView> {
                     name,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
-                      fontSize: 14,
+                      fontSize: 13,
                       color: Colors.black87,
                     ),
                   ),
                   subtitle: Text(
                     'Total: ${tasks.length} • Pending: ${tasks.length - completedCount} • Done: $completedCount',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
                   ),
                   children: [
                     if (tasks.isEmpty)

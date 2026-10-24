@@ -240,7 +240,7 @@ class _MyWorkViewState extends State<MyWorkView> {
                 name.replaceFirst(RegExp(r' Works$'), '').toUpperCase(),
                 style: TextStyle(
                   color: color,
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.4,
                 ),
@@ -259,7 +259,7 @@ class _MyWorkViewState extends State<MyWorkView> {
                   style: TextStyle(
                     color: color,
                     fontWeight: FontWeight.w700,
-                    fontSize: 12,
+                    fontSize: 10,
                   ),
                 ),
               ),

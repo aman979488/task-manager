@@ -166,7 +166,7 @@ class FloatingMetadataSheet {
           title: Text(
             opt,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: isSelected || isHighlighted
                   ? FontWeight.bold
                   : FontWeight.normal,
@@ -340,7 +340,7 @@ class FloatingMetadataSheet {
                                       decoration: InputDecoration(
                                         hintText: 'Search...',
                                         hintStyle: TextStyle(
-                                          fontSize: 14,
+                                          fontSize: 13,
                                           color: Colors.grey.shade400,
                                         ),
                                         prefixIcon: Icon(
@@ -379,7 +379,7 @@ class FloatingMetadataSheet {
                                           child: Text(
                                             'No results',
                                             style: TextStyle(
-                                              fontSize: 14,
+                                              fontSize: 13,
                                               color: Colors.grey,
                                             ),
                                           ),

@@ -63,7 +63,7 @@ class TaskGridCard extends StatelessWidget {
                     style: TextStyle(
                       color: Color(0xFF6B5800),
                       fontWeight: FontWeight.w600,
-                      fontSize: 12,
+                      fontSize: dense ? 10 : 12,
                     ),
                   ),
               ],
@@ -75,7 +75,7 @@ class TaskGridCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                fontSize: 14,
+                fontSize: dense ? 13 : 14,
                 decoration: task.isDone ? TextDecoration.lineThrough : null,
               ),
             ),
@@ -85,7 +85,10 @@ class TaskGridCard extends StatelessWidget {
                 description!,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(
+                  fontSize: dense ? 10 : 12,
+                  color: Colors.grey.shade600,
+                ),
               ),
             if (showMetadata &&
                 (task.assignee?.trim().isNotEmpty == true ||
