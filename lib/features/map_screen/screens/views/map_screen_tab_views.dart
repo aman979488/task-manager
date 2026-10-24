@@ -320,7 +320,7 @@ class MapScreenTabViews extends StatelessWidget {
                   task.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13),
+                  style: const TextStyle(fontSize: 14),
                 ),
                 trailing: IconButton(
                   tooltip: 'Add to My Day',

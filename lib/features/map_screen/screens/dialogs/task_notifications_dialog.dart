@@ -39,7 +39,7 @@ Future<void> showTaskNotificationsDialog(
                     child: Text(
                       'Notifications',
                       style: TextStyle(
-                        fontSize: 20,
+                        fontSize: 24,
                         fontWeight: FontWeight.w500,
                       ),
                     ),

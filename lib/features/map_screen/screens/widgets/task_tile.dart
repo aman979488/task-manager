@@ -85,7 +85,7 @@ class TaskTile extends StatelessWidget {
                         ? null
                         : TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: dense ? 13 : 15,
+                      fontSize: dense ? 14 : 16,
                       fontWeight: FontWeight.w600,
                       color: const Color(0xFF26364A),
                       decoration: task.isDone
@@ -102,7 +102,7 @@ class TaskTile extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: dense ? 10 : 12,
+                          fontSize: 12,
                           height: 1.25,
                           color: task.isDone
                               ? Colors.grey.shade500

@@ -30,10 +30,7 @@ class TaskMetadataBadges extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: compact ? 10 : 11,
-              color: Colors.blueGrey.shade600,
-            ),
+            style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
           ),
       ],
     );

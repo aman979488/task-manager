@@ -445,7 +445,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                     child: Text(
                                       'No results found',
                                       style: TextStyle(
-                                        fontSize: 13,
+                                        fontSize: 14,
                                         color: Colors.grey.shade500,
                                       ),
                                     ),
@@ -682,7 +682,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     child: Text(
                       step.title,
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: 16,
                         decoration: step.isDone
                             ? TextDecoration.lineThrough
                             : TextDecoration.none,
@@ -743,8 +743,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   Widget _infoTrailing(String? value) {
     if (value == null || value.isEmpty) {
       return Text(
-        "None",
-        style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+        'None',
+        style: TextStyle(color: Colors.grey.shade500, fontSize: 14),
       );
     }
 
@@ -772,7 +772,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         style: const TextStyle(
           color: secondaryColor,
           fontWeight: FontWeight.w600,
-          fontSize: 13,
+          fontSize: 14,
         ),
       );
     } catch (_) {
@@ -781,7 +781,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         style: const TextStyle(
           color: secondaryColor,
           fontWeight: FontWeight.w600,
-          fontSize: 13,
+          fontSize: 14,
         ),
       );
     }
@@ -823,7 +823,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       child: Text(
         p,
         style: const TextStyle(
-          fontSize: 13,
+          fontSize: 14,
           color: secondaryColor,
           fontWeight: FontWeight.w600,
         ),
@@ -928,7 +928,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                     border: InputBorder.none,
                                   ),
                                   style: const TextStyle(
-                                    fontSize: 20,
+                                    fontSize: 24,
                                     fontWeight: FontWeight.w600,
                                   ),
                                   onSubmitted: _saveTitle,
@@ -943,7 +943,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                   child: Text(
                                     capitalizeFirstCharacter(task.title),
                                     style: TextStyle(
-                                      fontSize: 20,
+                                      fontSize: 24,
                                       fontWeight: FontWeight.w600,
                                       decoration: task.isDone
                                           ? TextDecoration.lineThrough
@@ -1016,7 +1016,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                 "Add step",
                                 style: TextStyle(
                                   color: secondaryColor,
-                                  fontSize: 15,
+                                  fontSize: 16,
                                 ),
                               ),
                             ],

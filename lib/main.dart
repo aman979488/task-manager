@@ -36,13 +36,27 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseTheme = ThemeData(
+      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFBE64E)),
+      useMaterial3: true,
+    );
+    final textTheme = baseTheme.textTheme.copyWith(
+      headlineSmall: baseTheme.textTheme.headlineSmall?.copyWith(fontSize: 24),
+      titleLarge: baseTheme.textTheme.titleLarge?.copyWith(fontSize: 24),
+      titleMedium: baseTheme.textTheme.titleMedium?.copyWith(fontSize: 16),
+      titleSmall: baseTheme.textTheme.titleSmall?.copyWith(fontSize: 14),
+      bodyLarge: baseTheme.textTheme.bodyLarge?.copyWith(fontSize: 16),
+      bodyMedium: baseTheme.textTheme.bodyMedium?.copyWith(fontSize: 14),
+      bodySmall: baseTheme.textTheme.bodySmall?.copyWith(fontSize: 12),
+      labelLarge: baseTheme.textTheme.labelLarge?.copyWith(fontSize: 16),
+      labelMedium: baseTheme.textTheme.labelMedium?.copyWith(fontSize: 14),
+      labelSmall: baseTheme.textTheme.labelSmall?.copyWith(fontSize: 12),
+    );
+
     return MaterialApp.router(
       title: 'Task Manager',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFBE64E)),
-        useMaterial3: true,
-      ),
+      theme: baseTheme.copyWith(textTheme: textTheme),
       routerConfig: router,
     );
   }
