@@ -98,7 +98,7 @@ class AssigneeTasksView extends StatelessWidget {
                           if (task.note.trim().isNotEmpty)
                             Text(
                               task.note.trim(),
-                              maxLines: 2,
+                              maxLines: 3,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontSize: 10,

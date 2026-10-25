@@ -19,6 +19,8 @@ class TaskTile extends StatelessWidget {
     required this.onToggleSelection,
     required this.onOpen,
     required this.onAddSubtask,
+    this.trailingActionIcon = Icons.add_circle_outline,
+    this.trailingActionTooltip = 'Add subtask',
   });
 
   final Task task;
@@ -33,6 +35,8 @@ class TaskTile extends StatelessWidget {
   final VoidCallback onToggleSelection;
   final VoidCallback onOpen;
   final VoidCallback onAddSubtask;
+  final IconData trailingActionIcon;
+  final String trailingActionTooltip;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -99,7 +103,7 @@ class TaskTile extends StatelessWidget {
                       padding: EdgeInsets.only(top: dense ? 1 : 3),
                       child: Text(
                         description!,
-                        maxLines: 2,
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: dense ? 10 : 12,
@@ -129,17 +133,18 @@ class TaskTile extends StatelessWidget {
                   children: [
                     priorityWidget,
                     SizedBox(width: dense ? 14 : 18),
-                    InkWell(
-                      onTap: onAddSubtask,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Padding(
-                        padding: EdgeInsets.all(dense ? 4 : 6),
-                        child: Icon(
-                          Icons.add_circle_outline,
-                          size: dense ? 20 : 24,
-                          color: Color(0xFF6B5800),
-                        ),
+                    IconButton(
+                      tooltip: trailingActionTooltip,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onAddSubtask,
+                      icon: Icon(
+                        trailingActionIcon,
+                        size: dense ? 20 : 24,
+                        color: const Color(0xFF6B5800),
                       ),
+                      padding: EdgeInsets.all(dense ? 4 : 6),
+                      constraints: const BoxConstraints(),
+                      splashRadius: 20,
                     ),
                   ],
                 ),

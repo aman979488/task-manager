@@ -112,4 +112,34 @@ void main() {
     expect(title.maxLines, 1);
     expect(title.overflow, TextOverflow.ellipsis);
   });
+
+  testWidgets('read-only task list item can show a timer action', (
+    tester,
+  ) async {
+    var timerActionCalled = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MapTaskListItem(
+            task: Task('Completed task', isDone: true),
+            viewType: 'Detailed list',
+            isSelected: false,
+            taskName: 'Completed task',
+            description: null,
+            onEditPriority: (_) {},
+            readOnly: true,
+            onToggleDone: () {},
+            onToggleSelection: () {},
+            onOpen: () {},
+            onAddSubtask: () {},
+            onReadOnlyAction: () => timerActionCalled = true,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
+    await tester.tap(find.byTooltip('Set task time'));
+    expect(timerActionCalled, isTrue);
+  });
 }
