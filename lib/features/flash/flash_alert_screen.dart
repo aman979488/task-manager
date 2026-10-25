@@ -116,7 +116,7 @@ class _FlashAlertScreenState extends State<FlashAlertScreen>
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 24,
+                    fontSize: 28,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -133,7 +133,7 @@ class _FlashAlertScreenState extends State<FlashAlertScreen>
                     child: const Text(
                       'Got it',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 18,
                         fontWeight: FontWeight.w700,
                       ),
                     ),

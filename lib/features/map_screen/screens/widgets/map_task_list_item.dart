@@ -23,6 +23,7 @@ class MapTaskListItem extends StatelessWidget {
     required this.onToggleSelection,
     required this.onOpen,
     required this.onAddSubtask,
+    this.onReadOnlyAction,
   });
 
   final Task task;
@@ -40,6 +41,7 @@ class MapTaskListItem extends StatelessWidget {
   final VoidCallback onToggleSelection;
   final VoidCallback onOpen;
   final VoidCallback onAddSubtask;
+  final VoidCallback? onReadOnlyAction;
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +74,11 @@ class MapTaskListItem extends StatelessWidget {
               : _ignoreAction,
         ),
         onToggleDone: readOnly ? _ignoreAction : onToggleDone,
-        onAddSubtask: readOnly ? _ignoreAction : onAddSubtask,
+        onAddSubtask: readOnly
+            ? (onReadOnlyAction ?? _ignoreAction)
+            : onAddSubtask,
+        trailingActionIcon: _trailingActionIcon,
+        trailingActionTooltip: _trailingActionTooltip,
         onToggleSelection: readOnly ? _ignoreAction : onToggleSelection,
         onOpen: readOnly ? _ignoreAction : onOpen,
       );
@@ -97,9 +103,20 @@ class MapTaskListItem extends StatelessWidget {
       onToggleDone: readOnly ? _ignoreAction : onToggleDone,
       onToggleSelection: readOnly ? _ignoreAction : onToggleSelection,
       onOpen: readOnly ? _ignoreAction : onOpen,
-      onAddSubtask: readOnly ? _ignoreAction : onAddSubtask,
+      onAddSubtask: readOnly
+          ? (onReadOnlyAction ?? _ignoreAction)
+          : onAddSubtask,
+      trailingActionIcon: _trailingActionIcon,
+      trailingActionTooltip: _trailingActionTooltip,
     );
   }
+
+  IconData get _trailingActionIcon => readOnly && onReadOnlyAction != null
+      ? Icons.timer_outlined
+      : Icons.add_circle_outline;
+
+  String get _trailingActionTooltip =>
+      readOnly && onReadOnlyAction != null ? 'Set task time' : 'Add subtask';
 
   static void _ignoreAction() {}
 
@@ -133,7 +150,7 @@ class MapTaskListItem extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 10,
                   color: color,
                   fontWeight: FontWeight.w700,
                 ),
@@ -144,7 +161,7 @@ class MapTaskListItem extends StatelessWidget {
                   priority != null && priority.isNotEmpty ? priority : 'None',
                   maxLines: 1,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 13,
                     color: Color(0xFF6B5800),
                     fontWeight: FontWeight.w700,
                   ),
