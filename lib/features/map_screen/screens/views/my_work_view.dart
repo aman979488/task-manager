@@ -23,8 +23,7 @@ class MyWorkView extends StatefulWidget {
   State<MyWorkView> createState() => _MyWorkViewState();
 }
 
-class _MyWorkViewState extends State<MyWorkView>
-    with AutomaticKeepAliveClientMixin<MyWorkView> {
+class _MyWorkViewState extends State<MyWorkView> {
   static const double _sectionHeaderHeight = 48;
   static const _defaultSectionNames = [
     'Urgent Works',
@@ -41,7 +40,6 @@ class _MyWorkViewState extends State<MyWorkView>
   List<String> get _sectionNames => widget.sectionNames ?? _defaultSectionNames;
 
   final Set<String> _expandedSections = {};
-  bool _restoredExpandedSections = false;
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _viewportKey = GlobalKey();
   final Map<String, GlobalKey> _sectionHeaderKeys = {};
@@ -50,34 +48,9 @@ class _MyWorkViewState extends State<MyWorkView>
   int _blankTapCount = 0;
 
   @override
-  bool get wantKeepAlive => true;
-
-  @override
   void initState() {
     super.initState();
     _scrollController.addListener(_updatePinnedSections);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_restoredExpandedSections) return;
-    _restoredExpandedSections = true;
-    final saved = PageStorage.maybeOf(context)?.readState(
-      context,
-      identifier: const ValueKey('my-work-expanded-sections'),
-    );
-    if (saved is List) {
-      _expandedSections.addAll(saved.whereType<String>());
-    }
-  }
-
-  void _saveExpandedSections() {
-    PageStorage.maybeOf(context)?.writeState(
-      context,
-      _expandedSections.toList(),
-      identifier: const ValueKey('my-work-expanded-sections'),
-    );
   }
 
   @override
@@ -105,7 +78,6 @@ class _MyWorkViewState extends State<MyWorkView>
           _expandedSections.remove(section);
         }
       });
-      _saveExpandedSections();
     });
   }
 
@@ -146,7 +118,6 @@ class _MyWorkViewState extends State<MyWorkView>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
     final populatedNames = _sectionNames
         .where((name) => widget.sections[name]?.isNotEmpty ?? false)
         .toList();
@@ -245,28 +216,22 @@ class _MyWorkViewState extends State<MyWorkView>
     return SizedBox(
       height: _sectionHeaderHeight,
       child: InkWell(
-        onTap: () {
-          setState(() {
-            if (isExpanded) {
-              _expandedSections.remove(name);
-            } else {
-              _expandedSections.add(name);
-            }
-          });
-          _saveExpandedSections();
-        },
-        onDoubleTap: () {
-          setState(() {
-            if (_expandedSections.length == populatedNames.length) {
-              _expandedSections.clear();
-            } else {
-              _expandedSections
-                ..clear()
-                ..addAll(populatedNames);
-            }
-          });
-          _saveExpandedSections();
-        },
+        onTap: () => setState(() {
+          if (isExpanded) {
+            _expandedSections.remove(name);
+          } else {
+            _expandedSections.add(name);
+          }
+        }),
+        onDoubleTap: () => setState(() {
+          if (_expandedSections.length == populatedNames.length) {
+            _expandedSections.clear();
+          } else {
+            _expandedSections
+              ..clear()
+              ..addAll(populatedNames);
+          }
+        }),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
@@ -275,7 +240,7 @@ class _MyWorkViewState extends State<MyWorkView>
                 name.replaceFirst(RegExp(r' Works$'), '').toUpperCase(),
                 style: TextStyle(
                   color: color,
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.4,
                 ),
@@ -294,7 +259,7 @@ class _MyWorkViewState extends State<MyWorkView>
                   style: TextStyle(
                     color: color,
                     fontWeight: FontWeight.w700,
-                    fontSize: 10,
+                    fontSize: 12,
                   ),
                 ),
               ),

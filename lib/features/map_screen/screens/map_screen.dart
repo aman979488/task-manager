@@ -14,7 +14,6 @@ import '../viewmodels/map_screen_viewmodel.dart';
 import 'dialogs/task_delete_confirmation_dialog.dart';
 import 'dialogs/task_notifications_dialog.dart';
 import 'dialogs/task_substep_dialog.dart';
-import 'dialogs/task_time_dialog.dart';
 import 'views/add_task_bottom_sheet.dart';
 import 'views/floating_metadata_sheet.dart';
 import 'views/map_screen_app_bar.dart';
@@ -117,30 +116,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  Future<void> _promptSetTaskTime(Task task) async {
-    final times = await showTaskTimeDialog(
-      context,
-      startTime: task.startTime,
-      endTime: task.endTime,
-    );
-    if (times == null || !mounted) return;
-
-    final originalStartTime = task.startTime;
-    final originalEndTime = task.endTime;
-    task
-      ..startTime = times.$1
-      ..endTime = times.$2;
-    final vm = Provider.of<MapScreenViewModel>(context, listen: false);
-    try {
-      await vm.updateTask(task);
-    } catch (error) {
-      task
-        ..startTime = originalStartTime
-        ..endTime = originalEndTime;
-      if (mounted) _showMessage('Could not update task time: $error');
-    }
-  }
-
   Future<void> _confirmDeleteSelected(MapScreenViewModel viewModel) async {
     final confirmed = await showTaskDeleteConfirmationDialog(
       context,
@@ -199,6 +174,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final viewModel = Provider.of<MapScreenViewModel>(context);
     final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+
+    final allTasks = viewModel.tasks;
+    final myTasks = viewModel.myTasks(authViewModel);
+    final myDayTasks = MapScreenViewModel.myDayTasks(myTasks);
+    final doneTasks = viewModel.doneTasks();
+    final overdueTasks = viewModel.overdueTasks();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -270,22 +251,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               labelColor: Colors.black,
               labelStyle: const TextStyle(
                 fontWeight: FontWeight.w900,
-                fontSize: 11,
+                fontSize: 12,
               ),
               unselectedLabelColor: Colors.grey.shade500,
               unselectedLabelStyle: const TextStyle(
                 fontWeight: FontWeight.w600,
-                fontSize: 11,
+                fontSize: 12,
               ),
               labelPadding: const EdgeInsets.symmetric(horizontal: 12),
               tabs: [
-                const Tab(text: 'Days'),
+                Tab(text: 'Days (${myDayTasks.length})'),
                 const Tab(text: 'My Work'),
-                const Tab(text: 'Done Work'),
+                Tab(text: 'Done Work (${doneTasks.length})'),
                 const Tab(text: 'Assign'),
-                if (_hasAdminAccess) const Tab(text: 'All Work'),
+                if (_hasAdminAccess) Tab(text: 'All Work (${allTasks.length})'),
                 if (_hasAdminAccess) Tab(text: 'Group by ${viewModel.groupBy}'),
-                const Tab(text: 'Overdue'),
+                Tab(text: 'Overdue (${overdueTasks.length})'),
               ],
             ),
           ),
@@ -294,14 +275,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             child: MapScreenTabViews(
               tabController: _tabController,
               hasAdminAccess: _hasAdminAccess,
-
               viewModel: viewModel,
               authViewModel: authViewModel,
               onOpenTask: _openTaskDetail,
               onRefresh: _refreshTasks,
               onToggleTaskDone: _toggleTaskDone,
               onAddSubstep: _promptAddSubstep,
-              onSetTaskTime: _promptSetTaskTime,
               onEditPriority: _onEditPriority,
             ),
           ),

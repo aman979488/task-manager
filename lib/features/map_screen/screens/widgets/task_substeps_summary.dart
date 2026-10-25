@@ -42,7 +42,7 @@ class TaskSubstepsSummary extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: dense ? 9 : 11,
+                        fontSize: 12,
                         color: step.isDone
                             ? Colors.grey.shade500
                             : Colors.blueGrey.shade600,
