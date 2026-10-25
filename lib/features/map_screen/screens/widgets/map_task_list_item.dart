@@ -23,7 +23,6 @@ class MapTaskListItem extends StatelessWidget {
     required this.onToggleSelection,
     required this.onOpen,
     required this.onAddSubtask,
-    this.onReadOnlyAction,
   });
 
   final Task task;
@@ -41,7 +40,6 @@ class MapTaskListItem extends StatelessWidget {
   final VoidCallback onToggleSelection;
   final VoidCallback onOpen;
   final VoidCallback onAddSubtask;
-  final VoidCallback? onReadOnlyAction;
 
   @override
   Widget build(BuildContext context) {
@@ -74,11 +72,7 @@ class MapTaskListItem extends StatelessWidget {
               : _ignoreAction,
         ),
         onToggleDone: readOnly ? _ignoreAction : onToggleDone,
-        onAddSubtask: readOnly
-            ? (onReadOnlyAction ?? _ignoreAction)
-            : onAddSubtask,
-        trailingActionIcon: _trailingActionIcon,
-        trailingActionTooltip: _trailingActionTooltip,
+        onAddSubtask: readOnly ? _ignoreAction : onAddSubtask,
         onToggleSelection: readOnly ? _ignoreAction : onToggleSelection,
         onOpen: readOnly ? _ignoreAction : onOpen,
       );
@@ -103,20 +97,9 @@ class MapTaskListItem extends StatelessWidget {
       onToggleDone: readOnly ? _ignoreAction : onToggleDone,
       onToggleSelection: readOnly ? _ignoreAction : onToggleSelection,
       onOpen: readOnly ? _ignoreAction : onOpen,
-      onAddSubtask: readOnly
-          ? (onReadOnlyAction ?? _ignoreAction)
-          : onAddSubtask,
-      trailingActionIcon: _trailingActionIcon,
-      trailingActionTooltip: _trailingActionTooltip,
+      onAddSubtask: readOnly ? _ignoreAction : onAddSubtask,
     );
   }
-
-  IconData get _trailingActionIcon => readOnly && onReadOnlyAction != null
-      ? Icons.timer_outlined
-      : Icons.add_circle_outline;
-
-  String get _trailingActionTooltip =>
-      readOnly && onReadOnlyAction != null ? 'Set task time' : 'Add subtask';
 
   static void _ignoreAction() {}
 

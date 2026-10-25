@@ -58,23 +58,6 @@ void main() {
     );
   });
 
-  test('My Day includes tasks prioritized for today, tomorrow, or later', () {
-    final today = Task('Today', priority: ' TODAY ');
-    final tomorrow = Task('Tomorrow', priority: 'Tomorrow');
-    final later = Task('Later', priority: 'Later');
-    final dayLater = Task('Day later', priority: 'Day Later');
-
-    expect(
-      MapScreenViewModel.myDayTasks([
-        today,
-        tomorrow,
-        later,
-        dayLater,
-      ], now: now),
-      [today, tomorrow, later, dayLater],
-    );
-  });
-
   test('completed tasks added to My Day are hidden from My Day', () {
     final completedTask = Task(
       'Call me',

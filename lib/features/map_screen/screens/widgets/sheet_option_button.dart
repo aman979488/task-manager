@@ -71,7 +71,7 @@ class SheetOptionButton extends StatelessWidget {
                             fontWeight: selected
                                 ? FontWeight.w600
                                 : FontWeight.normal,
-                            fontSize: 11,
+                            fontSize: 12,
                           ),
                         ),
                       ),

@@ -106,7 +106,7 @@ class _AssigneeTasksViewState extends State<AssigneeTasksView> {
               style: const TextStyle(
                 color: AssigneeTasksView.secondaryColor,
                 fontWeight: FontWeight.bold,
-                fontSize: 18,
+                fontSize: 16,
               ),
             ),
             Text(
@@ -155,7 +155,9 @@ class _AssigneeTasksViewState extends State<AssigneeTasksView> {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
-                      decoration: task.isDone ? TextDecoration.lineThrough : null,
+                      decoration: task.isDone
+                          ? TextDecoration.lineThrough
+                          : null,
                       color: task.isDone ? Colors.grey : Colors.black87,
                     ),
                   ),

@@ -32,7 +32,6 @@ class MapScreenTabViews extends StatelessWidget {
     required this.onRefresh,
     required this.onToggleTaskDone,
     required this.onAddSubstep,
-    required this.onSetTaskTime,
     required this.onEditPriority,
   });
 
@@ -45,7 +44,6 @@ class MapScreenTabViews extends StatelessWidget {
   final void Function(Task task, {bool confirmCompletion, bool keepInMyDay})
   onToggleTaskDone;
   final void Function(Task task) onAddSubstep;
-  final Future<void> Function(Task task) onSetTaskTime;
   final void Function(BuildContext badgeContext, Task task) onEditPriority;
 
   Widget _refreshableScrollView(Widget child) {
@@ -79,7 +77,6 @@ class MapScreenTabViews extends StatelessWidget {
     bool priorityEditable = true,
     bool readOnly = false,
     int? taskNameMaxLines,
-    VoidCallback? onReadOnlyAction,
   }) {
     return MapTaskListItem(
       task: task,
@@ -102,7 +99,6 @@ class MapScreenTabViews extends StatelessWidget {
         keepInMyDay: keepInMyDay,
       ),
       onAddSubtask: () => onAddSubstep(task),
-      onReadOnlyAction: onReadOnlyAction,
       onToggleSelection: () => viewModel.toggleTaskSelection(task),
       onOpen: () {
         if (viewModel.isSelectionMode) {
@@ -129,7 +125,6 @@ class MapScreenTabViews extends StatelessWidget {
     bool readOnly = false,
     String? viewType,
     int? taskNameMaxLines,
-    VoidCallback? onReadOnlyAction,
   }) {
     final effectiveViewType = viewType ?? viewModel.viewType;
     if (effectiveViewType == 'Detailed list') {
@@ -149,7 +144,6 @@ class MapScreenTabViews extends StatelessWidget {
             priorityEditable: priorityEditable,
             readOnly: readOnly,
             taskNameMaxLines: taskNameMaxLines,
-            onReadOnlyAction: onReadOnlyAction,
           ),
           Container(
             height: 1,
@@ -173,7 +167,6 @@ class MapScreenTabViews extends StatelessWidget {
       priorityEditable: priorityEditable,
       readOnly: readOnly,
       taskNameMaxLines: taskNameMaxLines,
-      onReadOnlyAction: onReadOnlyAction,
     );
   }
 
@@ -341,7 +334,7 @@ class MapScreenTabViews extends StatelessWidget {
                   task.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13),
+                  style: const TextStyle(fontSize: 14),
                 ),
                 trailing: IconButton(
                   tooltip: 'Add to My Day',
@@ -363,7 +356,9 @@ class MapScreenTabViews extends StatelessWidget {
             builder: (_) => DoneTasksView(
               tasks: visibleDoneTasks,
               viewType: viewModel.viewType,
-              onEditTaskTime: onSetTaskTime,
+              zoom: viewModel.zoom,
+              taskBuilder: (task, index) =>
+                  _buildTaskItem(task, index, readOnly: true),
               calendarBuilder: (tasks) =>
                   _buildCalendarView(tasks, readOnly: true),
               refreshable: _refreshableScrollView,

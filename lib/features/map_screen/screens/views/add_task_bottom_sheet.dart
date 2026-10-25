@@ -679,7 +679,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
                                                   title: Text(
                                                     name,
                                                     style: const TextStyle(
-                                                      fontSize: 13,
+                                                      fontSize: 14,
                                                     ),
                                                   ),
                                                   onTap: () => onSelected(name),

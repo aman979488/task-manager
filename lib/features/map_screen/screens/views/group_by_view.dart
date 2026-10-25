@@ -25,14 +25,9 @@ class GroupByView extends StatefulWidget {
   State<GroupByView> createState() => _GroupByViewState();
 }
 
-class _GroupByViewState extends State<GroupByView>
-    with AutomaticKeepAliveClientMixin<GroupByView> {
-  @override
-  bool get wantKeepAlive => true;
-
+class _GroupByViewState extends State<GroupByView> {
   @override
   Widget build(BuildContext context) {
-    super.build(context);
     if (widget.groups.isEmpty) {
       return widget.refreshable(
         ListView(
