@@ -27,9 +27,17 @@ import 'floating_metadata_sheet.dart';
 class AddTaskBottomSheet extends StatefulWidget {
   const AddTaskBottomSheet({super.key});
 
-  static Future<void> show(BuildContext context) {
+  static Future<void> show(BuildContext context, {String? initialAssignee}) {
     final addTaskViewModel = context.read<AddTaskViewModel>();
     final mapScreenViewModel = context.read<MapScreenViewModel>();
+
+    addTaskViewModel.clear();
+    if (initialAssignee?.trim().isNotEmpty == true) {
+      addTaskViewModel.setValue(
+        FloatingSheetType.assign,
+        initialAssignee!.trim(),
+      );
+    }
 
     return showModalBottomSheet<void>(
       context: context,
@@ -58,6 +66,7 @@ class AddTaskBottomSheet extends StatefulWidget {
       ),
     ).whenComplete(() {
       FloatingMetadataSheet.hide();
+      addTaskViewModel.clear();
       if (!kIsWeb) {
         SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
       }
@@ -368,14 +377,19 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       closeOnSelect: isMulti,
       selectedValues: currentSelections,
       focusNodeToKeep: _focusNode,
+      searchQuery: () => _mentionQuery ?? '',
       onFlashMessage: type == FloatingSheetType.remind
           ? () => _openFlashCompose(removeMention: _mentionSymbol == '*')
           : null,
       onSelected: (val) {
-        if (type == FloatingSheetType.assign) {
-          addVm.addAssignee(val);
+        if (_mentionQuery != null && _mentionStart >= 0) {
+          unawaited(_completeMention(val));
         } else {
-          _onMetadataChanged(type, val);
+          if (type == FloatingSheetType.assign) {
+            addVm.addAssignee(val);
+          } else {
+            _onMetadataChanged(type, val);
+          }
         }
       },
     );

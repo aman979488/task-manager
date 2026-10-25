@@ -69,10 +69,16 @@ class AppRouter {
           final assigneeName = extra['assigneeName'] as String? ?? '';
           final tasks = extra['tasks'] as List<Task>? ?? [];
           final onOpenTask = extra['onOpenTask'] as void Function(Task);
+          final onToggleTaskDone =
+              extra['onToggleTaskDone'] as void Function(Task)? ?? (_) {};
+          final onAddTask =
+              extra['onAddTask'] as Future<List<Task>> Function()?;
           return AssigneeTasksView(
             assigneeName: assigneeName,
             tasks: tasks,
             onOpenTask: onOpenTask,
+            onToggleTaskDone: onToggleTaskDone,
+            onAddTask: onAddTask,
           );
         },
       ),

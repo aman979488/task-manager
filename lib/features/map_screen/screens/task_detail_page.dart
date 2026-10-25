@@ -34,7 +34,7 @@ class TaskDetailPage extends StatefulWidget {
 }
 
 class _TaskDetailPageState extends State<TaskDetailPage> {
-  final TaskAssignmentNotificationService _assignmentNotificationService =
+  late final TaskAssignmentNotificationService _assignmentNotificationService =
       TaskAssignmentNotificationService();
   OverlayEntry? _overlayEntry;
   late TextEditingController _noteController;
@@ -78,7 +78,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   void dispose() {
     _hideOverlay();
     task.note = _noteController.text;
-    task.title = _titleController.text;
     _noteController.dispose();
     _stepController.dispose();
     _stepFocusNode.dispose();
@@ -270,6 +269,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ListTile(title: Text("Later")),
             ListTile(title: Text("Process")),
             ListTile(title: Text("Hold")),
+            ListTile(title: Text("Monitor")),
             ListTile(title: Text("Free")),
           ];
         case 'reminder':
@@ -287,6 +287,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
           ];
         case 'assignee':
+        case 'monitor':
           if (assignees == null || assignees.isEmpty) {
             return const [
               ListTile(
@@ -322,6 +323,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
     final bool hasSearchBar =
         resolvedKey == 'assignee' ||
+        resolvedKey == 'monitor' ||
         resolvedKey == 'workType' ||
         resolvedKey == 'clientName' ||
         resolvedKey == 'refProject';
@@ -343,13 +345,27 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             final menuWidth = (constraints.maxWidth - horizontalPadding * 2)
                 .clamp(0.0, maxMenuWidth)
                 .toDouble();
-            final menuTop =
-                currentButtonPosition.dy + button.size.height + verticalPadding;
+            final buttonTop = currentButtonPosition.dy;
+            final buttonBottom = buttonTop + button.size.height;
             final spaceBelow =
-                (constraints.maxHeight - menuTop - verticalPadding)
+                (constraints.maxHeight - buttonBottom - verticalPadding * 2)
                     .clamp(0.0, constraints.maxHeight)
                     .toDouble();
-            final menuMaxHeight = spaceBelow;
+            final spaceAbove = (buttonTop - verticalPadding * 2)
+                .clamp(0.0, constraints.maxHeight)
+                .toDouble();
+            final desiredMenuHeight =
+                (hasSearchBar ? 72.0 : 0.0) +
+                (tileWidgets.length.clamp(0, visibleOptionCount) *
+                    optionRowHeight);
+            final openAbove =
+                spaceBelow < desiredMenuHeight && spaceAbove > spaceBelow;
+            final menuMaxHeight = openAbove ? spaceAbove : spaceBelow;
+            final menuTop = openAbove
+                ? (buttonTop - menuMaxHeight - verticalPadding)
+                      .clamp(verticalPadding, constraints.maxHeight)
+                      .toDouble()
+                : buttonBottom + verticalPadding;
             final maxOptionListHeight =
                 (menuMaxHeight - (hasSearchBar ? 72 : 0))
                     .clamp(0.0, optionRowHeight * visibleOptionCount)
@@ -569,11 +585,22 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   }
 
   void _saveTitle(String value) {
-    final text = value.trim();
-    if (text.isEmpty) return;
+    _commitTitlePrefix(value);
+  }
+
+  void _commitTitlePrefix(String value) {
+    final prefix = value.trim();
+    if (prefix.isEmpty) {
+      setState(() {
+        _titleController.text = task.title;
+        _isEditingTitle = false;
+      });
+      return;
+    }
+    final updatedTitle = '$prefix ${task.title}'.trim();
     setState(() {
-      task.title = text;
-      _titleController.text = text;
+      task.title = updatedTitle;
+      _titleController.text = updatedTitle;
       _isEditingTitle = false;
     });
     widget.onChanged();
@@ -743,7 +770,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           width: isSelected ? 2 : 1,
         ),
       ),
-      child: child,
+      child: Material(color: Colors.transparent, child: child),
     );
   }
 
@@ -799,12 +826,17 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   Future<void> _saveTask() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
-    task
-      ..title = _titleController.text
-      ..note = _noteController.text;
+    if (_isEditingTitle) {
+      _commitTitlePrefix(_titleController.text);
+    }
+    task.note = _noteController.text;
     try {
       await widget.onSave();
       if (!mounted) return;
+      setState(() {
+        _isEditingTitle = false;
+        _titleController.text = task.title;
+      });
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(const SnackBar(content: Text('Task saved')));
@@ -936,38 +968,101 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: _isEditingTitle
-                                ? TextField(
-                                    controller: _titleController,
-                                    autofocus: true,
-                                    decoration: const InputDecoration(
-                                      border: InputBorder.none,
-                                    ),
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    onSubmitted: _saveTitle,
+                                ? Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          left: 4,
+                                          bottom: 6,
+                                        ),
+                                        child: Text(
+                                          capitalizeFirstCharacter(task.title),
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w600,
+                                            decoration: task.isDone
+                                                ? TextDecoration.lineThrough
+                                                : TextDecoration.none,
+                                          ),
+                                        ),
+                                      ),
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: secondaryColor,
+                                            width: 2,
+                                          ),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 10,
+                                        ),
+                                        child: TextField(
+                                          key: const ValueKey(
+                                            'task-title-input',
+                                          ),
+                                          controller: _titleController,
+                                          autofocus: true,
+                                          decoration: const InputDecoration(
+                                            hintText: 'Add to task name',
+                                            isDense: true,
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                                  horizontal: 0,
+                                                  vertical: 0,
+                                                ),
+                                            border: InputBorder.none,
+                                            enabledBorder: InputBorder.none,
+                                            focusedBorder: InputBorder.none,
+                                          ),
+                                          style: const TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          onSubmitted: _saveTitle,
+                                        ),
+                                      ),
+                                    ],
                                   )
-                                : GestureDetector(
+                                : InkWell(
                                     onTap: () {
                                       setState(() {
                                         _isEditingTitle = true;
-                                        _titleController.text = task.title;
+                                        _titleController.clear();
                                       });
                                     },
-                                    child: Text(
-                                      capitalizeFirstCharacter(task.title),
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w600,
-                                        decoration: task.isDone
-                                            ? TextDecoration.lineThrough
-                                            : TextDecoration.none,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: Colors.grey.shade300,
+                                          width: 1.2,
+                                        ),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 10,
+                                      ),
+                                      child: Text(
+                                        capitalizeFirstCharacter(task.title),
+                                        style: TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.w600,
+                                          decoration: task.isDone
+                                              ? TextDecoration.lineThrough
+                                              : TextDecoration.none,
+                                        ),
                                       ),
                                     ),
                                   ),
                           ),
-                          _priorityBadgeHeader(),
                         ],
                       ),
 
@@ -1038,7 +1133,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                   "Add step",
                                   style: TextStyle(
                                     color: secondaryColor,
-                                    fontSize: 15,
+                                    fontSize: 16,
                                   ),
                                 ),
                               ],
@@ -1291,39 +1386,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         const SizedBox(height: 6),
                         TextField(
                           controller: _noteController,
-                          minLines: 3,
-                          maxLines: 6,
-                          textAlignVertical: TextAlignVertical.top,
+                          maxLines: 12,
                           onChanged: (value) {
                             task.note = value;
                             widget.onChanged();
                           },
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             hintText: "Add note",
-                            hintStyle: TextStyle(color: Colors.grey.shade500),
-                            filled: true,
-                            fillColor: Colors.white,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: Colors.grey.shade300,
-                                width: 1,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Color(0xFF6B5800),
-                                width: 1.5,
-                              ),
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                            border: OutlineInputBorder(),
                           ),
                         ),
                       ],

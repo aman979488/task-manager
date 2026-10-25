@@ -218,6 +218,7 @@ class _MyDayViewState extends State<MyDayView> {
         Expanded(
           child: RefreshIndicator(
             onRefresh: widget.onRefresh,
+            color: const Color(0xFFFF6B22),
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final dayWidth =
@@ -679,6 +680,7 @@ class _MyDayViewState extends State<MyDayView> {
                     )
                   : RefreshIndicator(
                       onRefresh: widget.onRefresh,
+                      color: const Color(0xFFFF6B22),
                       child: calendarTasks.isEmpty
                           ? ListView(
                               padding: const EdgeInsets.only(bottom: 76),

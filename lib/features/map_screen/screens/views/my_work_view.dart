@@ -36,6 +36,8 @@ class _MyWorkViewState extends State<MyWorkView>
     'Day Later Works',
     'Process Works',
     'Hold Works',
+    'Monitor Works',
+    'Free Works',
   ];
 
   List<String> get _sectionNames => widget.sectionNames ?? _defaultSectionNames;
@@ -97,12 +99,16 @@ class _MyWorkViewState extends State<MyWorkView>
       _blankTapCount = 0;
       if (!mounted || populatedNames.isEmpty || tapCount < 2) return;
 
-      final sectionIndex = tapCount >= 3 ? 1 : 0;
-      if (sectionIndex >= populatedNames.length) return;
+      final sectionNames = tapCount >= 3
+          ? populatedNames.take(2).toList()
+          : populatedNames.take(1).toList();
+      if (sectionNames.isEmpty) return;
       setState(() {
-        final section = populatedNames[sectionIndex];
-        if (!_expandedSections.add(section)) {
-          _expandedSections.remove(section);
+        final allExpanded = sectionNames.every(_expandedSections.contains);
+        if (allExpanded) {
+          _expandedSections.removeAll(sectionNames);
+        } else {
+          _expandedSections.addAll(sectionNames);
         }
       });
       _saveExpandedSections();
@@ -130,7 +136,10 @@ class _MyWorkViewState extends State<MyWorkView>
 
   Color _sectionColor(String section) {
     switch (section) {
+      case 'Completed Tasks':
+        return Colors.green.shade700;
       case 'Urgent Works':
+      case 'Monitor Works':
         return const Color(0xFF9B5965);
       case 'IMP Works':
         return const Color(0xFF526D8A);

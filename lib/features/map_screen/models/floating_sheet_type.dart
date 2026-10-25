@@ -6,5 +6,5 @@ enum FloatingSheetType {
   workType,
   folder,
   clientName,
-  refProject, // 🚀 NAYA
+  refProject,
 }

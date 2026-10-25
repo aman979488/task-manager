@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -36,6 +37,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   late final bool _hasAdminAccess;
   final TextEditingController _taskSearchController = TextEditingController();
   bool _hasBoundViewModel = false;
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -92,21 +94,39 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final authVm = Provider.of<AuthViewModel>(context, listen: false);
     try {
       await vm.refreshTasks(authVm);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Data refreshed successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) _showMessage('Could not refresh tasks: $e');
     }
   }
 
   Future<void> _openTaskDetail(Task task) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
     FloatingMetadataSheet.hide();
     final vm = Provider.of<MapScreenViewModel>(context, listen: false);
-    await context.push<void>(
-      '/task',
-      extra: {'task': task, 'onSave': () => vm.updateTask(task)},
-    );
-    if (!mounted) return;
-    final authVm = Provider.of<AuthViewModel>(context, listen: false);
-    await vm.refreshTasks(authVm);
+    try {
+      await context.push<void>(
+        '/task',
+        extra: {'task': task, 'onSave': () => vm.updateTask(task)},
+      );
+      if (!mounted) return;
+      final authVm = Provider.of<AuthViewModel>(context, listen: false);
+      await vm.refreshTasks(authVm);
+    } finally {
+      if (mounted) {
+        _isNavigating = false;
+      }
+    }
   }
 
   Future<void> _promptAddSubstep(Task task) async {
@@ -294,7 +314,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             child: MapScreenTabViews(
               tabController: _tabController,
               hasAdminAccess: _hasAdminAccess,
-
               viewModel: viewModel,
               authViewModel: authViewModel,
               onOpenTask: _openTaskDetail,

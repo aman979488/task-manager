@@ -205,6 +205,7 @@ class MapScreenViewModel extends ChangeNotifier {
     String? folder,
     String? clientName,
     String? refProject,
+    String? monitor,
   }) async {
     if (_isAddingTask) return false;
     final cleanTitle = title.trim();
@@ -224,6 +225,7 @@ class MapScreenViewModel extends ChangeNotifier {
       folder: folder,
       clientName: clientName,
       refProject: refProject,
+      monitor: monitor,
       createdBy: authViewModel.actorMetadata,
       assigneeUid: assignee,
       priorityUpdatedAt: priority == null
@@ -494,7 +496,12 @@ class MapScreenViewModel extends ChangeNotifier {
           (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
           (myUid.isNotEmpty &&
               (assignee.contains(myUid) || assigneeUid.contains(myUid)));
-      return isCreator || isAssignedToMe;
+      final monitor = (task.monitor ?? '').trim().toLowerCase();
+      final isMonitoredByMe =
+          (myName.isNotEmpty && monitor.contains(myName)) ||
+          (myEmail.isNotEmpty && monitor.contains(myEmail)) ||
+          (myUid.isNotEmpty && monitor.contains(myUid));
+      return isCreator || isAssignedToMe || isMonitoredByMe;
     }).toList();
   }
 
@@ -504,7 +511,6 @@ class MapScreenViewModel extends ChangeNotifier {
 
   static Map<String, List<Task>> sectionsForWork(List<Task> myTasks) {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
     final pending = myTasks.where((task) => !task.isDone);
     List<Task> withPriority(String priority) => pending
         .where((task) => task.priority?.trim().toLowerCase() == priority)
@@ -519,27 +525,22 @@ class MapScreenViewModel extends ChangeNotifier {
           }.contains(task.priority?.trim().toLowerCase()),
         )
         .toList();
-    final scheduled = pending
-        .where((task) => task.priority?.trim().isEmpty ?? true)
-        .map(
-          (task) => (task: task, date: DateTime.tryParse(task.deadline ?? '')),
-        )
-        .where((entry) => entry.date != null)
+    final monitorWorks = pending
+        .where((task) => task.priority?.trim().toLowerCase() == 'monitor')
         .toList();
-    final todayWorks = <Task>{
-      ...scheduled
-          .where(
-            (entry) =>
-                entry.date!.year == today.year &&
-                entry.date!.month == today.month &&
-                entry.date!.day == today.day,
-          )
-          .map((entry) => entry.task),
-      ...pending.where(
-        (task) => task.priority?.trim().toLowerCase() == 'today',
-      ),
-    }.toList();
+    final freeWorks = pending.where((task) {
+      final priority = task.priority?.trim().toLowerCase();
+      return priority == null || priority.isEmpty || priority == 'free';
+    }).toList();
+    final todayWorks = withPriority('today');
     final overdueWorks = pending.where((task) {
+      final priority = task.priority?.trim().toLowerCase();
+      if (priority == null ||
+          priority.isEmpty ||
+          priority == 'free' ||
+          priority == 'monitor') {
+        return false;
+      }
       final date = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
       return date != null &&
           date.isBefore(now) &&
@@ -547,20 +548,9 @@ class MapScreenViewModel extends ChangeNotifier {
           !todayWorks.contains(task);
     }).toList();
     bool isOverdue(Task task) => overdueWorks.contains(task);
-    final tomorrow = DateTime(now.year, now.month, now.day + 1);
-    final tomorrowWorks = <Task>{
-      ...scheduled
-          .where(
-            (entry) =>
-                entry.date!.year == tomorrow.year &&
-                entry.date!.month == tomorrow.month &&
-                entry.date!.day == tomorrow.day,
-          )
-          .map((entry) => entry.task),
-      ...pending.where(
-        (task) => task.priority?.trim().toLowerCase() == 'tomorrow',
-      ),
-    }.where((task) => !isOverdue(task)).toList();
+    final tomorrowWorks = withPriority('tomorrow')
+        .where((task) => !isOverdue(task))
+        .toList();
     return {
       'Urgent Works': urgentWorks,
       'Today Works': todayWorks,
@@ -581,6 +571,8 @@ class MapScreenViewModel extends ChangeNotifier {
       'Hold Works': withPriority('hold')
           .where((task) => !isOverdue(task))
           .toList(),
+      'Monitor Works': monitorWorks,
+      'Free Works': freeWorks,
     };
   }
 
@@ -708,21 +700,27 @@ class MapScreenViewModel extends ChangeNotifier {
     }
   }
 
-  static int _priorityOrder(String? priority) => switch (priority) {
-    'U1' => 1,
-    'U2' => 2,
-    'U3' => 3,
-    'Urgent' => 4,
-    'IMP' => 5,
-    'Today' => 6,
-    'Tomorrow' => 7,
-    'Day Later' => 8,
-    'Later' => 9,
-    'Process' => 10,
-    'Hold' => 11,
-    'Free' => 12,
-    _ => 100,
-  };
+  static int _priorityOrder(String? priority) {
+    final normalized = priority?.trim();
+    if (normalized == null || normalized.isEmpty) return 100;
+
+    return switch (normalized.toLowerCase()) {
+      'u1' => 1,
+      'u2' => 2,
+      'u3' => 3,
+      'urgent' => 4,
+      'monitor' => 5,
+      'imp' => 6,
+      'today' => 7,
+      'tomorrow' => 8,
+      'day later' => 9,
+      'later' => 10,
+      'process' => 11,
+      'hold' => 12,
+      'free' => 13,
+      _ => 100,
+    };
+  }
 
   @override
   void dispose() {

@@ -142,4 +142,49 @@ void main() {
     await tester.tap(find.byTooltip('Set task time'));
     expect(timerActionCalled, isTrue);
   });
+
+  testWidgets('priority badge stays compact and fits text at 140% zoom', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.4)),
+          child: Scaffold(
+            body: MapTaskListItem(
+              task: Task('Task', priority: 'Tomorrow'),
+              viewType: 'Detailed list',
+              dense: true,
+              isSelected: false,
+              taskName: 'Task',
+              description: null,
+              onEditPriority: (_) {},
+              onToggleDone: () {},
+              onToggleSelection: () {},
+              onOpen: () {},
+              onAddSubtask: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final badge = find
+        .ancestor(of: find.text('Tomorrow'), matching: find.byType(Container))
+        .first;
+    final badgeBox = tester.getRect(badge);
+    final textBox = tester.getRect(find.text('Tomorrow'));
+
+    expect(badgeBox.width, lessThanOrEqualTo(60));
+    expect(badgeBox.height, lessThanOrEqualTo(22));
+    expect(
+      find.ancestor(
+        of: find.text('Tomorrow'),
+        matching: find.byType(FittedBox),
+      ),
+      findsOneWidget,
+    );
+    expect((badgeBox.center.dy - textBox.center.dy).abs(), lessThan(1));
+    expect(tester.takeException(), isNull);
+  });
 }

@@ -116,4 +116,39 @@ void main() {
     expect(find.text('TOMORROW'), findsOneWidget);
     expect(find.text('LATER'), findsOneWidget);
   });
+
+  testWidgets('assignee task view adds and displays a task for that assignee', (
+    tester,
+  ) async {
+    final existingTask = Task(
+      'Existing task',
+      priority: 'Today',
+      assignee: 'Aman',
+    );
+    final newTask = Task('New task', priority: 'Monitor', assignee: 'Aman');
+    var addedTask = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssigneeTasksView(
+          assigneeName: 'Aman',
+          tasks: [existingTask],
+          onOpenTask: (_) {},
+          onAddTask: () async {
+            addedTask = true;
+            return [existingTask, newTask];
+          },
+        ),
+      ),
+    );
+
+    expect(find.byType(FloatingActionButton), findsOneWidget);
+    expect(find.byTooltip('Add task for Aman'), findsOneWidget);
+    await tester.tap(find.byTooltip('Add task for Aman'));
+    await tester.pumpAndSettle();
+
+    expect(addedTask, isTrue);
+    expect(find.text('2 Pending • 0 Done'), findsOneWidget);
+    expect(find.text('MONITOR'), findsOneWidget);
+  });
 }

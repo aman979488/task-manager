@@ -239,9 +239,41 @@ void main() {
     );
   });
 
+  test('monitor priority gets its own My Work section and not tomorrow', () {
+    final monitorTask = Task('Monitor task', priority: 'Monitor');
+    final tomorrowTask = Task('Tomorrow task', priority: 'Tomorrow');
+
+    final sections = MapScreenViewModel.sectionsForWork([
+      monitorTask,
+      tomorrowTask,
+    ]);
+
+    expect(sections['Monitor Works'], [monitorTask]);
+    expect(sections['Tomorrow Works'], [tomorrowTask]);
+    expect(sections.keys.toList(), [
+      'Urgent Works',
+      'Today Works',
+      'Overdue Works',
+      'IMP Works',
+      'Tomorrow Works',
+      'Later Works',
+      'Day Later Works',
+      'Process Works',
+      'Hold Works',
+      'Monitor Works',
+      'Free Works',
+    ]);
+  });
+
   test('my work sections order overdue after today and before IMP', () {
     final urgent = Task('Urgent task', priority: 'U1');
     final today = Task('Today task', priority: 'Today');
+    final unprioritizedOverdue = Task(
+      'Free task',
+      deadline: DateTime.now()
+          .subtract(const Duration(days: 1))
+          .toIso8601String(),
+    );
     final overdueImp = Task(
       'Overdue IMP task',
       priority: 'IMP',
@@ -257,6 +289,7 @@ void main() {
     final sections = MapScreenViewModel.sectionsForWork([
       urgent,
       today,
+      unprioritizedOverdue,
       overdueImp,
       imp,
       tomorrow,
@@ -274,8 +307,40 @@ void main() {
       'Day Later Works',
       'Process Works',
       'Hold Works',
+      'Monitor Works',
+      'Free Works',
     ]);
     expect(sections['Overdue Works'], [overdueImp]);
     expect(sections['IMP Works'], [imp]);
+    expect(sections['Free Works'], [unprioritizedOverdue]);
+  });
+
+  test('changing priority regroups overdue tasks into the matching section', () {
+    final overdue = Task(
+      'Overdue task',
+      priority: 'Later',
+      deadline: DateTime.now()
+          .subtract(const Duration(days: 1))
+          .toIso8601String(),
+    );
+
+    var sections = MapScreenViewModel.sectionsForWork([overdue]);
+    expect(sections['Overdue Works'], [overdue]);
+    expect(sections['Later Works'], isEmpty);
+
+    overdue.priority = 'Monitor';
+    sections = MapScreenViewModel.sectionsForWork([overdue]);
+    expect(sections['Overdue Works'], isEmpty);
+    expect(sections['Monitor Works'], [overdue]);
+
+    overdue.priority = 'Free';
+    sections = MapScreenViewModel.sectionsForWork([overdue]);
+    expect(sections['Overdue Works'], isEmpty);
+    expect(sections['Free Works'], [overdue]);
+
+    overdue.priority = 'Today';
+    sections = MapScreenViewModel.sectionsForWork([overdue]);
+    expect(sections['Overdue Works'], isEmpty);
+    expect(sections['Today Works'], [overdue]);
   });
 }

@@ -144,29 +144,19 @@ class MapTaskListItem extends StatelessWidget {
                 : const Color(0xFF6B5800),
           ),
         ),
-        child: compact
-            ? Text(
-                priority != null && priority.isNotEmpty ? priority : 'None',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                ),
-              )
-            : FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  priority != null && priority.isNotEmpty ? priority : 'None',
-                  maxLines: 1,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF6B5800),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            priority != null && priority.isNotEmpty ? priority : 'None',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: compact ? 10 : 13,
+              color: compact ? color : const Color(0xFF6B5800),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -177,6 +167,7 @@ class MapTaskListItem extends StatelessWidget {
       case 'u2':
       case 'u3':
       case 'urgent':
+      case 'monitor':
         return const Color(0xFF9B5965);
       case 'imp':
         return const Color(0xFF526D8A);

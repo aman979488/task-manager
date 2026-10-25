@@ -64,10 +64,10 @@ class AuthViewModel extends ChangeNotifier {
       return switch (error.code) {
         'invalid-credential' ||
         'wrong-password' ||
-        'user-not-found' => 'Email ya password galat hai',
-        'invalid-email' => 'Email sahi format mein daal',
-        'too-many-requests' => 'Bahut koshish ho gayi, thodi der baad try kar',
-        'network-request-failed' => 'Internet check kar',
+        'user-not-found' => 'Wrong Email or Password',
+        'invalid-email' => 'The Format are Wrong',
+        'too-many-requests' => 'Please Try Again',
+        'network-request-failed' => 'Check Your Internet',
         'user-disabled' => 'Yeh account disable hai',
         _ => 'Login nahi hua (${error.code})',
       };

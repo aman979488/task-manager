@@ -19,6 +19,7 @@ import 'my_day_view.dart';
 import 'my_work_task_results_view.dart';
 import 'my_work_view.dart';
 import 'overdue_tasks_view.dart';
+import 'add_task_bottom_sheet.dart';
 
 class MapScreenTabViews extends StatelessWidget {
   const MapScreenTabViews({
@@ -60,6 +61,7 @@ class MapScreenTabViews extends StatelessWidget {
       },
       child: RefreshIndicator(
         onRefresh: onRefresh,
+        color: const Color(0xFFFF6B22),
         child: Scrollbar(thumbVisibility: kIsWeb, child: child),
       ),
     );
@@ -274,6 +276,18 @@ class MapScreenTabViews extends StatelessWidget {
     );
   }
 
+  Future<List<Task>> _addTaskForAssignee(
+    BuildContext context,
+    String assigneeName,
+  ) async {
+    await AddTaskBottomSheet.show(context, initialAssignee: assigneeName);
+    await viewModel.refreshTasks(authViewModel);
+    return MapScreenViewModel.assignedTasksByName(
+          viewModel.tasks,
+        )[assigneeName] ??
+        <Task>[];
+  }
+
   @override
   Widget build(BuildContext context) {
     final allTasks = viewModel.tasks;
@@ -367,6 +381,8 @@ class MapScreenTabViews extends StatelessWidget {
                   'assigneeName': name,
                   'tasks': tasks,
                   'onOpenTask': onOpenTask,
+                  'onToggleTaskDone': onToggleTaskDone,
+                  'onAddTask': () => _addTaskForAssignee(assignContext, name),
                 },
               ),
               onOpenTask: onOpenTask,
@@ -379,8 +395,12 @@ class MapScreenTabViews extends StatelessWidget {
                 tasks: visibleAllTasks,
                 viewType: viewModel.viewType,
                 zoom: viewModel.zoom,
-                taskBuilder: (task, index) =>
-                    _buildTaskItem(task, index, dense: true),
+                taskBuilder: (task, index) => _buildTaskItem(
+                  task,
+                  index,
+                  dense: true,
+                  confirmCompletion: true,
+                ),
                 calendarBuilder: _buildCalendarView,
                 refreshable: _refreshableScrollView,
               ),
@@ -404,6 +424,8 @@ class MapScreenTabViews extends StatelessWidget {
                         'assigneeName': name,
                         'tasks': tasks,
                         'onOpenTask': onOpenTask,
+                        'onAddTask': () =>
+                            _addTaskForAssignee(groupByContext, name),
                       },
                     ),
                     onOpenTask: onOpenTask,
@@ -420,6 +442,8 @@ class MapScreenTabViews extends StatelessWidget {
                       'assigneeName': name,
                       'tasks': tasks,
                       'onOpenTask': onOpenTask,
+                      'onAddTask': () =>
+                          _addTaskForAssignee(groupByContext, name),
                     },
                   ),
                   onOpenTask: onOpenTask,
@@ -432,7 +456,8 @@ class MapScreenTabViews extends StatelessWidget {
               tasks: visibleOverdueTasks,
               viewType: viewModel.viewType,
               zoom: viewModel.zoom,
-              taskBuilder: (task, index) => _buildTaskItem(task, index),
+              taskBuilder: (task, index) =>
+                  _buildTaskItem(task, index, confirmCompletion: true),
               calendarBuilder: _buildCalendarView,
               refreshable: _refreshableScrollView,
             ),
