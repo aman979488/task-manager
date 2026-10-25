@@ -435,7 +435,11 @@ class MapScreenViewModel extends ChangeNotifier {
     return source.where((task) {
       if (task.isDone) return false;
       if (task.isInMyDay) return true;
-      if (task.priority?.trim().toLowerCase() == 'today') return true;
+      if (const {'today', 'tomorrow', 'later', 'day later'}.contains(
+        task.priority?.trim().toLowerCase(),
+      )) {
+        return true;
+      }
 
       final scheduled = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
       if (scheduled == null) return false;

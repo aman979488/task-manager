@@ -112,6 +112,7 @@ void main() {
     expect(title.maxLines, 1);
     expect(title.overflow, TextOverflow.ellipsis);
   });
+
   testWidgets('read-only task list item can show a timer action', (
     tester,
   ) async {

@@ -17,6 +17,8 @@ class CompactTaskTile extends StatelessWidget {
     required this.onAddSubtask,
     required this.onToggleSelection,
     required this.onOpen,
+    this.trailingActionIcon = Icons.add_circle_outline,
+    this.trailingActionTooltip = 'Add subtask',
   });
 
   final Task task;
@@ -30,6 +32,8 @@ class CompactTaskTile extends StatelessWidget {
   final VoidCallback onAddSubtask;
   final VoidCallback onToggleSelection;
   final VoidCallback onOpen;
+  final IconData trailingActionIcon;
+  final String trailingActionTooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +59,7 @@ class CompactTaskTile extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: dense ? 14 : 16,
+          fontSize: dense ? 13 : 15,
           fontWeight: FontWeight.w600,
           color: const Color(0xFF26364A),
           decoration: task.isDone ? TextDecoration.lineThrough : null,
@@ -73,7 +77,7 @@ class CompactTaskTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: dense ? 10 : 12,
                       color: Colors.blueGrey.shade500,
                       height: 1.25,
                     ),
@@ -91,11 +95,11 @@ class CompactTaskTile extends StatelessWidget {
           priorityBadge,
           SizedBox(width: dense ? 10 : 14),
           IconButton(
-            tooltip: 'Add subtask',
+            tooltip: trailingActionTooltip,
             visualDensity: VisualDensity.compact,
             onPressed: onAddSubtask,
             icon: Icon(
-              Icons.add_circle_outline,
+              trailingActionIcon,
               color: Color(0xFF526D8A),
               size: dense ? 19 : 21,
             ),
