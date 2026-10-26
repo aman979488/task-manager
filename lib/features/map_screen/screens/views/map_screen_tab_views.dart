@@ -42,8 +42,11 @@ class MapScreenTabViews extends StatelessWidget {
   final AuthViewModel authViewModel;
   final void Function(Task task) onOpenTask;
   final Future<void> Function() onRefresh;
-  final void Function(Task task, {bool confirmCompletion, bool keepInMyDay})
-  onToggleTaskDone;
+  final   Future<void> Function(
+    Task task, {
+    bool confirmCompletion,
+    bool keepInMyDay,
+  }) onToggleTaskDone;
   final void Function(Task task) onAddSubstep;
   final Future<void> Function(Task task) onSetTaskTime;
   final void Function(BuildContext badgeContext, Task task) onEditPriority;
@@ -382,6 +385,7 @@ class MapScreenTabViews extends StatelessWidget {
                   'tasks': tasks,
                   'onOpenTask': onOpenTask,
                   'onToggleTaskDone': onToggleTaskDone,
+                  'onAddSubstep': onAddSubstep,
                   'onAddTask': () => _addTaskForAssignee(assignContext, name),
                 },
               ),

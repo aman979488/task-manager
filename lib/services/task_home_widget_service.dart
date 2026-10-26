@@ -4,8 +4,7 @@ import 'package:home_widget/home_widget.dart';
 
 import '../features/map_screen/models/task.dart';
 
-const _widgetProviderName =
-    'com.example.task_manager.TaskManagerWidgetProvider';
+const _widgetProviderName = 'TaskManagerWidgetProvider';
 const _widgetTaskLimit = 3;
 
 Future<void> updateTaskHomeWidget(List<Task> tasks) async {
@@ -37,8 +36,8 @@ Future<void> updateTaskHomeWidget(List<Task> tasks) async {
     }
 
     final updated = await HomeWidget.updateWidget(
-      androidName: _widgetProviderName,
-    );
+  qualifiedAndroidName: _widgetProviderName,
+);
     if (updated != true) {
       debugPrint('Android task widget update was not accepted.');
     }

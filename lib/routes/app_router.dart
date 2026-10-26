@@ -70,7 +70,19 @@ class AppRouter {
           final tasks = extra['tasks'] as List<Task>? ?? [];
           final onOpenTask = extra['onOpenTask'] as void Function(Task);
           final onToggleTaskDone =
-              extra['onToggleTaskDone'] as void Function(Task)? ?? (_) {};
+              extra['onToggleTaskDone']
+                  as Future<void> Function(
+                    Task task, {
+                    bool confirmCompletion,
+                    bool keepInMyDay,
+                  })? ??
+              (
+                Task task, {
+                bool confirmCompletion = false,
+                bool keepInMyDay = false,
+              }) async {};
+          final onAddSubstep =
+              extra['onAddSubstep'] as Future<void> Function(Task)?;
           final onAddTask =
               extra['onAddTask'] as Future<List<Task>> Function()?;
           return AssigneeTasksView(
@@ -78,6 +90,7 @@ class AppRouter {
             tasks: tasks,
             onOpenTask: onOpenTask,
             onToggleTaskDone: onToggleTaskDone,
+            onAddSubstep: onAddSubstep,
             onAddTask: onAddTask,
           );
         },

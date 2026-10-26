@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 
 import '../models/task.dart';
 import '../models/floating_sheet_type.dart';
+import '../utils/task_constants.dart';
 import '../utils/task_title_formatter.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -14,6 +17,7 @@ import '../../../viewmodels/auth_viewmodel.dart';
 import '../services/task_assignment_notification_service.dart';
 import '../models/quick_date_time_option.dart';
 import 'views/date_time_picker_dialog.dart';
+import 'views/task_completion_confirmation_dialog.dart';
 
 class TaskDetailPage extends StatefulWidget {
   final Task task;
@@ -33,7 +37,8 @@ class TaskDetailPage extends StatefulWidget {
   State<TaskDetailPage> createState() => _TaskDetailPageState();
 }
 
-class _TaskDetailPageState extends State<TaskDetailPage> {
+class _TaskDetailPageState extends State<TaskDetailPage>
+    with WidgetsBindingObserver {
   late final TaskAssignmentNotificationService _assignmentNotificationService =
       TaskAssignmentNotificationService();
   OverlayEntry? _overlayEntry;
@@ -51,6 +56,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   // for editing main title
   late TextEditingController _titleController;
+  final GlobalKey _titleInputKey = GlobalKey();
+  Timer? _titleVisibilityTimer;
   bool _isEditingTitle = false;
 
   Task get task => widget.task;
@@ -69,6 +76,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _noteController = TextEditingController(text: task.note);
     _stepController = TextEditingController();
     _titleController = TextEditingController(text: task.title);
@@ -76,6 +84,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _titleVisibilityTimer?.cancel();
     _hideOverlay();
     task.note = _noteController.text;
     _noteController.dispose();
@@ -84,6 +94,33 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     _searchController.dispose();
     _titleController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (!_isEditingTitle ||
+        WidgetsBinding
+                .instance
+                .platformDispatcher
+                .views
+                .first
+                .viewInsets
+                .bottom ==
+            0) {
+      return;
+    }
+
+    _titleVisibilityTimer?.cancel();
+    _titleVisibilityTimer = Timer(const Duration(milliseconds: 120), () {
+      final titleContext = _titleInputKey.currentContext;
+      if (!mounted || titleContext == null) return;
+      Scrollable.ensureVisible(
+        titleContext,
+        alignment: 0.15,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   Future<List<String>> _loadWorkTypesFromFirestore() async {
@@ -258,20 +295,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     List<Widget> tilesFor(String key) {
       switch (key) {
         case 'priority':
-          return const [
-            ListTile(title: Text("U1")),
-            ListTile(title: Text("U2")),
-            ListTile(title: Text("U3")),
-            ListTile(title: Text("IMP")),
-            ListTile(title: Text("Today")),
-            ListTile(title: Text("Tomorrow")),
-            ListTile(title: Text("Day Later")),
-            ListTile(title: Text("Later")),
-            ListTile(title: Text("Process")),
-            ListTile(title: Text("Hold")),
-            ListTile(title: Text("Monitor")),
-            ListTile(title: Text("Free")),
-          ];
+          return TaskConstants.priorityOptions
+              .map((priority) => ListTile(title: Text(priority)))
+              .toList();
         case 'reminder':
         case 'deadline':
           return [
@@ -332,7 +358,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     const double horizontalPadding = 4;
     const double verticalPadding = 8;
     const double optionRowHeight = 56;
-    const int visibleOptionCount = 3;
+    final visibleOptionCount = resolvedKey == 'priority' ? 5 : 3;
 
     _overlayEntry = OverlayEntry(
       builder: (context) {
@@ -374,7 +400,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             return Stack(
               children: [
                 Positioned.fill(
-                  child: const IgnorePointer(child: SizedBox.expand()),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _hideOverlay,
+                    onPanStart: (_) => _hideOverlay(),
+                    child: const SizedBox.expand(),
+                  ),
                 ),
                 Positioned(
                   right: horizontalPadding,
@@ -466,104 +497,94 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                 else
                                   SizedBox(
                                     height: optionListHeight,
-                                    child: NotificationListener<UserScrollNotification>(
-                                      onNotification: (notification) {
-                                        if (notification.direction !=
-                                            ScrollDirection.idle) {
-                                          _hideOverlay();
-                                          return true;
-                                        }
-                                        return false;
-                                      },
-                                      child: ListView(
-                                        padding: EdgeInsets.zero,
-                                        children: filteredTiles.map((tile) {
-                                          return InkWell(
-                                            onTap: () async {
-                                              if (tile is ListTile) {
-                                                final label =
-                                                    (tile.title as Text).data ??
-                                                    '';
+                                    child: ListView(
+                                      padding: EdgeInsets.zero,
+                                      children: filteredTiles.map((tile) {
+                                        return InkWell(
+                                          onTap: () async {
+                                            if (tile is ListTile) {
+                                              final label =
+                                                  (tile.title as Text).data ??
+                                                  '';
 
-                                                if (resolvedKey == 'reminder' ||
-                                                    resolvedKey == 'deadline') {
-                                                  DateTime? computed;
+                                              if (resolvedKey == 'reminder' ||
+                                                  resolvedKey == 'deadline') {
+                                                DateTime? computed;
 
-                                                  if (label
-                                                      .toLowerCase()
-                                                      .contains('custom')) {
-                                                    _hideOverlay();
-                                                    computed =
-                                                        await showDateTimePickerWithTabs(
-                                                          context,
-                                                        );
-                                                  } else {
-                                                    computed =
-                                                        QuickDateTimeOptions.resolve(
-                                                          label,
-                                                        );
-                                                  }
-
-                                                  if (computed != null) {
-                                                    final iso = computed
-                                                        .toIso8601String();
-                                                    setState(() {
-                                                      if (resolvedKey ==
-                                                          'reminder') {
-                                                        task.reminder = iso;
-                                                      } else {
-                                                        task.deadline = iso;
-                                                      }
-                                                    });
-                                                    widget.onChanged();
-                                                  }
+                                                if (label
+                                                    .toLowerCase()
+                                                    .contains('custom')) {
+                                                  _hideOverlay();
+                                                  computed =
+                                                      await showDateTimePickerWithTabs(
+                                                        context,
+                                                      );
                                                 } else {
+                                                  computed =
+                                                      QuickDateTimeOptions.resolve(
+                                                        label,
+                                                      );
+                                                }
+
+                                                if (computed != null) {
+                                                  final iso = computed
+                                                      .toIso8601String();
                                                   setState(() {
-                                                    switch (resolvedKey) {
-                                                      case 'priority':
-                                                        task.priority = label;
-                                                        task.priorityUpdatedAt =
-                                                            DateTime.now()
-                                                                .millisecondsSinceEpoch;
-                                                        break;
-                                                      case 'assignee':
-                                                        task.assignee = label;
-                                                        _sendTaskAssignmentNotification(
-                                                          label,
-                                                          task.title,
-                                                          context,
-                                                        );
-                                                        break;
-                                                      case 'workType':
-                                                        task.workType = label;
-                                                        break;
-                                                      case 'clientName':
-                                                        task.clientName = label;
-                                                        break;
-                                                      case 'refProject':
-                                                        task.refProject = label;
-                                                        break;
-                                                      case 'folder':
-                                                        task.folder = label;
-                                                        break;
-                                                      default:
-                                                        break;
+                                                    if (resolvedKey ==
+                                                        'reminder') {
+                                                      task.reminder = iso;
+                                                    } else {
+                                                      task.deadline = iso;
                                                     }
                                                   });
                                                   widget.onChanged();
                                                 }
-
-                                                _searchController.clear();
-                                                _searchQuery = '';
-                                                _hideOverlay();
                                               } else {
-                                                _hideOverlay();
+                                                setState(() {
+                                                  switch (resolvedKey) {
+                                                    case 'priority':
+                                                      task.priority = label;
+                                                      task.priorityUpdatedAt =
+                                                          DateTime.now()
+                                                              .millisecondsSinceEpoch;
+                                                      break;
+                                                    case 'assignee':
+                                                      task.assignee = label;
+                                                      _sendTaskAssignmentNotification(
+                                                        label,
+                                                        task.title,
+                                                        context,
+                                                      );
+                                                      break;
+                                                    case 'workType':
+                                                      task.workType = label;
+                                                      break;
+                                                    case 'clientName':
+                                                      task.clientName = label;
+                                                      break;
+                                                    case 'refProject':
+                                                      task.refProject = label;
+                                                      break;
+                                                    case 'folder':
+                                                      task.folder = label;
+                                                      break;
+                                                    default:
+                                                      break;
+                                                  }
+                                                });
+                                                widget.onChanged();
                                               }
-                                            },
-                                            child: tile,
-                                          );
-                                        }).toList(),
-                                      ),
+
+                                              _searchController.clear();
+                                              _searchQuery = '';
+                                              _hideOverlay();
+                                            } else {
+                                              _hideOverlay();
+                                            }
+                                          },
+                                          child: tile,
+                                        );
+                                      }).toList(),
                                     ),
                                   ),
                               ],
@@ -585,19 +606,19 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   }
 
   void _saveTitle(String value) {
-    _commitTitlePrefix(value);
+    _commitTitleSuffix(value);
   }
 
-  void _commitTitlePrefix(String value) {
-    final prefix = value.trim();
-    if (prefix.isEmpty) {
+  void _commitTitleSuffix(String value) {
+    final suffix = value.trim();
+    if (suffix.isEmpty) {
       setState(() {
         _titleController.text = task.title;
         _isEditingTitle = false;
       });
       return;
     }
-    final updatedTitle = '$prefix ${task.title}'.trim();
+    final updatedTitle = '${task.title.trim()} $suffix'.trim();
     setState(() {
       task.title = updatedTitle;
       _titleController.text = updatedTitle;
@@ -827,7 +848,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     if (_isSaving) return;
     setState(() => _isSaving = true);
     if (_isEditingTitle) {
-      _commitTitlePrefix(_titleController.text);
+      _commitTitleSuffix(_titleController.text);
     }
     task.note = _noteController.text;
     try {
@@ -953,7 +974,15 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       Row(
                         children: [
                           GestureDetector(
-                            onTap: () {
+                            onTap: () async {
+                              if (!task.isDone) {
+                                final confirmed =
+                                    await showTaskCompletionConfirmation(
+                                      context,
+                                      task.title,
+                                    );
+                                if (!confirmed || !mounted) return;
+                              }
                               setState(() => task.isDone = !task.isDone);
                               widget.onChanged();
                             },
@@ -968,67 +997,66 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: _isEditingTitle
-                                ? Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                          left: 4,
-                                          bottom: 6,
+                                ? KeyedSubtree(
+                                    key: _titleInputKey,
+                                    child: TextField(
+                                      key: const ValueKey('task-title-input'),
+                                      controller: _titleController,
+                                      autofocus: true,
+                                      decoration: InputDecoration(
+                                        labelText: capitalizeFirstCharacter(
+                                          task.title,
                                         ),
-                                        child: Text(
-                                          capitalizeFirstCharacter(task.title),
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.w600,
-                                            decoration: task.isDone
-                                                ? TextDecoration.lineThrough
-                                                : TextDecoration.none,
-                                          ),
+                                        hintText: 'Add to task name',
+                                        hintStyle: TextStyle(
+                                          color: Colors.grey.shade400,
                                         ),
-                                      ),
-                                      Container(
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
+                                        labelStyle: const TextStyle(
+                                          fontSize: 13,
+                                          color: secondaryColor,
+                                        ),
+                                        floatingLabelStyle: const TextStyle(
+                                          fontSize: 13,
+                                          color: secondaryColor,
+                                        ),
+                                        floatingLabelBehavior:
+                                            FloatingLabelBehavior.always,
+                                        isDense: true,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 8,
+                                            ),
+                                        border: OutlineInputBorder(
                                           borderRadius: BorderRadius.circular(
                                             12,
                                           ),
-                                          border: Border.all(
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          borderSide: const BorderSide(
                                             color: secondaryColor,
                                             width: 2,
                                           ),
                                         ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 10,
-                                        ),
-                                        child: TextField(
-                                          key: const ValueKey(
-                                            'task-title-input',
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
                                           ),
-                                          controller: _titleController,
-                                          autofocus: true,
-                                          decoration: const InputDecoration(
-                                            hintText: 'Add to task name',
-                                            isDense: true,
-                                            contentPadding:
-                                                EdgeInsets.symmetric(
-                                                  horizontal: 0,
-                                                  vertical: 0,
-                                                ),
-                                            border: InputBorder.none,
-                                            enabledBorder: InputBorder.none,
-                                            focusedBorder: InputBorder.none,
+                                          borderSide: const BorderSide(
+                                            color: secondaryColor,
+                                            width: 2,
                                           ),
-                                          style: const TextStyle(
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          onSubmitted: _saveTitle,
                                         ),
                                       ),
-                                    ],
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      onSubmitted: _saveTitle,
+                                    ),
                                   )
                                 : InkWell(
                                     onTap: () {

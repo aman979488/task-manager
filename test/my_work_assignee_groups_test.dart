@@ -117,6 +117,82 @@ void main() {
     expect(find.text('LATER'), findsOneWidget);
   });
 
+  testWidgets('assignee task displays priority and substeps', (tester) async {
+    final task = Task(
+      'Prepare proposal',
+      priority: 'Today',
+      assignee: 'Aman',
+      steps: [
+        TaskStep(title: 'Review requirements'),
+        TaskStep(title: 'Send draft'),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssigneeTasksView(
+          assigneeName: 'Aman',
+          tasks: [task],
+          onOpenTask: (_) {},
+        ),
+      ),
+    );
+
+    final scrollViewRect = tester.getRect(find.byType(CustomScrollView));
+    final blankSpaceTapPoint = Offset(
+      scrollViewRect.left + 20,
+      scrollViewRect.top + 300,
+    );
+    await tester.tapAt(blankSpaceTapPoint);
+    await tester.tapAt(blankSpaceTapPoint);
+    await tester.tapAt(blankSpaceTapPoint);
+    await tester.pump(const Duration(milliseconds: 351));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Prepare proposal'), findsOneWidget);
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Review requirements'), findsOneWidget);
+    expect(find.text('Send draft'), findsOneWidget);
+  });
+
+  testWidgets('assignee task can add a substep without a chevron', (
+    tester,
+  ) async {
+    final task = Task('Prepare proposal', priority: 'Today', assignee: 'Aman');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssigneeTasksView(
+          assigneeName: 'Aman',
+          tasks: [task],
+          onOpenTask: (_) {},
+          onAddSubstep: (task) async {
+            task.steps.add(TaskStep(title: 'Review requirements'));
+          },
+        ),
+      ),
+    );
+
+    final scrollViewRect = tester.getRect(find.byType(CustomScrollView));
+    final blankSpaceTapPoint = Offset(
+      scrollViewRect.left + 20,
+      scrollViewRect.top + 300,
+    );
+    await tester.tapAt(blankSpaceTapPoint);
+    await tester.tapAt(blankSpaceTapPoint);
+    await tester.tapAt(blankSpaceTapPoint);
+    await tester.pump(const Duration(milliseconds: 351));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Add subtask'), findsOneWidget);
+    expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
+
+    await tester.tap(find.byTooltip('Add subtask'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Review requirements'), findsOneWidget);
+  });
+
   testWidgets('assignee task view adds and displays a task for that assignee', (
     tester,
   ) async {
