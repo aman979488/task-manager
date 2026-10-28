@@ -1,3 +1,4 @@
+import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -16,18 +17,94 @@ class TaskRepository {
   CollectionReference<Map<String, dynamic>> get _tasks =>
       _firestore.collection('map');
 
-  Future<List<Task>> fetchTasks() async {
-    final snapshot = await _tasks.get();
-    return snapshot.docs
-        .map((doc) => Task.fromMap(doc.id, doc.data()))
-        .toList();
+  Future<List<Task>> fetchTasks({
+    required bool canReadAll,
+    required String userUid,
+    required String userName,
+  }) async {
+    final queries = _taskQueries(
+      canReadAll: canReadAll,
+      userUid: userUid,
+      userName: userName,
+    );
+    if (queries.isEmpty) return Future.value(const <Task>[]);
+    final snapshots = await Future.wait(queries.map((query) => query.get()));
+    return _tasksFromSnapshots(snapshots);
   }
 
-  Stream<List<Task>> watchTasks() => _tasks.snapshots().map(
-    (snapshot) => snapshot.docs
-        .map((doc) => Task.fromMap(doc.id, doc.data()))
-        .toList(),
-  );
+  Stream<List<Task>> watchTasks({
+    required bool canReadAll,
+    required String userUid,
+    required String userName,
+  }) {
+    final queries = _taskQueries(
+      canReadAll: canReadAll,
+      userUid: userUid,
+      userName: userName,
+    );
+    if (queries.isEmpty) return Stream.value(const <Task>[]);
+    if (canReadAll) {
+      return queries.single.snapshots().map(
+        (snapshot) => snapshot.docs
+            .map((doc) => Task.fromMap(doc.id, doc.data()))
+            .toList(),
+      );
+    }
+
+    return Stream<List<Task>>.multi((controller) {
+      final snapshots = <int, QuerySnapshot<Map<String, dynamic>>>{};
+      final subscriptions =
+          <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
+      for (var index = 0; index < queries.length; index++) {
+        subscriptions.add(
+          queries[index].snapshots().listen((snapshot) {
+            snapshots[index] = snapshot;
+            controller.add(_tasksFromSnapshots(snapshots.values));
+          }, onError: controller.addError),
+        );
+      }
+      controller.onCancel = () async {
+        await Future.wait(
+          subscriptions.map((subscription) => subscription.cancel()),
+        );
+      };
+    });
+  }
+
+  List<Query<Map<String, dynamic>>> _taskQueries({
+    required bool canReadAll,
+    required String userUid,
+    required String userName,
+  }) {
+    if (canReadAll) return [_tasks];
+    final uid = userUid.trim();
+    if (uid.isEmpty) return [];
+
+    final queries = <Query<Map<String, dynamic>>>[
+      _tasks.where('createdBy.uid', isEqualTo: uid),
+      _tasks.where('assigneeUids', arrayContains: uid),
+      _tasks.where('assigneeUid', isEqualTo: uid),
+    ];
+    final name = userName.trim();
+    if (name.isNotEmpty) {
+      queries
+        ..add(_tasks.where('assignee', isEqualTo: name))
+        ..add(_tasks.where('monitor', isEqualTo: name));
+    }
+    return queries;
+  }
+
+  List<Task> _tasksFromSnapshots(
+    Iterable<QuerySnapshot<Map<String, dynamic>>> snapshots,
+  ) {
+    final tasksById = <String, Task>{};
+    for (final snapshot in snapshots) {
+      for (final doc in snapshot.docs) {
+        tasksById[doc.id] = Task.fromMap(doc.id, doc.data());
+      }
+    }
+    return tasksById.values.toList();
+  }
 
   Future<void> addTask(Task task) async {
     final docRef = _tasks.doc();

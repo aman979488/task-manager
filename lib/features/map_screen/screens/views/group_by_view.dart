@@ -12,6 +12,7 @@ class GroupByView extends StatefulWidget {
     required this.onOpenAssignee,
     required this.onOpenTask,
     required this.refreshable,
+    this.taskResultsBuilder,
   });
 
   final Map<String, List<Task>> groups;
@@ -20,6 +21,7 @@ class GroupByView extends StatefulWidget {
   final void Function(String name, List<Task> tasks) onOpenAssignee;
   final ValueChanged<Task> onOpenTask;
   final Widget Function(Widget child) refreshable;
+  final Widget Function(List<Task> tasks)? taskResultsBuilder;
 
   @override
   State<GroupByView> createState() => _GroupByViewState();
@@ -136,26 +138,32 @@ class _GroupByViewState extends State<GroupByView>
               style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
             ),
             children: [
-              ...tasks.map(
-                (task) => ListTile(
-                  dense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                  leading: Icon(
-                    task.isDone
-                        ? Icons.check_circle_outline
-                        : Icons.radio_button_unchecked,
-                    color: task.isDone ? Colors.green : Colors.grey,
+              if (widget.taskResultsBuilder != null)
+                widget.taskResultsBuilder!(tasks)
+              else
+                ...tasks.map(
+                  (task) => ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    leading: Icon(
+                      task.isDone
+                          ? Icons.check_circle_outline
+                          : Icons.radio_button_unchecked,
+                      color: task.isDone ? Colors.green : Colors.grey,
+                    ),
+                    title: Text(
+                      task.title,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    subtitle:
+                        task.assignee?.trim().isNotEmpty == true ||
+                            task.clientName?.trim().isNotEmpty == true ||
+                            task.workType?.trim().isNotEmpty == true
+                        ? TaskMetadataBadges(task: task, compact: true)
+                        : null,
+                    onTap: () => widget.onOpenTask(task),
                   ),
-                  title: Text(task.title, style: const TextStyle(fontSize: 12)),
-                  subtitle:
-                      task.assignee?.trim().isNotEmpty == true ||
-                          task.clientName?.trim().isNotEmpty == true ||
-                          task.workType?.trim().isNotEmpty == true
-                      ? TaskMetadataBadges(task: task, compact: true)
-                      : null,
-                  onTap: () => widget.onOpenTask(task),
                 ),
-              ),
             ],
           );
           return Container(

@@ -47,7 +47,10 @@ void main() {
   testWidgets('Save appends entered text after the existing title', (
     tester,
   ) async {
-    final task = Task('Help');
+    final task = Task(
+      'Help',
+      followUp: DateTime(2026, 10, 27, 9).toIso8601String(),
+    );
     var saveCalled = false;
 
     await tester.pumpWidget(
@@ -71,6 +74,69 @@ void main() {
 
     expect(task.title, 'Help me');
     expect(saveCalled, isTrue);
+  });
+
+  testWidgets('new task detail keeps the entered title editable', (
+    tester,
+  ) async {
+    final task = Task(
+      'Draft title',
+      followUp: DateTime(2026, 10, 27, 9).toIso8601String(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(
+          task: task,
+          isNewTask: true,
+          onChanged: () {},
+          onSave: () async {},
+        ),
+      ),
+    );
+
+    final titleField = find.byKey(const ValueKey('task-title-input'));
+    expect(titleField, findsOneWidget);
+    expect(
+      tester.widget<TextField>(titleField).controller!.text,
+      'Draft title',
+    );
+
+    await tester.enterText(titleField, 'Draft title continued');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+
+    expect(task.title, 'Draft title continued');
+  });
+
+  testWidgets('Save requires a follow-up date and time', (tester) async {
+    final task = Task('Help');
+    var saveCalled = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(
+          task: task,
+          onChanged: () {},
+          onSave: () async => saveCalled = true,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(saveCalled, isFalse);
+    expect(find.text('Follow Up Date & Time is required'), findsOneWidget);
+  });
+
+  test('follow-up date and time are serialized and restored', () {
+    final followUp = DateTime(2026, 10, 27, 9, 30).toIso8601String();
+    final task = Task('Help', followUp: followUp);
+
+    final restored = Task.fromMap('task-id', task.toMap());
+
+    expect(restored.followUp, followUp);
   });
 
   testWidgets('title editor remains visible when the keyboard opens', (
@@ -123,6 +189,16 @@ void main() {
       await tester.tap(find.text('Priority'));
       await tester.pumpAndSettle();
 
+      final priorityTile = find.ancestor(
+        of: find.text('Priority').first,
+        matching: find.byType(ListTile),
+      );
+      final priorityRect = tester.getRect(priorityTile.first);
+      expect(
+        tester.getTopLeft(find.text('U1')).dy,
+        closeTo(priorityRect.bottom + 8, 1),
+      );
+
       expect(find.text('U1'), findsOneWidget);
       expect(find.text('U2'), findsOneWidget);
       expect(find.text('U3'), findsOneWidget);
@@ -141,6 +217,40 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(task.priority, 'Free');
+    },
+  );
+
+  testWidgets(
+    'deadline picker opens just above its button near screen bottom',
+    (tester) async {
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      final task = Task('Deadline task');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TaskDetailPage(
+            task: task,
+            onChanged: () {},
+            onSave: () async {},
+          ),
+        ),
+      );
+
+      await tester.ensureVisible(find.text('Deadline'));
+      await tester.tap(find.text('Deadline'));
+      await tester.pumpAndSettle();
+
+      final deadlineTile = find.ancestor(
+        of: find.text('Deadline').first,
+        matching: find.byType(ListTile),
+      );
+      final deadlineRect = tester.getRect(deadlineTile.first);
+      final lastOptionRect = tester.getRect(find.text('Today (6 PM)'));
+      expect(lastOptionRect.bottom, lessThanOrEqualTo(deadlineRect.top));
+      expect(deadlineRect.top - lastOptionRect.bottom, lessThanOrEqualTo(8));
     },
   );
 

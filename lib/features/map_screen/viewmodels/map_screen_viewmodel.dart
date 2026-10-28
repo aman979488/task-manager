@@ -131,37 +131,48 @@ class MapScreenViewModel extends ChangeNotifier {
 
   void listenForTasks(AuthViewModel authViewModel) {
     _tasksSubscription?.cancel();
-    _tasksSubscription = _repository.watchTasks().listen(
-      (loaded) {
-        _replaceTasks(
-          loaded
-              .where((task) => isTaskVisibleToUser(task, authViewModel))
-              .toList(),
+    _tasksSubscription = _repository
+        .watchTasks(
+          canReadAll: _canReadAllTasks(authViewModel),
+          userUid: authViewModel.userUid,
+          userName: authViewModel.userName,
+        )
+        .listen(
+          (loaded) {
+            _replaceTasks(
+              loaded
+                  .where((task) => isTaskVisibleToUser(task, authViewModel))
+                  .toList(),
+            );
+            _updateHomeWidgetSafely();
+          },
+          onError: (Object error) {
+            debugPrint('Error listening for task updates: $error');
+            _lastErrorMessage = 'Could not sync tasks. Pull down to refresh.';
+            notifyListeners();
+          },
         );
-        _updateHomeWidgetSafely();
-      },
-      onError: (Object error) {
-        debugPrint('Error listening for task updates: $error');
-        _lastErrorMessage = 'Could not sync tasks. Pull down to refresh.';
-        notifyListeners();
-      },
-    );
   }
 
   Future<void> refreshTasks(AuthViewModel authViewModel) async {
-    final loaded = await _repository.fetchTasks();
+    final loaded = await _repository.fetchTasks(
+      canReadAll: _canReadAllTasks(authViewModel),
+      userUid: authViewModel.userUid,
+      userName: authViewModel.userName,
+    );
     _replaceTasks(
       loaded.where((task) => isTaskVisibleToUser(task, authViewModel)).toList(),
     );
     await _updateHomeWidgetSafely();
   }
 
+  bool _canReadAllTasks(AuthViewModel authViewModel) =>
+      authViewModel.appRole == AppRole.superAdmin ||
+      authViewModel.appRole == AppRole.admin ||
+      authViewModel.appRole == AppRole.officeStaff;
+
   bool isTaskVisibleToUser(Task task, AuthViewModel authViewModel) {
-    if (authViewModel.appRole == AppRole.superAdmin ||
-        authViewModel.appRole == AppRole.admin ||
-        authViewModel.appRole == AppRole.officeStaff) {
-      return true;
-    }
+    if (_canReadAllTasks(authViewModel)) return true;
     final myUid = authViewModel.userUid.trim().toLowerCase();
     final myEmail = authViewModel.userEmail.trim().toLowerCase();
     final myName = authViewModel.userName.trim().toLowerCase();
@@ -197,6 +208,7 @@ class MapScreenViewModel extends ChangeNotifier {
     required String title,
     required AuthViewModel authViewModel,
     Future<void> Function(Task task)? onTaskSaved,
+    Task? taskDraft,
     String? priority,
     String? reminder,
     String? assignee,
@@ -213,25 +225,35 @@ class MapScreenViewModel extends ChangeNotifier {
 
     _isAddingTask = true;
     notifyListeners();
-    final task = Task(
-      cleanTitle,
-      priority: priority,
-      reminder: reminder,
-      reminderSent: false,
-      deadlineReminderSent: false,
-      assignee: assignee,
-      deadline: deadline,
-      workType: workType,
-      folder: folder,
-      clientName: clientName,
-      refProject: refProject,
-      monitor: monitor,
-      createdBy: authViewModel.actorMetadata,
-      assigneeUid: assignee,
-      priorityUpdatedAt: priority == null
-          ? null
-          : DateTime.now().millisecondsSinceEpoch,
-    );
+    final task =
+        taskDraft ??
+        Task(
+          cleanTitle,
+          priority: priority,
+          reminder: reminder,
+          reminderSent: false,
+          deadlineReminderSent: false,
+          assignee: assignee,
+          deadline: deadline,
+          workType: workType,
+          folder: folder,
+          clientName: clientName,
+          refProject: refProject,
+          monitor: monitor,
+          createdBy: authViewModel.actorMetadata,
+          assigneeUid: assignee,
+          priorityUpdatedAt: priority == null
+              ? null
+              : DateTime.now().millisecondsSinceEpoch,
+        );
+    task
+      ..title = cleanTitle
+      ..createdBy = authViewModel.actorMetadata
+      ..assigneeUid = task.assignee;
+    task.priorityUpdatedAt ??= task.priority == null
+        ? null
+        : DateTime.now().millisecondsSinceEpoch;
+    final selectedAssignee = task.assignee ?? assignee;
 
     if (isTaskVisibleToUser(task, authViewModel)) {
       _pendingTasks.add(task);
@@ -239,9 +261,13 @@ class MapScreenViewModel extends ChangeNotifier {
       sortTasks();
       notifyListeners();
     }
-    if (assignee != null && assignee.trim().isNotEmpty) {
+    if (selectedAssignee != null && selectedAssignee.trim().isNotEmpty) {
       unawaited(
-        _sendAssignmentNotification(assignee, cleanTitle, authViewModel),
+        _sendAssignmentNotification(
+          selectedAssignee,
+          cleanTitle,
+          authViewModel,
+        ),
       );
     }
     final saveOperation = _saveNewTask(task, onTaskSaved);
@@ -274,12 +300,23 @@ class MapScreenViewModel extends ChangeNotifier {
   }
 
   Future<void> toggleTaskDone(Task task) async {
+    final wasDone = task.isDone;
+    final previousCompletedAt = task.completedAt;
     task.isDone = !task.isDone;
     task.completedAt = task.isDone
         ? DateTime.now().millisecondsSinceEpoch
         : null;
-    await updateTask(task);
     sortTasks();
+    try {
+      await updateTask(task);
+    } catch (error) {
+      task
+        ..isDone = wasDone
+        ..completedAt = previousCompletedAt;
+      _lastErrorMessage = 'Could not update "${task.title}". Please try again.';
+      debugPrint('Error updating task completion for "${task.title}": $error');
+      sortTasks();
+    }
   }
 
   Future<void> updateTaskPriority(Task task, String? priority) async {
@@ -435,9 +472,12 @@ class MapScreenViewModel extends ChangeNotifier {
     return source.where((task) {
       if (task.isDone) return false;
       if (task.isInMyDay) return true;
-      if (const {'today', 'tomorrow', 'later', 'day later'}.contains(
-        task.priority?.trim().toLowerCase(),
-      )) {
+      if (const {
+        'today',
+        'tomorrow',
+        'later',
+        'day later',
+      }.contains(task.priority?.trim().toLowerCase())) {
         return true;
       }
 

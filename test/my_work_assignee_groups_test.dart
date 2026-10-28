@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:task_manager/features/map_screen/models/task.dart';
 import 'package:task_manager/features/map_screen/screens/assignee_tasks_view.dart';
 import 'package:task_manager/features/map_screen/screens/views/group_by_assignee_view.dart';
+import 'package:task_manager/features/map_screen/screens/views/group_by_view.dart';
 import 'package:task_manager/features/map_screen/screens/views/my_work_view.dart';
 
 void main() {
@@ -93,6 +94,37 @@ void main() {
     expect(openedTasks, amanTasks);
   });
 
+  testWidgets('group-by expanded tasks use the shared My Work renderer', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GroupByView(
+            groups: {
+              'Urgent': [Task('Urgent task', priority: 'Urgent')],
+            },
+            groupBy: 'Priority',
+            pageStorageId: 'group-by-priority-test',
+            onOpenAssignee: (_, _) {},
+            onOpenTask: (_) {},
+            refreshable: (child) => child,
+            taskResultsBuilder: (tasks) => Column(
+              children: [
+                for (final task in tasks) Text('Shared: ${task.title}'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Urgent'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Shared: Urgent task'), findsOneWidget);
+  });
+
   testWidgets('assignee task view groups tasks into My Work sections', (
     tester,
   ) async {
@@ -115,6 +147,36 @@ void main() {
     expect(find.text('TODAY'), findsOneWidget);
     expect(find.text('TOMORROW'), findsOneWidget);
     expect(find.text('LATER'), findsOneWidget);
+  });
+
+  testWidgets('assignee task view uses the shared My Work task renderer', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssigneeTasksView(
+          assigneeName: 'Aman',
+          tasks: [Task('Urgent task', priority: 'Urgent', assignee: 'Aman')],
+          onOpenTask: (_) {},
+          taskResultsBuilder: (tasks) => Column(
+            children: [for (final task in tasks) Text('Shared: ${task.title}')],
+          ),
+        ),
+      ),
+    );
+
+    final scrollViewRect = tester.getRect(find.byType(CustomScrollView));
+    final blankSpaceTapPoint = Offset(
+      scrollViewRect.left + 20,
+      scrollViewRect.top + 300,
+    );
+    await tester.tapAt(blankSpaceTapPoint);
+    await tester.tapAt(blankSpaceTapPoint);
+    await tester.tapAt(blankSpaceTapPoint);
+    await tester.pump(const Duration(milliseconds: 351));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Shared: Urgent task'), findsOneWidget);
   });
 
   testWidgets('assignee task displays priority and substeps', (tester) async {

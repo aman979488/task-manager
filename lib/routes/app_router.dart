@@ -85,6 +85,8 @@ class AppRouter {
               extra['onAddSubstep'] as Future<void> Function(Task)?;
           final onAddTask =
               extra['onAddTask'] as Future<List<Task>> Function()?;
+          final taskResultsBuilder =
+              extra['taskResultsBuilder'] as Widget Function(List<Task>)?;
           return AssigneeTasksView(
             assigneeName: assigneeName,
             tasks: tasks,
@@ -92,6 +94,7 @@ class AppRouter {
             onToggleTaskDone: onToggleTaskDone,
             onAddSubstep: onAddSubstep,
             onAddTask: onAddTask,
+            taskResultsBuilder: taskResultsBuilder,
           );
         },
       ),

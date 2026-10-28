@@ -1,0 +1,82 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function myRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid))
+        .data.role;
+    }
+
+    function isManager() {
+      return signedIn() && myRole() in ['superAdmin', 'admin', 'officeStaff'];
+    }
+
+    function myName() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid))
+        .data.get('name', '');
+    }
+
+    function isTaskCreator() {
+      return signedIn() &&
+        resource.data.get('createdBy', {}).get('uid', '') == request.auth.uid;
+    }
+
+    function isTaskAssigneeOrMonitor() {
+      return signedIn() && (
+        resource.data.get('assigneeUids', []).hasAny([request.auth.uid]) ||
+        resource.data.get('assigneeUid', '') == request.auth.uid ||
+        resource.data.get('assignee', '') == myName() ||
+        resource.data.get('monitor', '') == myName()
+      );
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, delete: if isManager();
+      allow update: if isManager() ||
+        (request.auth.uid == uid &&
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+    }
+
+    match /map/{taskId} {
+      allow create: if signedIn();
+      allow read, update: if isManager() ||
+        isTaskAssigneeOrMonitor() ||
+        isTaskCreator();
+      allow delete: if isManager();
+    }
+
+    match /notifications/{id} {
+      allow create: if signedIn();
+      allow read, update: if signedIn() &&
+        resource.data.recipientUid == request.auth.uid;
+    }
+
+    match /flashMessages/{id} {
+      allow create: if signedIn() &&
+        request.resource.data.senderUid == request.auth.uid;
+      allow read: if signedIn() &&
+        (resource.data.recipientUid == request.auth.uid ||
+         resource.data.senderUid == request.auth.uid);
+      allow update: if signedIn() &&
+        resource.data.recipientUid == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'seenAt']);
+    }
+
+    match /flashTemplates/{id} {
+      allow read: if signedIn();
+      allow write: if isManager();
+    }
+
+    match /{coll}/{doc} {
+      allow read: if signedIn() &&
+        coll in ['WorkType', 'projects', 'leads', 'cps'];
+      allow write: if isManager() &&
+        coll in ['WorkType', 'projects', 'leads', 'cps'];
+    }
+  }
+}

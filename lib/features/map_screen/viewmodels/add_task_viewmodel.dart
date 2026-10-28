@@ -8,6 +8,8 @@ import '../utils/task_constants.dart';
 import 'map_screen_viewmodel.dart';
 
 class AddTaskViewModel extends ChangeNotifier {
+  static const int maxTaskTitleLength = 100;
+
   final Map<FloatingSheetType, String?> _metadata = {};
   final List<FloatingSheetType> _metadataOrder = [];
   List<FloatingSheetType> _buttonOrder = List.from(
@@ -106,14 +108,18 @@ class AddTaskViewModel extends ChangeNotifier {
     required AuthViewModel authViewModel,
     required MapScreenViewModel mapViewModel,
     Future<void> Function(Task task)? onTaskSaved,
+    Task? taskDraft,
   }) async {
     final cleanTitle = title.trim();
-    if (cleanTitle.isEmpty) return false;
+    if (cleanTitle.isEmpty || cleanTitle.length > maxTaskTitleLength) {
+      return false;
+    }
 
     final added = await mapViewModel.addTask(
       title: cleanTitle,
       authViewModel: authViewModel,
       onTaskSaved: onTaskSaved,
+      taskDraft: taskDraft,
       priority: priority,
       reminder: reminder,
       assignee: assignee,

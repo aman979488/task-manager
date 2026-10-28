@@ -9,7 +9,6 @@ import '../../utils/task_date_formatter.dart';
 import '../../utils/task_mention_parser.dart';
 import '../../viewmodels/map_screen_viewmodel.dart';
 import '../widgets/map_task_list_item.dart';
-import 'all_work_view.dart';
 import 'calendar_view.dart';
 import 'done_tasks_view.dart';
 import 'floating_metadata_sheet.dart';
@@ -42,11 +41,12 @@ class MapScreenTabViews extends StatelessWidget {
   final AuthViewModel authViewModel;
   final void Function(Task task) onOpenTask;
   final Future<void> Function() onRefresh;
-  final   Future<void> Function(
+  final Future<void> Function(
     Task task, {
     bool confirmCompletion,
     bool keepInMyDay,
-  }) onToggleTaskDone;
+  })
+  onToggleTaskDone;
   final void Function(Task task) onAddSubstep;
   final Future<void> Function(Task task) onSetTaskTime;
   final void Function(BuildContext badgeContext, Task task) onEditPriority;
@@ -367,6 +367,7 @@ class MapScreenTabViews extends StatelessWidget {
               tasks: visibleDoneTasks,
               viewType: viewModel.viewType,
               onEditTaskTime: onSetTaskTime,
+              onOpenTask: onOpenTask,
               calendarBuilder: (tasks) =>
                   _buildCalendarView(tasks, readOnly: true),
               refreshable: _refreshableScrollView,
@@ -386,6 +387,7 @@ class MapScreenTabViews extends StatelessWidget {
                   'onOpenTask': onOpenTask,
                   'onToggleTaskDone': onToggleTaskDone,
                   'onAddSubstep': onAddSubstep,
+                  'taskResultsBuilder': _buildMyWorkTaskResults,
                   'onAddTask': () => _addTaskForAssignee(assignContext, name),
                 },
               ),
@@ -395,18 +397,24 @@ class MapScreenTabViews extends StatelessWidget {
           if (hasAdminAccess)
             Builder(
               key: const PageStorageKey('all-work-tab'),
-              builder: (_) => AllWorkView(
-                tasks: visibleAllTasks,
-                viewType: viewModel.viewType,
-                zoom: viewModel.zoom,
-                taskBuilder: (task, index) => _buildTaskItem(
-                  task,
-                  index,
-                  dense: true,
-                  confirmCompletion: true,
-                ),
-                calendarBuilder: _buildCalendarView,
+              builder: (allWorkContext) => GroupByAssigneeView(
+                groups: MapScreenViewModel.assignedTasksByName(visibleAllTasks),
+                pageStorageId: 'all-work-tab',
                 refreshable: _refreshableScrollView,
+                onOpenAssignee: (name, tasks) => allWorkContext.push(
+                  '/assignee-tasks',
+                  extra: {
+                    'assigneeName': name,
+                    'tasks': tasks,
+                    'onOpenTask': onOpenTask,
+                    'onToggleTaskDone': onToggleTaskDone,
+                    'onAddSubstep': onAddSubstep,
+                    'taskResultsBuilder': _buildMyWorkTaskResults,
+                    'onAddTask': () =>
+                        _addTaskForAssignee(allWorkContext, name),
+                  },
+                ),
+                onOpenTask: onOpenTask,
               ),
             ),
           if (hasAdminAccess)
@@ -428,11 +436,15 @@ class MapScreenTabViews extends StatelessWidget {
                         'assigneeName': name,
                         'tasks': tasks,
                         'onOpenTask': onOpenTask,
+                        'onToggleTaskDone': onToggleTaskDone,
+                        'onAddSubstep': onAddSubstep,
+                        'taskResultsBuilder': _buildMyWorkTaskResults,
                         'onAddTask': () =>
                             _addTaskForAssignee(groupByContext, name),
                       },
                     ),
                     onOpenTask: onOpenTask,
+                    taskResultsBuilder: _buildMyWorkTaskResults,
                   );
                 }
                 return GroupByView(
@@ -446,11 +458,15 @@ class MapScreenTabViews extends StatelessWidget {
                       'assigneeName': name,
                       'tasks': tasks,
                       'onOpenTask': onOpenTask,
+                      'onToggleTaskDone': onToggleTaskDone,
+                      'onAddSubstep': onAddSubstep,
+                      'taskResultsBuilder': _buildMyWorkTaskResults,
                       'onAddTask': () =>
                           _addTaskForAssignee(groupByContext, name),
                     },
                   ),
                   onOpenTask: onOpenTask,
+                  taskResultsBuilder: _buildMyWorkTaskResults,
                 );
               },
             ),

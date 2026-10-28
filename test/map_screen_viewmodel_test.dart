@@ -1,14 +1,65 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:task_manager/features/map_screen/models/task.dart';
+import 'package:task_manager/features/map_screen/repositories/task_repository.dart';
+import 'package:task_manager/features/map_screen/services/task_assignment_notification_service.dart';
 import 'package:task_manager/features/map_screen/utils/task_constants.dart';
 import 'package:task_manager/features/map_screen/viewmodels/map_screen_viewmodel.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   final now = DateTime(2026, 10, 14, 13);
 
   test('priority options do not include Urgent', () {
     expect(TaskConstants.priorityOptions, isNot(contains('Urgent')));
   });
+
+  test(
+    'completing a task updates its state before persistence finishes',
+    () async {
+      final repository = _TaskRepositoryStub();
+      final viewModel = MapScreenViewModel(
+        repository: repository,
+        assignmentNotificationService: _AssignmentNotificationServiceStub(),
+      );
+      final task = Task('Assigned task', id: 'task-1');
+      var notified = false;
+      viewModel.addListener(() => notified = true);
+
+      final save = viewModel.toggleTaskDone(task);
+
+      expect(task.isDone, isTrue);
+      expect(task.completedAt, isNotNull);
+      expect(notified, isTrue);
+
+      repository.updateCompleter.complete();
+      await save;
+      viewModel.dispose();
+    },
+  );
+
+  test(
+    'failed completion save restores the pending task and reports error',
+    () async {
+      final repository = _TaskRepositoryStub();
+      final viewModel = MapScreenViewModel(
+        repository: repository,
+        assignmentNotificationService: _AssignmentNotificationServiceStub(),
+      );
+      final task = Task('Assigned task', id: 'task-1');
+
+      final save = viewModel.toggleTaskDone(task);
+      repository.updateCompleter.completeError(StateError('permission denied'));
+      await save;
+
+      expect(task.isDone, isFalse);
+      expect(task.completedAt, isNull);
+      expect(viewModel.takeErrorMessage(), contains('Could not update'));
+      viewModel.dispose();
+    },
+  );
 
   test('My Day includes today-priority and overdue scheduled tasks', () {
     final todayByPriority = Task('Today priority', priority: ' TODAY ');
@@ -315,32 +366,87 @@ void main() {
     expect(sections['Free Works'], [unprioritizedOverdue]);
   });
 
-  test('changing priority regroups overdue tasks into the matching section', () {
-    final overdue = Task(
-      'Overdue task',
-      priority: 'Later',
-      deadline: DateTime.now()
-          .subtract(const Duration(days: 1))
-          .toIso8601String(),
-    );
+  test(
+    'changing priority regroups overdue tasks into the matching section',
+    () {
+      final overdue = Task(
+        'Overdue task',
+        priority: 'Later',
+        deadline: DateTime.now()
+            .subtract(const Duration(days: 1))
+            .toIso8601String(),
+      );
 
-    var sections = MapScreenViewModel.sectionsForWork([overdue]);
-    expect(sections['Overdue Works'], [overdue]);
-    expect(sections['Later Works'], isEmpty);
+      var sections = MapScreenViewModel.sectionsForWork([overdue]);
+      expect(sections['Overdue Works'], [overdue]);
+      expect(sections['Later Works'], isEmpty);
 
-    overdue.priority = 'Monitor';
-    sections = MapScreenViewModel.sectionsForWork([overdue]);
-    expect(sections['Overdue Works'], isEmpty);
-    expect(sections['Monitor Works'], [overdue]);
+      overdue.priority = 'Monitor';
+      sections = MapScreenViewModel.sectionsForWork([overdue]);
+      expect(sections['Overdue Works'], isEmpty);
+      expect(sections['Monitor Works'], [overdue]);
 
-    overdue.priority = 'Free';
-    sections = MapScreenViewModel.sectionsForWork([overdue]);
-    expect(sections['Overdue Works'], isEmpty);
-    expect(sections['Free Works'], [overdue]);
+      overdue.priority = 'Free';
+      sections = MapScreenViewModel.sectionsForWork([overdue]);
+      expect(sections['Overdue Works'], isEmpty);
+      expect(sections['Free Works'], [overdue]);
 
-    overdue.priority = 'Today';
-    sections = MapScreenViewModel.sectionsForWork([overdue]);
-    expect(sections['Overdue Works'], isEmpty);
-    expect(sections['Today Works'], [overdue]);
-  });
+      overdue.priority = 'Today';
+      sections = MapScreenViewModel.sectionsForWork([overdue]);
+      expect(sections['Overdue Works'], isEmpty);
+      expect(sections['Today Works'], [overdue]);
+    },
+  );
+}
+
+class _TaskRepositoryStub implements TaskRepository {
+  final Completer<void> updateCompleter = Completer<void>();
+
+  @override
+  Future<void> updateTask(Task task) => updateCompleter.future;
+
+  @override
+  Future<void> addTask(Task task) async {}
+
+  @override
+  Future<void> deleteTask(Task task) async {}
+
+  @override
+  Future<List<Task>> fetchTasks({
+    required bool canReadAll,
+    required String userUid,
+    required String userName,
+  }) async => [];
+
+  @override
+  Future<List<String>> loadAssignees() async => [];
+
+  @override
+  Future<List<String>> loadClients() async => [];
+
+  @override
+  Future<List<String>> loadProjects() async => [];
+
+  @override
+  Future<List<String>> loadWorkTypes() async => [];
+
+  @override
+  Stream<List<Task>> watchTasks({
+    required bool canReadAll,
+    required String userUid,
+    required String userName,
+  }) => const Stream.empty();
+}
+
+class _AssignmentNotificationServiceStub
+    implements TaskAssignmentNotificationService {
+  @override
+  Future<void> sendAssignmentNotification({
+    required String assignee,
+    required String taskTitle,
+    required String senderName,
+    required String senderUid,
+    required String senderEmail,
+    required bool notificationsEnabled,
+  }) async {}
 }

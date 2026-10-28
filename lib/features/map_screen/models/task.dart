@@ -52,6 +52,7 @@ class Task {
   // button selections
   String? priority;
   String? reminder;
+  String? followUp;
   bool reminderSent;
   bool deadlineReminderSent;
   bool isInMyDay;
@@ -85,6 +86,7 @@ class Task {
     String? createdDate,
     this.priority,
     this.reminder,
+    this.followUp,
     this.reminderSent = false,
     this.deadlineReminderSent = false,
     this.isInMyDay = false,
@@ -118,6 +120,7 @@ class Task {
       'createdDate': createdDate,
       'priority': priority,
       'reminder': reminder,
+      'followUp': followUp,
       'reminderSent': reminderSent,
       'deadlineReminderSent': deadlineReminderSent,
       'isInMyDay': isInMyDay,
@@ -178,6 +181,7 @@ class Task {
       createdDate: data['createdDate']?.toString(),
       priority: data['priority']?.toString(),
       reminder: data['reminder']?.toString(),
+      followUp: data['followUp']?.toString(),
       reminderSent: data['reminderSent'] ?? false,
       deadlineReminderSent: data['deadlineReminderSent'] ?? false,
       isInMyDay: data['isInMyDay'] == true,

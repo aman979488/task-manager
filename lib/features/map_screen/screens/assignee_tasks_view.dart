@@ -5,9 +5,7 @@ import '../utils/task_constants.dart';
 import '../viewmodels/map_screen_viewmodel.dart';
 import 'views/my_work_view.dart';
 import 'views/task_completion_confirmation_dialog.dart';
-import 'widgets/task_metadata_badges.dart';
 import 'widgets/task_substeps_summary.dart';
-import 'widgets/map_task_list_item.dart';
 
 class AssigneeTasksView extends StatefulWidget {
   final String assigneeName;
@@ -21,6 +19,7 @@ class AssigneeTasksView extends StatefulWidget {
   onToggleTaskDone;
   final Future<void> Function(Task task)? onAddSubstep;
   final Future<List<Task>> Function()? onAddTask;
+  final Widget Function(List<Task> tasks)? taskResultsBuilder;
 
   const AssigneeTasksView({
     super.key,
@@ -30,6 +29,7 @@ class AssigneeTasksView extends StatefulWidget {
     this.onToggleTaskDone = _defaultToggleTaskDone,
     this.onAddSubstep,
     this.onAddTask,
+    this.taskResultsBuilder,
   });
 
   static Future<void> _defaultToggleTaskDone(
@@ -165,131 +165,142 @@ class _AssigneeTasksViewState extends State<AssigneeTasksView> {
         sections: sections,
         sectionNames: sectionNames,
         emptyMessage: 'No tasks assigned to this person.',
-        taskResultsBuilder: (sectionTasks) => Column(
-          children: [
-            for (final task in sectionTasks)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Material(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => widget.onOpenTask(task),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 8,
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          GestureDetector(
-                            key: ValueKey('assignee-task-toggle-${task.title}'),
-                            onTap: () => _toggleTaskDone(task),
-                            child: Padding(
-                              padding: const EdgeInsets.only(right: 10, top: 2),
-                              child: Icon(
-                                task.isDone
-                                    ? Icons.check_circle
-                                    : Icons.radio_button_unchecked,
-                                size: 24,
-                                color: task.isDone
-                                    ? Colors.green
-                                    : Colors.black54,
-                              ),
-                            ),
+        taskResultsBuilder:
+            widget.taskResultsBuilder ??
+            (sectionTasks) => Column(
+              children: [
+                for (final task in sectionTasks)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 2,
+                    ),
+                    child: Material(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => widget.onOpenTask(task),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
                           ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              GestureDetector(
+                                key: ValueKey(
+                                  'assignee-task-toggle-${task.title}',
+                                ),
+                                onTap: () => _toggleTaskDone(task),
+                                child: Padding(
+                                  padding: const EdgeInsets.only(
+                                    right: 10,
+                                    top: 2,
+                                  ),
+                                  child: Icon(
+                                    task.isDone
+                                        ? Icons.check_circle
+                                        : Icons.radio_button_unchecked,
+                                    size: 24,
+                                    color: task.isDone
+                                        ? Colors.green
+                                        : Colors.black54,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      child: Text(
-                                        task.title,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: const Color(0xFF26364A),
-                                          decoration: task.isDone
-                                              ? TextDecoration.lineThrough
-                                              : TextDecoration.none,
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            task.title,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: const Color(0xFF26364A),
+                                              decoration: task.isDone
+                                                  ? TextDecoration.lineThrough
+                                                  : TextDecoration.none,
+                                            ),
+                                          ),
                                         ),
-                                      ),
+                                        if (task.priority?.trim().isNotEmpty ==
+                                            true) ...[
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: AssigneeTasksView
+                                                  .primaryColor
+                                                  .withValues(alpha: 0.3),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              task.priority!.trim(),
+                                              style: const TextStyle(
+                                                color: AssigneeTasksView
+                                                    .secondaryColor,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
-                                    if (task.priority?.trim().isNotEmpty ==
-                                        true) ...[
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: AssigneeTasksView.primaryColor
-                                              .withValues(alpha: 0.3),
-                                          borderRadius:
-                                              BorderRadius.circular(6),
-                                        ),
+                                    if (task.note.trim().isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 2),
                                         child: Text(
-                                          task.priority!.trim(),
-                                          style: const TextStyle(
-                                            color: AssigneeTasksView
-                                                .secondaryColor,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w600,
+                                          task.note.trim(),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.blueGrey.shade500,
                                           ),
                                         ),
                                       ),
-                                    ],
+                                    if (task.steps.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 4),
+                                        child: TaskSubstepsSummary(
+                                          steps: task.steps,
+                                          dense: true,
+                                        ),
+                                      ),
                                   ],
                                 ),
-                                if (task.note.trim().isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: Text(
-                                      task.note.trim(),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.blueGrey.shade500,
-                                      ),
-                                    ),
-                                  ),
-                                if (task.steps.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: TaskSubstepsSummary(
-                                      steps: task.steps,
-                                      dense: true,
-                                    ),
-                                  ),
-                              ],
-                            ),
+                              ),
+                              IconButton(
+                                tooltip: 'Add subtask',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: widget.onAddSubstep == null
+                                    ? null
+                                    : () => _addSubstep(task),
+                                icon: const Icon(
+                                  Icons.add_circle_outline,
+                                  color: AssigneeTasksView.secondaryColor,
+                                  size: 20,
+                                ),
+                              ),
+                            ],
                           ),
-                          IconButton(
-                            tooltip: 'Add subtask',
-                            visualDensity: VisualDensity.compact,
-                            onPressed: widget.onAddSubstep == null
-                                ? null
-                                : () => _addSubstep(task),
-                            icon: const Icon(
-                              Icons.add_circle_outline,
-                              color: AssigneeTasksView.secondaryColor,
-                              size: 20,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
-          ],
-        ),
+              ],
+            ),
       ),
       floatingActionButton: widget.onAddTask == null
           ? null
