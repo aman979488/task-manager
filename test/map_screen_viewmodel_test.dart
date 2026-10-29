@@ -16,6 +16,14 @@ void main() {
     expect(TaskConstants.priorityOptions, isNot(contains('Urgent')));
   });
 
+  test('Monitor priority appears immediately above Free', () {
+    final monitorIndex = TaskConstants.priorityOptions.indexOf('Monitor');
+    final freeIndex = TaskConstants.priorityOptions.indexOf('Free');
+
+    expect(monitorIndex, greaterThanOrEqualTo(0));
+    expect(freeIndex, monitorIndex + 1);
+  });
+
   test(
     'completing a task updates its state before persistence finishes',
     () async {
@@ -169,6 +177,28 @@ void main() {
         userName: 'Me',
       ),
       [createdUnassigned, createdAssigned, assignedToMe, assignedByUidOnly],
+    );
+  });
+
+  test('My Work recognizes a person in a multi-select monitor value', () {
+    final selectedMonitor = Task(
+      'Selected monitor',
+      monitor: 'Aman Yadav, Priya',
+    );
+    final alternateSeparator = Task(
+      'Selected monitor with semicolon',
+      monitor: 'Riya; Aman Yadav',
+    );
+    final similarName = Task('Similar name', monitor: 'Amana');
+
+    expect(
+      MapScreenViewModel.myTasksForUser(
+        [selectedMonitor, alternateSeparator, similarName],
+        userUid: 'user-1',
+        userEmail: 'user@example.com',
+        userName: 'Aman',
+      ),
+      [selectedMonitor, alternateSeparator],
     );
   });
 

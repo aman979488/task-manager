@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
+import '../../utils/task_priority_color.dart';
 
 class DoneTasksView extends StatelessWidget {
   const DoneTasksView({
@@ -165,27 +166,6 @@ class DoneTasksView extends StatelessWidget {
         '${client.isEmpty ? '' : '_$client'}';
   }
 
-  Color _priorityColor(String? priority) {
-    switch (priority?.trim().toLowerCase()) {
-      case 'u1':
-      case 'u2':
-      case 'u3':
-      case 'urgent':
-        return const Color(0xFF9B5965);
-      case 'imp':
-        return const Color(0xFF526D8A);
-      case 'today':
-      case 'tomorrow':
-        return const Color(0xFF557E9B);
-      case 'hold':
-        return const Color(0xFF99765B);
-      case 'process':
-        return const Color(0xFF667F89);
-      default:
-        return const Color(0xFF71808D);
-    }
-  }
-
   String _dateHeaderLabel(DateTime date, double totalHours, double totalScore) {
     const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final weekday = weekdays[date.weekday - 1];
@@ -201,7 +181,7 @@ class DoneTasksView extends StatelessWidget {
 
   Widget _taskRow(Task task) {
     final priority = task.priority?.trim();
-    final priorityColor = _priorityColor(priority);
+    final priorityColor = taskPriorityColor(priority);
 
     return Column(
       children: [

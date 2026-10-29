@@ -8,6 +8,7 @@ import '../../../viewmodels/auth_viewmodel.dart';
 import '../models/task.dart';
 import '../repositories/task_repository.dart';
 import '../services/task_assignment_notification_service.dart';
+import '../utils/priority_reminder.dart';
 
 class MapScreenViewModel extends ChangeNotifier {
   MapScreenViewModel({
@@ -331,6 +332,12 @@ class MapScreenViewModel extends ChangeNotifier {
   Future<void> updateTaskPriority(Task task, String? priority) async {
     task.priority = priority;
     task.priorityUpdatedAt = DateTime.now().millisecondsSinceEpoch;
+    final reminder = reminderForPriority(priority);
+    if (reminder != null) {
+      task
+        ..reminder = reminder.toIso8601String()
+        ..reminderSent = false;
+    }
     sortTasks();
     await updateTask(task);
   }
@@ -545,11 +552,19 @@ class MapScreenViewModel extends ChangeNotifier {
           (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
           (myUid.isNotEmpty &&
               (assignee.contains(myUid) || assigneeUid.contains(myUid)));
-      final monitor = (task.monitor ?? '').trim().toLowerCase();
-      final isMonitoredByMe =
-          (myName.isNotEmpty && monitor.contains(myName)) ||
-          (myEmail.isNotEmpty && monitor.contains(myEmail)) ||
-          (myUid.isNotEmpty && monitor.contains(myUid));
+      final monitorPeople = (task.monitor ?? '')
+          .split(RegExp(r'[,;\n]'))
+          .map((person) => person.trim().toLowerCase())
+          .where((person) => person.isNotEmpty);
+      final isMonitoredByMe = monitorPeople.any(
+        (person) => [myName, myEmail, myUid].any((identity) {
+          if (identity.isEmpty) return false;
+          final personParts = person
+              .split(RegExp(r'[^a-z0-9@._-]+'))
+              .where((part) => part.isNotEmpty);
+          return person == identity || personParts.contains(identity);
+        }),
+      );
       return isCreator || isAssignedToMe || isMonitoredByMe;
     }).toList();
   }

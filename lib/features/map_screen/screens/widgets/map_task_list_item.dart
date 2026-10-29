@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
+import '../../utils/task_priority_color.dart';
 import 'compact_task_tile.dart';
 import 'task_grid_card.dart';
 import 'task_tile.dart';
@@ -122,7 +123,7 @@ class MapTaskListItem extends StatelessWidget {
 
   Widget _priorityBadge({required bool compact, required VoidCallback onTap}) {
     final priority = task.priority?.trim();
-    final color = _priorityColor(priority);
+    final color = taskPriorityColor(priority);
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -159,27 +160,5 @@ class MapTaskListItem extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  Color _priorityColor(String? priority) {
-    switch (priority?.trim().toLowerCase()) {
-      case 'u1':
-      case 'u2':
-      case 'u3':
-      case 'urgent':
-      case 'monitor':
-        return const Color(0xFF9B5965);
-      case 'imp':
-        return const Color(0xFF526D8A);
-      case 'today':
-      case 'tomorrow':
-        return const Color(0xFF557E9B);
-      case 'hold':
-        return const Color(0xFF99765B);
-      case 'process':
-        return const Color(0xFF667F89);
-      default:
-        return const Color(0xFF71808D);
-    }
   }
 }

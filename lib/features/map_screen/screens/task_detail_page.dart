@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show MaxLengthEnforcement;
+import 'package:flutter/services.dart' show TextInputFormatter;
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:provider/provider.dart';
 
@@ -10,9 +10,8 @@ import '../models/floating_sheet_type.dart';
 import '../models/task.dart';
 import '../services/task_assignment_notification_service.dart';
 import '../services/task_detail_data_service.dart';
-import '../utils/task_title_formatter.dart';
+import '../utils/priority_reminder.dart';
 import '../utils/task_week_helpers.dart';
-import 'views/task_completion_confirmation_dialog.dart';
 import 'views/task_detail_overlay.dart';
 import 'views/date_time_picker_dialog.dart';
 import 'views/task_files_section.dart';
@@ -40,6 +39,8 @@ class TaskDetailPage extends StatefulWidget {
 
 class _TaskDetailPageState extends State<TaskDetailPage>
     with WidgetsBindingObserver {
+  static const int _maxTitleWords = 30;
+
   late final TaskAssignmentNotificationService _assignmentNotificationService =
       TaskAssignmentNotificationService();
   late final TaskDetailDataService _dataService = TaskDetailDataService();
@@ -63,6 +64,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   final GlobalKey _goalAnchorKey = GlobalKey();
   Timer? _titleVisibilityTimer;
   bool _isEditingTitle = false;
+  bool _needsPersistDefaultFollowUp = false;
 
   Task get task => widget.task;
   bool _isSaving = false;
@@ -74,11 +76,23 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _noteController = TextEditingController(text: task.note);
-    _titleController = TextEditingController(
-      text: task.title,
-    )..selection = TextSelection.collapsed(offset: task.title.length);
+    _noteController = TextEditingController(
+      text: task.note.trim().isNotEmpty ? task.note : task.remark ?? '',
+    );
+    _titleController = TextEditingController(text: task.title)
+      ..selection = TextSelection.collapsed(offset: task.title.length);
     _isEditingTitle = widget.isNewTask;
+    if (task.followUp == null || task.followUp!.isEmpty) {
+      task.followUp = DateTime.now().toIso8601String();
+      _needsPersistDefaultFollowUp = !widget.isNewTask;
+    }
+    if (_needsPersistDefaultFollowUp) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_needsPersistDefaultFollowUp) return;
+        _needsPersistDefaultFollowUp = false;
+        _saveTask(automatic: true, showSavedMessage: false);
+      });
+    }
   }
 
   @override
@@ -146,6 +160,12 @@ class _TaskDetailPageState extends State<TaskDetailPage>
         case 'priority':
           task.priority = label;
           task.priorityUpdatedAt = DateTime.now().millisecondsSinceEpoch;
+          final reminder = reminderForPriority(label);
+          if (reminder != null) {
+            task
+              ..reminder = reminder.toIso8601String()
+              ..reminderSent = false;
+          }
           break;
         case 'assignee':
           task.assignee = label;
@@ -217,37 +237,24 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   }
 
   void _saveTitle(String value) {
-    if (widget.isNewTask) {
-      setState(() {
-        task.title = value.trim();
-        _titleController.text = task.title;
-        _titleController.selection = TextSelection.collapsed(
-          offset: _titleController.text.length,
-        );
-      });
-      widget.onChanged();
-      return;
-    }
-    _commitTitleSuffix(value);
+    _commitTitle(value);
   }
 
-  void _commitTitleSuffix(String value) {
-    if (widget.isNewTask) {
-      _saveTitle(value);
-      return;
-    }
-    final suffix = value.trim();
-    if (suffix.isEmpty) {
+  void _commitTitle(String value) {
+    final title = value.trim();
+    if (title.isEmpty) {
       setState(() {
         _titleController.text = task.title;
         _isEditingTitle = false;
       });
       return;
     }
-    final updatedTitle = '${task.title.trim()} $suffix'.trim();
     setState(() {
-      task.title = updatedTitle;
-      _titleController.text = updatedTitle;
+      task.title = title;
+      _titleController.text = title;
+      _titleController.selection = TextSelection.collapsed(
+        offset: title.length,
+      );
       _isEditingTitle = false;
     });
     widget.onChanged();
@@ -317,22 +324,14 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
     try {
       final dt = DateTime.parse(value);
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final tomorrow = today.add(const Duration(days: 1));
-      final date = DateTime(dt.year, dt.month, dt.day);
-
+      final month = dt.month.toString().padLeft(2, '0');
+      final day = dt.day.toString().padLeft(2, '0');
+      final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final minute = dt.minute.toString().padLeft(2, '0');
       final timeStr =
-          '${dt.hour % 12 == 0 ? 12 : dt.hour % 12}:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
-
-      String display;
-      if (date == today) {
-        display = 'Today $timeStr';
-      } else if (date == tomorrow) {
-        display = 'Tomorrow $timeStr';
-      } else {
-        display = '${dt.day}/${dt.month} $timeStr';
-      }
+          '${hour.toString().padLeft(2, '0')}:$minute '
+          '${dt.hour >= 12 ? 'PM' : 'AM'}';
+      final display = '$month/$day/${dt.year}, $timeStr';
 
       return Text(
         display,
@@ -366,66 +365,90 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     widget.onChanged();
   }
 
-  String _formatFollowUp(String? iso) {
-    final dt = DateTime.tryParse(iso ?? '');
-    if (dt == null) return '';
-    final mm = dt.month.toString().padLeft(2, '0');
-    final dd = dt.day.toString().padLeft(2, '0');
-    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-    final min = dt.minute.toString().padLeft(2, '0');
-    final amPm = dt.hour >= 12 ? 'PM' : 'AM';
-    return '$mm/$dd/${dt.year}, ${hour.toString().padLeft(2, '0')}:$min $amPm';
+  int _wordCount(String value) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? 0 : trimmed.split(RegExp(r'\s+')).length;
   }
 
-  Future<void> _saveTask() async {
-    if (_isSaving) return;
+  Future<bool> _saveTask({
+    bool automatic = false,
+    bool showSavedMessage = true,
+  }) async {
+    if (_isSaving) return false;
     final titleToSave = _isEditingTitle
         ? _titleController.text.trim()
         : task.title.trim();
     if (widget.isNewTask && titleToSave.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Task title is required')),
-      );
-      return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Task title is required')));
+      return false;
     }
-    if (widget.isNewTask && titleToSave.length > 100) {
+    if ((_isEditingTitle || widget.isNewTask) &&
+        _wordCount(titleToSave) > _maxTitleWords) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Task title cannot exceed 100 characters')),
+        const SnackBar(content: Text('Work name cannot exceed 30 words')),
       );
-      return;
+      return false;
     }
-    if (task.followUp == null || task.followUp!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Follow Up Date & Time is required')),
-      );
-      return;
+    if ((!automatic || widget.isNewTask) &&
+        (task.followUp == null || task.followUp!.isEmpty)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Date & Time is required')));
+      return false;
     }
     setState(() => _isSaving = true);
     if (_isEditingTitle) {
-      _commitTitleSuffix(_titleController.text);
+      _commitTitle(_titleController.text);
     }
+
     task.note = _noteController.text;
     try {
       await widget.onSave();
-      if (!mounted) return;
+      if (!mounted) return true;
       if (widget.isNewTask) {
         Navigator.of(context).pop(true);
-        return;
+        return true;
       }
       setState(() {
         _isEditingTitle = false;
         _titleController.text = task.title;
       });
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('Task saved')));
+      if (showSavedMessage) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('Task saved')));
+      }
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text('Could not save task: $error')));
+      return false;
     } finally {
       if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _setTaskDone(bool isDone) async {
+    if (_isSaving || isDone == task.isDone) return;
+    final previousIsDone = task.isDone;
+    final previousCompletedAt = task.completedAt;
+    setState(() {
+      task.isDone = isDone;
+      task.completedAt = isDone ? DateTime.now().millisecondsSinceEpoch : null;
+    });
+    widget.onChanged();
+
+    final saved = await _saveTask(automatic: true);
+    if (!saved && mounted) {
+      setState(() {
+        task.isDone = previousIsDone;
+        task.completedAt = previousCompletedAt;
+      });
+      widget.onChanged();
     }
   }
 
@@ -461,44 +484,128 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     widget.onChanged();
   }
 
-  Future<void> _editExtraField(
-    BuildContext buttonContext,
-    String label,
-    String? value,
-    void Function(String) onChanged,
-  ) async {
-    final controller = TextEditingController(text: value);
-    final updatedValue = await showDialog<String>(
+  Future<void> _selectTaskPeople(
+    BuildContext buttonContext, {
+    required String label,
+    required String? selectedValue,
+    required void Function(String) onChanged,
+  }) async {
+    List<List<String>> peopleLists;
+    try {
+      peopleLists = await Future.wait([
+        _dataService.loadClients(),
+        _dataService.loadAssignees(),
+      ]);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load clients and staff: $error')),
+        );
+      }
+      return;
+    }
+
+    if (!buttonContext.mounted) return;
+    final clients = peopleLists[0];
+    final staff = peopleLists[1];
+    final selected = <String, String>{
+      for (final name
+          in (selectedValue ?? '')
+              .split(RegExp(r'[,;\n]'))
+              .map((name) => name.trim())
+              .where((name) => name.isNotEmpty))
+        name.toLowerCase(): name,
+    };
+
+    final result = await showDialog<List<String>>(
       context: buttonContext,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(label),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: label == 'Remark' ? 3 : 1,
-          decoration: InputDecoration(hintText: 'Enter $label'),
-          textInputAction: label == 'Remark'
-              ? TextInputAction.newline
-              : TextInputAction.done,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Select $label'),
+          content: SizedBox(
+            width: 360,
+            height: MediaQuery.sizeOf(context).height * 0.6,
+            child: ListView(
+              children: [
+                _peopleSectionTitle('Clients'),
+                if (clients.isEmpty)
+                  const ListTile(
+                    dense: true,
+                    title: Text(
+                      'No clients found',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                  ),
+                for (final name in clients)
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(name, style: const TextStyle(fontSize: 14)),
+                    value: selected.containsKey(name.toLowerCase()),
+                    onChanged: (value) => setDialogState(() {
+                      if (value == true) {
+                        selected[name.toLowerCase()] = name;
+                      } else {
+                        selected.remove(name.toLowerCase());
+                      }
+                    }),
+                  ),
+                _peopleSectionTitle('Staff'),
+                if (staff.isEmpty)
+                  const ListTile(
+                    dense: true,
+                    title: Text(
+                      'No staff found',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                  ),
+                for (final name in staff)
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(name, style: const TextStyle(fontSize: 14)),
+                    value: selected.containsKey(name.toLowerCase()),
+                    onChanged: (value) => setDialogState(() {
+                      if (value == true) {
+                        selected[name.toLowerCase()] = name;
+                      } else {
+                        selected.remove(name.toLowerCase());
+                      }
+                    }),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                selected.values.toList()
+                  ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase())),
+              ),
+              child: const Text('Done'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, controller.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
-    controller.dispose();
-    if (updatedValue == null || !mounted) return;
-    setState(() => onChanged(updatedValue));
+
+    if (result == null || !mounted) return;
+    setState(() => onChanged(result.join(', ')));
     widget.onChanged();
   }
+
+  Widget _peopleSectionTitle(String title) => Padding(
+    padding: const EdgeInsets.only(top: 8, bottom: 4),
+    child: Text(
+      title,
+      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -512,7 +619,11 @@ class _TaskDetailPageState extends State<TaskDetailPage>
         iconTheme: const IconThemeData(color: secondaryColor),
         actions: [
           TextButton(
-            onPressed: _isSaving ? null : _saveTask,
+            onPressed: _isSaving
+                ? null
+                : () {
+                    _saveTask();
+                  },
             style: TextButton.styleFrom(foregroundColor: secondaryColor),
             child: _isSaving
                 ? const SizedBox(
@@ -551,143 +662,108 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                     notificationPredicate: (_) => false,
                     child: ListView(
                       children: [
-                        // ── Title row ───────────────────────────────────
-                        Row(
-                          children: [
-                            GestureDetector(
-                              onTap: () async {
-                                if (!task.isDone) {
-                                  final confirmed =
-                                      await showTaskCompletionConfirmation(
-                                        context,
-                                        task.title,
-                                      );
-                                  if (!confirmed || !mounted) return;
-                                }
-                                setState(() {
-                                  task.isDone = !task.isDone;
-                                  task.completedAt = task.isDone
-                                      ? DateTime.now().millisecondsSinceEpoch
-                                      : null;
-                                });
-                                widget.onChanged();
-                              },
-                              child: Icon(
-                                task.isDone
-                                    ? Icons.check_circle
-                                    : Icons.radio_button_unchecked,
-                                size: 26,
-                                color: secondaryColor,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _isEditingTitle
-                                  ? KeyedSubtree(
-                                      key: _titleInputKey,
-                                      child: TextField(
-                                        key: const ValueKey('task-title-input'),
-                                        controller: _titleController,
-                                        autofocus: true,
-                                        maxLength: widget.isNewTask ? 100 : null,
-                                        maxLengthEnforcement:
-                                            widget.isNewTask
-                                            ? MaxLengthEnforcement.enforced
-                                            : null,
-                                        decoration: InputDecoration(
-                                          labelText: capitalizeFirstCharacter(
-                                            task.title,
-                                          ),
-                                          hintText: 'Add to task name',
-                                          hintStyle: TextStyle(
-                                            color: Colors.grey.shade400,
-                                          ),
-                                          labelStyle: const TextStyle(
-                                            fontSize: 13,
-                                            color: secondaryColor,
-                                          ),
-                                          floatingLabelStyle: const TextStyle(
-                                            fontSize: 13,
-                                            color: secondaryColor,
-                                          ),
-                                          floatingLabelBehavior:
-                                              FloatingLabelBehavior.always,
-                                          isDense: true,
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 12,
-                                                vertical: 8,
-                                              ),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            borderSide: const BorderSide(
-                                              color: secondaryColor,
-                                              width: 2,
-                                            ),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            borderSide: const BorderSide(
-                                              color: secondaryColor,
-                                              width: 2,
-                                            ),
-                                          ),
-                                        ),
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                        onSubmitted: _saveTitle,
-                                      ),
-                                    )
-                                  : InkWell(
-                                      onTap: () {
-                                        setState(() {
-                                          _isEditingTitle = true;
-                                          _titleController.clear();
-                                        });
-                                      },
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                          border: Border.all(
-                                            color: Colors.grey.shade300,
-                                            width: 1.2,
-                                          ),
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 10,
-                                        ),
-                                        child: Text(
-                                          capitalizeFirstCharacter(task.title),
-                                          style: TextStyle(
-                                            fontSize: 24,
-                                            fontWeight: FontWeight.w600,
-                                            decoration: task.isDone
-                                                ? TextDecoration.lineThrough
-                                                : TextDecoration.none,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                            ),
-                          ],
+                        _buildExtraFieldTile(
+                          label: 'Date & Time',
+                          value: task.followUp,
+                          icon: Icons.calendar_month,
+                          onTap: (_) => _pickFollowUp(),
                         ),
 
-                        const SizedBox(height: 10),
+                        KeyedSubtree(
+                          key: _titleInputKey,
+                          child: TextField(
+                            key: const ValueKey('task-title-input'),
+                            controller: _titleController,
+                            readOnly: !_isEditingTitle,
+                            autofocus: _isEditingTitle,
+                            inputFormatters: [
+                              TextInputFormatter.withFunction((
+                                oldValue,
+                                newValue,
+                              ) {
+                                final newWordCount = _wordCount(newValue.text);
+                                final oldWordCount = _wordCount(oldValue.text);
+                                return newWordCount <= _maxTitleWords ||
+                                        newWordCount < oldWordCount
+                                    ? newValue
+                                    : oldValue;
+                              }),
+                            ],
+                            onTap: () {
+                              if (_isEditingTitle) return;
+                              setState(() {
+                                _isEditingTitle = true;
+                                _titleController.selection =
+                                    TextSelection.collapsed(
+                                      offset: _titleController.text.length,
+                                    );
+                              });
+                            },
+                            decoration: InputDecoration(
+                              labelText: 'Work Detail',
+                              labelStyle: const TextStyle(
+                                fontSize: 13,
+                                color: secondaryColor,
+                              ),
+                              floatingLabelStyle: const TextStyle(
+                                fontSize: 13,
+                                color: secondaryColor,
+                              ),
+                              floatingLabelBehavior: FloatingLabelBehavior.auto,
+                              floatingLabelAlignment:
+                                  FloatingLabelAlignment.start,
+                              prefixIcon: const Icon(
+                                Icons.work_outline,
+                                color: secondaryColor,
+                              ),
+                              suffixIcon: SizedBox(
+                                width: 68,
+                                child: Switch(
+                                  key: const ValueKey('task-done-toggle'),
+                                  value: task.isDone,
+                                  onChanged: _isSaving
+                                      ? null
+                                      : _setTaskDone,
+                                  activeTrackColor: secondaryColor,
+                                ),
+                              ),
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 16,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(4),
+                                borderSide: BorderSide(
+                                  color: Colors.grey.shade300,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(4),
+                                borderSide: BorderSide(
+                                  color: _isSelected(task.title)
+                                      ? secondaryColor
+                                      : Colors.grey.shade300,
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(4),
+                                borderSide: const BorderSide(
+                                  color: secondaryColor,
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              decoration: task.isDone
+                                  ? TextDecoration.lineThrough
+                                  : TextDecoration.none,
+                            ),
+                            onSubmitted: _saveTitle,
+                          ),
+                        ),
 
                         // ── Steps ────────────────────────────────────────
                         TaskStepListWidget(
@@ -700,58 +776,6 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                         const SizedBox(height: 8),
 
                         // ── Fields ───────────────────────────────────────
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 16),
-                                child: Text(
-                                  'Follow Up Date & Time *',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: secondaryColor,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              InkWell(
-                                onTap: _pickFollowUp,
-                                child: InputDecorator(
-                                  decoration: InputDecoration(
-                                    isDense: true,
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 12,
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    suffixIcon: const Icon(
-                                      Icons.calendar_month,
-                                      color: secondaryColor,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    task.followUp == null ||
-                                            task.followUp!.isEmpty
-                                        ? 'MM/DD/YYYY, hh:mm'
-                                        : _formatFollowUp(task.followUp),
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color:
-                                          task.followUp == null ||
-                                              task.followUp!.isEmpty
-                                          ? Colors.grey.shade500
-                                          : Colors.black87,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
                         _buildOverlayTile(
                           anchorKey: _priorityAnchorKey,
                           value: task.priority,
@@ -890,22 +914,22 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                             label: 'Accompanied By',
                             value: task.accompaniedBy,
                             icon: Icons.person_outline,
-                            onTap: (buttonContext) => _editExtraField(
+                            onTap: (buttonContext) => _selectTaskPeople(
                               buttonContext,
-                              'Accompanied By',
-                              task.accompaniedBy,
-                              (value) => task.accompaniedBy = value,
+                              label: 'Accompanied By',
+                              selectedValue: task.accompaniedBy,
+                              onChanged: (value) => task.accompaniedBy = value,
                             ),
                           ),
                           _buildExtraFieldTile(
                             label: 'Monitor',
                             value: task.monitor,
                             icon: Icons.desktop_windows_outlined,
-                            onTap: (buttonContext) => _editExtraField(
+                            onTap: (buttonContext) => _selectTaskPeople(
                               buttonContext,
-                              'Monitor',
-                              task.monitor,
-                              (value) => task.monitor = value,
+                              label: 'Monitor',
+                              selectedValue: task.monitor,
+                              onChanged: (value) => task.monitor = value,
                             ),
                           ),
                           _buildOverlayTile(
@@ -916,20 +940,9 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                             type: FloatingSheetType.folder,
                             fieldKey: 'folder',
                           ),
-                          _buildExtraFieldTile(
-                            label: 'Remark',
-                            value: task.remark,
-                            icon: Icons.notes,
-                            onTap: (buttonContext) => _editExtraField(
-                              buttonContext,
-                              'Remark',
-                              task.remark,
-                              (value) => task.remark = value,
-                            ),
-                          ),
                           const SizedBox(height: 15),
                           const Text(
-                            "Add note",
+                            'Remark',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
@@ -941,10 +954,11 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                             maxLines: 12,
                             onChanged: (value) {
                               task.note = value;
+                              task.remark = null;
                               widget.onChanged();
                             },
                             decoration: const InputDecoration(
-                              hintText: "Add note",
+                              hintText: 'Enter remark',
                               border: OutlineInputBorder(),
                             ),
                           ),
