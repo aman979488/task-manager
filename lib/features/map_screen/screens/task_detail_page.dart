@@ -11,6 +11,7 @@ import '../models/task.dart';
 import '../services/task_assignment_notification_service.dart';
 import '../services/task_detail_data_service.dart';
 import '../utils/task_title_formatter.dart';
+import '../utils/task_week_helpers.dart';
 import 'views/task_completion_confirmation_dialog.dart';
 import 'views/task_detail_overlay.dart';
 import 'views/date_time_picker_dialog.dart';
@@ -59,6 +60,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   final GlobalKey _deadlineAnchorKey = GlobalKey();
   final GlobalKey _refProjectAnchorKey = GlobalKey();
   final GlobalKey _folderAnchorKey = GlobalKey();
+  final GlobalKey _goalAnchorKey = GlobalKey();
   Timer? _titleVisibilityTimer;
   bool _isEditingTitle = false;
 
@@ -161,6 +163,9 @@ class _TaskDetailPageState extends State<TaskDetailPage>
         case 'folder':
           task.folder = label;
           break;
+        case 'goal':
+          task.weekKey = label;
+          break;
         default:
           break;
       }
@@ -194,9 +199,21 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       loadClients: _dataService.loadClients,
       loadFolders: _dataService.loadFolders,
       loadProjects: _dataService.loadProjects,
+      goalWeekKeys: _goalWeekOptions,
       onSelectOption: _onSelectOption,
       onSelectDateTime: _onSelectDateTime,
     );
+  }
+
+  List<String> get _goalWeekOptions {
+    final now = DateTime.now();
+    final selected = dateRangeForWeek(task.weekKey ?? '');
+    final keys = <String>{
+      ...weeksOfMonth(now.year, now.month).map((week) => week.key),
+      if (selected != null)
+        ...weeksOfMonth(selected.year, selected.month).map((week) => week.key),
+    };
+    return keys.toList()..sort();
   }
 
   void _saveTitle(String value) {
@@ -547,7 +564,12 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                                       );
                                   if (!confirmed || !mounted) return;
                                 }
-                                setState(() => task.isDone = !task.isDone);
+                                setState(() {
+                                  task.isDone = !task.isDone;
+                                  task.completedAt = task.isDone
+                                      ? DateTime.now().millisecondsSinceEpoch
+                                      : null;
+                                });
                                 widget.onChanged();
                               },
                               child: Icon(
@@ -821,6 +843,30 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                             label: 'Ref Project',
                             type: FloatingSheetType.refProject,
                             fieldKey: 'refProject',
+                          ),
+                          _buildOverlayTile(
+                            anchorKey: _goalAnchorKey,
+                            value: task.weekKey == null
+                                ? null
+                                : weekLabelForKey(task.weekKey!),
+                            icon: Icons.flag_outlined,
+                            label: 'Goal (week)',
+                            type: FloatingSheetType.goal,
+                          ),
+                          SwitchListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                            ),
+                            dense: true,
+                            title: const Text(
+                              'Monthly Goal',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                            value: task.isMonthlyGoal,
+                            onChanged: (value) {
+                              setState(() => task.isMonthlyGoal = value);
+                              widget.onChanged();
+                            },
                           ),
                           _buildExtraFieldTile(
                             label: 'Start Time',

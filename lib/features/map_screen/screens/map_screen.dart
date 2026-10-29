@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -45,7 +44,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final role = Provider.of<AuthViewModel>(context, listen: false).appRole;
     _hasAdminAccess = role == AppRole.admin || role == AppRole.superAdmin;
     _tabController = TabController(
-      length: _hasAdminAccess ? 7 : 5,
+      length: _hasAdminAccess ? 8 : 6,
       vsync: this,
       initialIndex: 1,
     );
@@ -302,6 +301,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 const Tab(text: 'Days'),
                 const Tab(text: 'My Work'),
                 const Tab(text: 'Done Work'),
+                const Tab(text: 'Goals'),
                 const Tab(text: 'Assign'),
                 if (_hasAdminAccess) const Tab(text: 'All Work'),
                 if (_hasAdminAccess) Tab(text: 'Group by ${viewModel.groupBy}'),

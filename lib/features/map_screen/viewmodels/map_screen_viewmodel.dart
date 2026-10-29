@@ -217,6 +217,8 @@ class MapScreenViewModel extends ChangeNotifier {
     String? folder,
     String? clientName,
     String? refProject,
+    String? weekKey,
+    bool isMonthlyGoal = false,
     String? monitor,
   }) async {
     if (_isAddingTask) return false;
@@ -239,6 +241,8 @@ class MapScreenViewModel extends ChangeNotifier {
           folder: folder,
           clientName: clientName,
           refProject: refProject,
+          weekKey: weekKey,
+          isMonthlyGoal: isMonthlyGoal,
           monitor: monitor,
           createdBy: authViewModel.actorMetadata,
           assigneeUid: assignee,
@@ -250,6 +254,11 @@ class MapScreenViewModel extends ChangeNotifier {
       ..title = cleanTitle
       ..createdBy = authViewModel.actorMetadata
       ..assigneeUid = task.assignee;
+    if (taskDraft == null) {
+      task
+        ..weekKey = weekKey
+        ..isMonthlyGoal = isMonthlyGoal;
+    }
     task.priorityUpdatedAt ??= task.priority == null
         ? null
         : DateTime.now().millisecondsSinceEpoch;

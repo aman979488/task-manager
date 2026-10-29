@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/floating_sheet_type.dart';
 import '../../models/quick_date_time_option.dart';
 import '../../utils/task_constants.dart';
+import '../../utils/task_week_helpers.dart';
 import 'date_time_picker_dialog.dart';
 
 class TaskDetailOverlay {
@@ -35,6 +36,7 @@ class TaskDetailOverlay {
     required Future<List<String>> Function() loadProjects,
     required void Function(String key, String value) onSelectOption,
     required void Function(String key, DateTime value) onSelectDateTime,
+    List<String> goalWeekKeys = const [],
   }) async {
     if (_overlayEntry != null) hide();
 
@@ -67,6 +69,9 @@ class TaskDetailOverlay {
         case FloatingSheetType.refProject:
           resolvedKey = 'refProject';
           break;
+        case FloatingSheetType.goal:
+          resolvedKey = 'goal';
+          break;
       }
     }
 
@@ -97,6 +102,14 @@ class TaskDetailOverlay {
 
     List<Widget> tilesFor(String key) {
       switch (key) {
+        case 'goal':
+          return goalWeekKeys
+              .map(
+                (weekKey) => ListTile(
+                  title: Text(weekLabelForKey(weekKey)),
+                ),
+              )
+              .toList();
         case 'priority':
           return TaskConstants.priorityOptions
               .map((priority) => ListTile(title: Text(priority)))
@@ -342,9 +355,19 @@ class TaskDetailOverlay {
                                                   );
                                                 }
                                               } else {
+                                                final selectedValue =
+                                                    resolvedKey == 'goal'
+                                                    ? goalWeekKeys.firstWhere(
+                                                        (weekKey) =>
+                                                            weekLabelForKey(
+                                                              weekKey,
+                                                            ) ==
+                                                            label,
+                                                      )
+                                                    : label;
                                                 onSelectOption(
                                                   resolvedKey,
-                                                  label,
+                                                  selectedValue,
                                                 );
                                               }
 

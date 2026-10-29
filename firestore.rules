@@ -72,6 +72,18 @@ service cloud.firestore {
       allow write: if isManager();
     }
 
+    match /weeklyGoals/{goalId} {
+      allow read: if signedIn() &&
+        (isManager() || resource.data.userUid == request.auth.uid);
+      allow create: if signedIn() &&
+        request.resource.data.userUid == request.auth.uid;
+      allow update: if signedIn() &&
+        resource.data.userUid == request.auth.uid &&
+        request.resource.data.userUid == request.auth.uid;
+      allow delete: if signedIn() &&
+        resource.data.userUid == request.auth.uid;
+    }
+
     match /{coll}/{doc} {
       allow read: if signedIn() &&
         coll in ['WorkType', 'projects', 'leads', 'cps'];

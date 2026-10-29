@@ -9,6 +9,7 @@ import '../features/map_screen/screens/task_detail_page.dart';
 import '../features/map_screen/screens/assignee_tasks_view.dart';
 import '../features/map_screen/viewmodels/map_screen_viewmodel.dart';
 import '../features/map_screen/viewmodels/add_task_viewmodel.dart';
+import '../features/map_screen/viewmodels/weekly_goals_viewmodel.dart';
 import '../viewmodels/auth_viewmodel.dart';
 import 'app_routes.dart';
 
@@ -48,6 +49,9 @@ class AppRouter {
             ),
             ChangeNotifierProvider<AddTaskViewModel>(
               create: (_) => AddTaskViewModel(),
+            ),
+            ChangeNotifierProvider<WeeklyGoalsViewModel>(
+              create: (_) => WeeklyGoalsViewModel(),
             ),
           ],
           child: const MapScreen(title: 'Task Manager'),

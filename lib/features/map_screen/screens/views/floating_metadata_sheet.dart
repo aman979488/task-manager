@@ -6,6 +6,7 @@ import '../../models/floating_sheet_type.dart';
 import '../../models/quick_date_time_option.dart';
 import '../../utils/task_constants.dart';
 import '../../utils/task_mention_parser.dart';
+import '../../utils/task_week_helpers.dart';
 import '../../../flash/flash_alert_service.dart';
 import 'date_time_picker_dialog.dart';
 
@@ -46,6 +47,7 @@ class FloatingMetadataSheet {
     bool closeOnSelect = false,
     bool multiSelect = false,
     List<String>? selectedValues,
+    List<String>? goalWeekKeys,
     FocusNode? focusNodeToKeep,
   }) async {
     hide();
@@ -129,18 +131,31 @@ class FloatingMetadataSheet {
         case FloatingSheetType.refProject:
           options = projects ?? [];
           break;
+        case FloatingSheetType.goal:
+          options = goalWeekKeys ??
+              weeksOfMonth(DateTime.now().year, DateTime.now().month)
+                  .map((week) => week.key)
+                  .toList();
+          break;
       }
 
       final matchingOptions = typedQuery.isEmpty
           ? const <String>[]
           : options
                 .where(
-                  (opt) =>
-                      TaskMentionParser.matchesSearchQuery(opt, typedQuery),
+                  (opt) => TaskMentionParser.matchesSearchQuery(
+                    type == FloatingSheetType.goal
+                        ? weekLabelForKey(opt)
+                        : opt,
+                    typedQuery,
+                  ),
                 )
                 .toList();
       final highlightedOption = matchingOptions.firstWhere(
-        (opt) => opt.toLowerCase() == typedQuery,
+        (opt) =>
+            (type == FloatingSheetType.goal ? weekLabelForKey(opt) : opt)
+                .toLowerCase() ==
+            typedQuery,
         orElse: () => matchingOptions.isEmpty ? '' : matchingOptions.first,
       );
 
@@ -164,7 +179,7 @@ class FloatingMetadataSheet {
                 )
               : null,
           title: Text(
-            opt,
+            type == FloatingSheetType.goal ? weekLabelForKey(opt) : opt,
             style: TextStyle(
               fontSize: 13,
               fontWeight: isSelected || isHighlighted

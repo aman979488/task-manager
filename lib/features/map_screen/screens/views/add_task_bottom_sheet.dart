@@ -16,6 +16,7 @@ import '../../models/task.dart';
 import '../../utils/task_constants.dart';
 import '../../utils/task_date_formatter.dart';
 import '../../utils/task_mention_parser.dart';
+import '../../utils/task_week_helpers.dart';
 import '../../viewmodels/add_task_viewmodel.dart';
 import '../../viewmodels/map_screen_viewmodel.dart';
 import '../dialogs/task_symbol_help_dialog.dart';
@@ -29,11 +30,19 @@ import 'floating_metadata_sheet.dart';
 class AddTaskBottomSheet extends StatefulWidget {
   const AddTaskBottomSheet({super.key});
 
-  static Future<void> show(BuildContext context, {String? initialAssignee}) {
+  static Future<void> show(
+    BuildContext context, {
+    String? initialAssignee,
+    String? initialWeekKey,
+  }) {
     final addTaskViewModel = context.read<AddTaskViewModel>();
     final mapScreenViewModel = context.read<MapScreenViewModel>();
 
     addTaskViewModel.clear();
+    addTaskViewModel.setValue(
+      FloatingSheetType.goal,
+      initialWeekKey ?? weekKeyFor(DateTime.now()),
+    );
     if (initialAssignee?.trim().isNotEmpty == true) {
       addTaskViewModel.setValue(
         FloatingSheetType.assign,
@@ -92,6 +101,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
   bool _initialFocusScheduled = false;
   bool _detailRouteOpen = false;
   bool _detailRouteDismissed = false;
+  bool _isExpandingSheet = false;
   String? _mentionQuery;
   String _mentionSymbol = '@';
   int _mentionStart = -1;
@@ -143,6 +153,8 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       folder: addVm.folder,
       clientName: addVm.clientName,
       refProject: addVm.refProject,
+      weekKey: addVm.weekKey,
+      isMonthlyGoal: addVm.isMonthlyGoal,
       createdBy: authVm.actorMetadata,
       assigneeUid: addVm.assignee,
     );
@@ -464,6 +476,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       loadClients: mapVm.loadClients,
       loadProjects: mapVm.loadProjects,
       loadAssignees: mapVm.loadAssignees,
+      goalWeekKeys: addVm.goalWeekOptions,
       multiSelect: isMulti,
       closeOnSelect: isMulti,
       selectedValues: currentSelections,
@@ -549,10 +562,20 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
         selectedValue = addVm.refProject;
         onClear = () => _onMetadataChanged(type, null);
         break;
+      case FloatingSheetType.goal:
+        icon = Icons.flag_outlined;
+        label = 'Goal';
+        selectedValue = addVm.weekKey;
+        onClear = () => _onMetadataChanged(type, null);
+        break;
     }
 
     final bool isSelected = selectedValue != null && selectedValue.isNotEmpty;
-    final String displayText = isSelected ? selectedValue : label;
+    final String displayText = isSelected
+        ? type == FloatingSheetType.goal
+              ? weekLabelForKey(selectedValue)
+              : selectedValue
+        : label;
 
     return SheetOptionButton(
       key: _buttonKeys[type],
@@ -631,7 +654,10 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     }
 
     final mobileButtonOrder = [
-      ...addVm.buttonOrder.where((t) => t != FloatingSheetType.refProject),
+      ...addVm.buttonOrder.where(
+        (t) => t != FloatingSheetType.goal && t != FloatingSheetType.refProject,
+      ),
+      FloatingSheetType.goal,
       FloatingSheetType.refProject,
     ];
 
@@ -649,35 +675,63 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
         onNotification: (notification) {
           if (notification.extent < 0.72) {
             _detailRouteDismissed = false;
-          } else if (!_detailRouteOpen && !_detailRouteDismissed) {
-            unawaited(_openDetailFromDraft());
           }
           return false;
         },
-        child: DraggableScrollableSheet(
-          controller: _sheetController,
-          initialChildSize: 0.55,
-          minChildSize: 0.35,
-          maxChildSize: kIsWeb ? 0.85 : 0.95,
-          expand: false,
-          builder: (context, sheetScrollController) => AddTaskSheet(
-            bottomPadding:
-                bottomPadding + MediaQuery.viewInsetsOf(context).bottom,
-            scrollController: sheetScrollController,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AddTaskMetadataBar(
-                  buttonOrder: mobileButtonOrder,
-                  metadataOrder: addVm.metadataOrder,
-                  scrollController: _scrollController,
-                  compact: screenWidth < 600,
-                  buttonBuilder: (type, compact) =>
-                      _buildMetadataButton(type, compact, addVm),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification is ScrollStartNotification) {
+              _isExpandingSheet =
+                  _sheetController.isAttached && _sheetController.size < 0.9;
+            } else if (notification is ScrollEndNotification) {
+              final shouldOpenDetail =
+                  _isExpandingSheet &&
+                  _sheetController.isAttached &&
+                  _sheetController.size >= 0.9 &&
+                  !_detailRouteOpen &&
+                  !_detailRouteDismissed;
+              _isExpandingSheet = false;
+              if (shouldOpenDetail) {
+                unawaited(_openDetailFromDraft());
+              }
+            }
+            return false;
+          },
+          child: DraggableScrollableSheet(
+            controller: _sheetController,
+            initialChildSize: 0.55,
+            minChildSize: 0.35,
+            maxChildSize: kIsWeb ? 0.85 : 0.95,
+            expand: false,
+            builder: (context, sheetScrollController) => AddTaskSheet(
+              bottomPadding:
+                  bottomPadding + MediaQuery.viewInsetsOf(context).bottom,
+              scrollController: sheetScrollController,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AddTaskMetadataBar(
+                    buttonOrder: mobileButtonOrder,
+                    metadataOrder: addVm.metadataOrder,
+                    scrollController: _scrollController,
+                    compact: screenWidth < 600,
+                    buttonBuilder: (type, compact) =>
+                        _buildMetadataButton(type, compact, addVm),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    value: addVm.isMonthlyGoal,
+                    onChanged: (value) => addVm.setMonthlyGoal(value ?? false),
+                    title: const Text(
+                      'Monthly goal',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
                       Expanded(
                         child: Builder(
                           builder: (textFieldCtx) => Focus(
@@ -847,8 +901,8 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
                                                       ),
                                                     ),
                                                   ),
-                                            ],
-                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -1036,7 +1090,8 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
                       ),
                     ],
                   ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

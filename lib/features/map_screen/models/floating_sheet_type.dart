@@ -7,4 +7,5 @@ enum FloatingSheetType {
   folder,
   clientName,
   refProject,
+  goal,
 }

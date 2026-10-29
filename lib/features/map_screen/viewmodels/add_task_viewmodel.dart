@@ -5,6 +5,7 @@ import '../../../viewmodels/auth_viewmodel.dart';
 import '../models/floating_sheet_type.dart';
 import '../models/task.dart';
 import '../utils/task_constants.dart';
+import '../utils/task_week_helpers.dart';
 import 'map_screen_viewmodel.dart';
 
 class AddTaskViewModel extends ChangeNotifier {
@@ -15,6 +16,7 @@ class AddTaskViewModel extends ChangeNotifier {
   List<FloatingSheetType> _buttonOrder = List.from(
     TaskConstants.defaultButtonOrder,
   );
+  bool _isMonthlyGoal = false;
 
   List<FloatingSheetType> get buttonOrder => List.unmodifiable(_buttonOrder);
 
@@ -31,6 +33,19 @@ class AddTaskViewModel extends ChangeNotifier {
   String? get folder => valueFor(FloatingSheetType.folder);
   String? get clientName => valueFor(FloatingSheetType.clientName);
   String? get refProject => valueFor(FloatingSheetType.refProject);
+  String? get weekKey => valueFor(FloatingSheetType.goal);
+  bool get isMonthlyGoal => _isMonthlyGoal;
+
+  List<String> get goalWeekOptions {
+    final now = DateTime.now();
+    final selected = dateRangeForWeek(weekKey ?? weekKeyFor(now));
+    final monthKeys = <String>{
+      ...weeksOfMonth(now.year, now.month).map((week) => week.key),
+      if (selected != null)
+        ...weeksOfMonth(selected.year, selected.month).map((week) => week.key),
+    };
+    return monthKeys.toList()..sort();
+  }
 
   List<String> get selectedAssignees => (assignee ?? '')
       .split(',')
@@ -103,6 +118,11 @@ class AddTaskViewModel extends ChangeNotifier {
     );
   }
 
+  void setMonthlyGoal(bool value) {
+    _isMonthlyGoal = value;
+    notifyListeners();
+  }
+
   Future<bool> submitTask({
     required String title,
     required AuthViewModel authViewModel,
@@ -120,6 +140,8 @@ class AddTaskViewModel extends ChangeNotifier {
       authViewModel: authViewModel,
       onTaskSaved: onTaskSaved,
       taskDraft: taskDraft,
+      weekKey: weekKey,
+      isMonthlyGoal: isMonthlyGoal,
       priority: priority,
       reminder: reminder,
       assignee: assignee,
@@ -139,6 +161,7 @@ class AddTaskViewModel extends ChangeNotifier {
   void clear() {
     _metadata.clear();
     _metadataOrder.clear();
+    _isMonthlyGoal = false;
     notifyListeners();
   }
 }

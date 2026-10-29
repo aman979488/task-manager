@@ -12,6 +12,7 @@ import '../widgets/map_task_list_item.dart';
 import 'calendar_view.dart';
 import 'done_tasks_view.dart';
 import 'floating_metadata_sheet.dart';
+import 'goals_tab_view.dart';
 import 'group_by_assignee_view.dart';
 import 'group_by_view.dart';
 import 'my_day_view.dart';
@@ -371,6 +372,14 @@ class MapScreenTabViews extends StatelessWidget {
               calendarBuilder: (tasks) =>
                   _buildCalendarView(tasks, readOnly: true),
               refreshable: _refreshableScrollView,
+            ),
+          ),
+          Builder(
+            key: const PageStorageKey('goals-tab'),
+            builder: (_) => GoalsTabView(
+              viewModel: viewModel,
+              authViewModel: authViewModel,
+              taskResultsBuilder: _buildMyWorkTaskResults,
             ),
           ),
           Builder(

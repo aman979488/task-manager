@@ -15,6 +15,7 @@ class TaskConstants {
     FloatingSheetType.assign,
     FloatingSheetType.clientName,
     FloatingSheetType.deadline,
+    FloatingSheetType.goal,
     FloatingSheetType.refProject,
   ];
 

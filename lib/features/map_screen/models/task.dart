@@ -64,6 +64,8 @@ class Task {
   String? refProject;
   String? startTime;
   String? endTime;
+  String? weekKey;
+  bool isMonthlyGoal;
   String? accompaniedBy;
   String? monitor;
   String? remark;
@@ -98,6 +100,8 @@ class Task {
     this.refProject,
     this.startTime,
     this.endTime,
+    this.weekKey,
+    this.isMonthlyGoal = false,
     this.accompaniedBy,
     this.monitor,
     this.remark,
@@ -132,6 +136,8 @@ class Task {
       'refProject': refProject,
       'startTime': startTime,
       'endTime': endTime,
+      'weekKey': weekKey,
+      'isMonthlyGoal': isMonthlyGoal,
       'accompaniedBy': accompaniedBy,
       'monitor': monitor,
       'remark': remark,
@@ -193,6 +199,8 @@ class Task {
       refProject: data['refProject']?.toString(),
       startTime: data['startTime']?.toString(),
       endTime: data['endTime']?.toString(),
+      weekKey: data['weekKey']?.toString(),
+      isMonthlyGoal: data['isMonthlyGoal'] == true,
       accompaniedBy: data['accompaniedBy']?.toString(),
       monitor: data['monitor']?.toString(),
       remark: data['remark']?.toString(),
