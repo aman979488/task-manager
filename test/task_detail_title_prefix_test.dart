@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:task_manager/features/map_screen/models/task.dart';
 import 'package:task_manager/features/map_screen/screens/task_detail_page.dart';
+import 'package:task_manager/features/map_screen/screens/views/task_step_list_widget.dart';
 
 void main() {
-  testWidgets('title label stays visible and entered text appends to title', (
+  testWidgets('work name label stays visible and title text is editable', (
     tester,
   ) async {
     final task = Task('Help');
@@ -22,21 +23,28 @@ void main() {
     expect(find.text('Help'), findsOneWidget);
     expect(titleField, findsOneWidget);
     final titleInput = tester.widget<TextField>(titleField);
-    expect(titleInput.controller!.text, isEmpty);
-    expect(titleInput.decoration?.labelText, 'Help');
+    expect(titleInput.controller!.text, 'Help');
+    expect(titleInput.decoration?.labelText, 'Work Detail');
+    expect(titleInput.decoration?.helperText, isNull);
     expect(
       titleInput.decoration?.floatingLabelBehavior,
-      FloatingLabelBehavior.always,
+      FloatingLabelBehavior.auto,
     );
-    expect(titleInput.decoration?.hintStyle?.color, Colors.grey.shade400);
+    expect(
+      titleInput.decoration?.floatingLabelAlignment,
+      FloatingLabelAlignment.start,
+    );
+    expect(titleInput.decoration?.hintText, isNull);
+    expect(titleInput.decoration?.helperText, isNull);
     expect(titleInput.decoration?.border, isA<OutlineInputBorder>());
     expect(
       titleInput.decoration?.contentPadding,
-      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
     );
-    expect(titleInput.style?.fontSize, 18);
+    expect(titleInput.decoration?.suffixIcon, isA<SizedBox>());
+    expect(titleInput.style?.fontSize, 16);
 
-    await tester.enterText(titleField, 'me');
+    await tester.enterText(titleField, 'Help me');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
@@ -44,9 +52,38 @@ void main() {
     expect(find.text('Help me'), findsOneWidget);
   });
 
-  testWidgets('Save appends entered text after the existing title', (
+  testWidgets('empty work detail shows its placeholder and floats on focus', (
     tester,
   ) async {
+    final task = Task('');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(task: task, onChanged: () {}, onSave: () async {}),
+      ),
+    );
+
+    expect(find.text('Work Detail').first, findsOneWidget);
+    await tester.tap(find.text('Work Detail').first);
+    await tester.pumpAndSettle();
+
+    final titleField = tester.widget<TextField>(
+      find.byKey(const ValueKey('task-title-input')),
+    );
+    expect(titleField.decoration?.labelText, 'Work Detail');
+    expect(
+      titleField.decoration?.floatingLabelBehavior,
+      FloatingLabelBehavior.auto,
+    );
+    expect(
+      titleField.decoration?.floatingLabelAlignment,
+      FloatingLabelAlignment.start,
+    );
+    expect(titleField.decoration?.hintText, isNull);
+    expect(titleField.decoration?.border, isA<OutlineInputBorder>());
+    expect(titleField.decoration?.suffixIcon, isA<SizedBox>());
+  });
+
+  testWidgets('Save updates the existing work name', (tester) async {
     final task = Task(
       'Help',
       followUp: DateTime(2026, 10, 27, 9).toIso8601String(),
@@ -68,12 +105,47 @@ void main() {
 
     final titleField = find.byKey(const ValueKey('task-title-input'));
     expect(find.text('Help'), findsOneWidget);
-    await tester.enterText(titleField, 'me');
+    await tester.enterText(titleField, 'Help revised');
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
-    expect(task.title, 'Help me');
+    expect(task.title, 'Help revised');
     expect(saveCalled, isTrue);
+  });
+
+  testWidgets('save toggle saves without marking the task done', (
+    tester,
+  ) async {
+    final task = Task(
+      'Finish report',
+      followUp: DateTime(2026, 10, 29, 9).toIso8601String(),
+    );
+    var saveCalled = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(
+          task: task,
+          onChanged: () {},
+          onSave: () async => saveCalled = true,
+        ),
+      ),
+    );
+
+    final doneToggle = find.byKey(const ValueKey('task-done-toggle'));
+    expect(doneToggle, findsOneWidget);
+    expect(
+      find.ancestor(of: doneToggle, matching: find.byType(TextField)),
+      findsOneWidget,
+    );
+    await tester.tap(doneToggle);
+    await tester.pumpAndSettle();
+
+    expect(task.isDone, isFalse);
+    expect(task.completedAt, isNull);
+    expect(saveCalled, isTrue);
+    expect(find.text('Mark task as done?'), findsNothing);
+    expect(tester.widget<Switch>(doneToggle).value, isFalse);
   });
 
   testWidgets('new task detail keeps the entered title editable', (
@@ -109,7 +181,70 @@ void main() {
     expect(task.title, 'Draft title continued');
   });
 
-  testWidgets('Save requires a follow-up date and time', (tester) async {
+  testWidgets('new task defaults Date & Time to now and shows the year', (
+    tester,
+  ) async {
+    final beforeBuild = DateTime.now();
+    final task = Task('Draft title');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(
+          task: task,
+          isNewTask: true,
+          onChanged: () {},
+          onSave: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final afterBuild = DateTime.now();
+    final defaultDateTime = DateTime.parse(task.followUp!);
+    expect(
+      defaultDateTime.isBefore(beforeBuild) ||
+          defaultDateTime.isAfter(afterBuild),
+      isFalse,
+    );
+    expect(find.text('Date & Time'), findsOneWidget);
+    expect(find.textContaining('/${defaultDateTime.year},'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Date & Time')).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const ValueKey('task-title-input'))).dy,
+      ),
+    );
+    expect(
+      tester.getTopLeft(find.text('Date & Time')).dy,
+      lessThan(tester.getTopLeft(find.byType(TaskStepListWidget)).dy),
+    );
+  });
+
+  testWidgets('work name input is limited to 30 words', (tester) async {
+    final task = Task('Work');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(task: task, onChanged: () {}, onSave: () async {}),
+      ),
+    );
+
+    await tester.tap(find.text('Work'));
+    await tester.pumpAndSettle();
+    final titleField = find.byKey(const ValueKey('task-title-input'));
+    final thirtyWords = List<String>.generate(30, (index) => 'word$index');
+    await tester.enterText(titleField, thirtyWords.join(' '));
+    await tester.enterText(titleField, [...thirtyWords, 'extra'].join(' '));
+    await tester.pump();
+
+    final titleInput = tester.widget<TextField>(titleField);
+    expect(titleInput.controller!.text, thirtyWords.join(' '));
+    expect(titleInput.decoration?.labelText, 'Work Detail');
+  });
+
+  testWidgets('older task without date time gets current date and is saved', (
+    tester,
+  ) async {
+    final beforeBuild = DateTime.now();
     final task = Task('Help');
     var saveCalled = false;
 
@@ -123,11 +258,17 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
-    expect(saveCalled, isFalse);
-    expect(find.text('Follow Up Date & Time is required'), findsOneWidget);
+    final afterSave = DateTime.now();
+    final defaultDateTime = DateTime.parse(task.followUp!);
+    expect(
+      defaultDateTime.isBefore(beforeBuild) ||
+          defaultDateTime.isAfter(afterSave),
+      isFalse,
+    );
+    expect(saveCalled, isTrue);
+    expect(find.text('Date & Time is required'), findsNothing);
   });
 
   test('follow-up date and time are serialized and restored', () {

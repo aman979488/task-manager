@@ -23,7 +23,6 @@ class TaskConstants {
     'U1',
     'U2',
     'U3',
-    'Monitor',
     'IMP',
     'Today',
     'Tomorrow',
@@ -31,6 +30,7 @@ class TaskConstants {
     'Later',
     'Process',
     'Hold',
+    'Monitor',
     'Free',
   ];
 

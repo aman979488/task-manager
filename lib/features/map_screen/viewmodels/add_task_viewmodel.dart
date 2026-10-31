@@ -5,6 +5,7 @@ import '../../../viewmodels/auth_viewmodel.dart';
 import '../models/floating_sheet_type.dart';
 import '../models/task.dart';
 import '../utils/task_constants.dart';
+import '../utils/priority_reminder.dart';
 import '../utils/task_week_helpers.dart';
 import 'map_screen_viewmodel.dart';
 
@@ -84,6 +85,17 @@ class AddTaskViewModel extends ChangeNotifier {
   }
 
   bool setValue(FloatingSheetType type, String? value) {
+    if (type == FloatingSheetType.priority) {
+      final reminder = reminderForPriority(value);
+      if (reminder != null) {
+        _setMetadataValue(FloatingSheetType.remind, reminder.toIso8601String());
+      }
+    }
+
+    return _setMetadataValue(type, value);
+  }
+
+  bool _setMetadataValue(FloatingSheetType type, String? value) {
     final wasSelected = _metadata[type]?.trim().isNotEmpty ?? false;
     _metadata[type] = value;
     if (value == null || value.trim().isEmpty) {
