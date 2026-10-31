@@ -220,6 +220,36 @@ void main() {
     },
   );
 
+  testWidgets('task detail priority is marked and can be cleared', (
+    tester,
+  ) async {
+    final task = Task('Priority task', priority: 'U1');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(task: task, onChanged: () {}, onSave: () async {}),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('Priority'));
+    await tester.tap(find.text('Priority'));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.check), findsOneWidget);
+    final selectedOptionText = find.descendant(
+      of: find.byType(ListView).last,
+      matching: find.text('U1'),
+    );
+    final selectedOption = find.ancestor(
+      of: selectedOptionText,
+      matching: find.byType(InkWell),
+    );
+    tester.widget<InkWell>(selectedOption.last).onTap!();
+    await tester.pumpAndSettle();
+
+    expect(task.priority, isNull);
+  });
+
   testWidgets(
     'deadline picker opens just above its button near screen bottom',
     (tester) async {

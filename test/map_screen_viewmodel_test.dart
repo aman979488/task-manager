@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:task_manager/utils/role_permissions.dart';
+import 'package:task_manager/viewmodels/auth_viewmodel.dart';
 import 'package:task_manager/features/map_screen/models/task.dart';
 import 'package:task_manager/features/map_screen/repositories/task_repository.dart';
 import 'package:task_manager/features/map_screen/services/task_assignment_notification_service.dart';
@@ -14,6 +16,52 @@ void main() {
 
   test('priority options do not include Urgent', () {
     expect(TaskConstants.priorityOptions, isNot(contains('Urgent')));
+  });
+
+  test('metadata options are sorted by usage with stable ties', () async {
+    final repository = _TaskRepositoryStub()
+      ..tasksToFetch = [
+        Task(
+          'First',
+          assignee: 'Ravi, Amit',
+          clientName: 'Acme',
+          workType: 'Design',
+          refProject: 'Alpha',
+          createdBy: {'uid': 'user-1'},
+        ),
+        Task(
+          'Second',
+          assignee: 'ravi',
+          clientName: 'Acme',
+          workType: 'design',
+          refProject: 'Beta',
+          createdBy: {'uid': 'user-1'},
+        ),
+        Task(
+          'Third',
+          assignee: 'Nina',
+          clientName: 'Zeta',
+          workType: 'Support',
+          refProject: 'Beta',
+          createdBy: {'uid': 'user-1'},
+        ),
+      ]
+      ..assigneeOptions = ['Amit', 'Nina', 'Ravi', 'Zoya']
+      ..clientOptions = ['Acme', 'Beta', 'Zeta', 'Zulu']
+      ..workTypeOptions = ['Design', 'QA', 'Support']
+      ..projectOptions = ['Alpha', 'Beta', 'Gamma'];
+    final viewModel = MapScreenViewModel(
+      repository: repository,
+      assignmentNotificationService: _AssignmentNotificationServiceStub(),
+    );
+
+    await viewModel.refreshTasks(_AuthViewModelStub());
+
+    expect(await viewModel.loadAssignees(), ['Ravi', 'Amit', 'Nina', 'Zoya']);
+    expect(await viewModel.loadClients(), ['Acme', 'Zeta', 'Beta', 'Zulu']);
+    expect(await viewModel.loadWorkTypes(), ['Design', 'Support', 'QA']);
+    expect(await viewModel.loadProjects(), ['Beta', 'Alpha', 'Gamma']);
+    viewModel.dispose();
   });
 
   test(
@@ -87,7 +135,7 @@ void main() {
     );
   });
 
-  test('My Day excludes completed and future-date tasks', () {
+  test('My Day includes future scheduled tasks but excludes done tasks', () {
     final completedToday = Task(
       'Completed today',
       isDone: true,
@@ -97,15 +145,20 @@ void main() {
       'Tomorrow',
       deadline: DateTime(2026, 10, 15, 9).toIso8601String(),
     );
+    final futureReminder = Task(
+      'Future reminder',
+      reminder: DateTime(2026, 10, 19, 9).toIso8601String(),
+    );
     final malformedDate = Task('Invalid date', reminder: 'not-a-date');
 
     expect(
       MapScreenViewModel.myDayTasks([
         completedToday,
         tomorrow,
+        futureReminder,
         malformedDate,
       ], now: now),
-      isEmpty,
+      [tomorrow, futureReminder],
     );
   });
 
@@ -401,6 +454,11 @@ void main() {
 
 class _TaskRepositoryStub implements TaskRepository {
   final Completer<void> updateCompleter = Completer<void>();
+  List<Task> tasksToFetch = const [];
+  List<String> assigneeOptions = const [];
+  List<String> clientOptions = const [];
+  List<String> workTypeOptions = const [];
+  List<String> projectOptions = const [];
 
   @override
   Future<void> updateTask(Task task) => updateCompleter.future;
@@ -416,19 +474,19 @@ class _TaskRepositoryStub implements TaskRepository {
     required bool canReadAll,
     required String userUid,
     required String userName,
-  }) async => [];
+  }) async => tasksToFetch;
 
   @override
-  Future<List<String>> loadAssignees() async => [];
+  Future<List<String>> loadAssignees() async => assigneeOptions;
 
   @override
-  Future<List<String>> loadClients() async => [];
+  Future<List<String>> loadClients() async => clientOptions;
 
   @override
-  Future<List<String>> loadProjects() async => [];
+  Future<List<String>> loadProjects() async => projectOptions;
 
   @override
-  Future<List<String>> loadWorkTypes() async => [];
+  Future<List<String>> loadWorkTypes() async => workTypeOptions;
 
   @override
   Stream<List<Task>> watchTasks({
@@ -449,4 +507,21 @@ class _AssignmentNotificationServiceStub
     required String senderEmail,
     required bool notificationsEnabled,
   }) async {}
+}
+
+class _AuthViewModelStub implements AuthViewModel {
+  @override
+  AppRole get appRole => AppRole.user;
+
+  @override
+  String get userEmail => 'user@example.com';
+
+  @override
+  String get userName => 'User';
+
+  @override
+  String get userUid => 'user-1';
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

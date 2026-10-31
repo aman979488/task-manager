@@ -185,6 +185,70 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     widget.onChanged();
   }
 
+  void _onDeselectOption(String key) {
+    setState(() {
+      switch (key) {
+        case 'priority':
+          task.priority = null;
+          task.priorityUpdatedAt = DateTime.now().millisecondsSinceEpoch;
+          break;
+        case 'assignee':
+          task.assignee = null;
+          break;
+        case 'workType':
+          task.workType = null;
+          break;
+        case 'clientName':
+          task.clientName = null;
+          break;
+        case 'refProject':
+          task.refProject = null;
+          break;
+        case 'folder':
+          task.folder = null;
+          break;
+        case 'goal':
+          task.weekKey = null;
+          break;
+        case 'reminder':
+          task.reminder = null;
+          break;
+        case 'deadline':
+          task.deadline = null;
+          break;
+      }
+    });
+    widget.onChanged();
+  }
+
+  String? _selectedOverlayValue(FloatingSheetType type, {String? fieldKey}) {
+    final key =
+        fieldKey ??
+        switch (type) {
+          FloatingSheetType.priority => 'priority',
+          FloatingSheetType.remind => 'reminder',
+          FloatingSheetType.assign => 'assignee',
+          FloatingSheetType.deadline => 'deadline',
+          FloatingSheetType.workType => 'workType',
+          FloatingSheetType.folder => 'folder',
+          FloatingSheetType.clientName => 'clientName',
+          FloatingSheetType.refProject => 'refProject',
+          FloatingSheetType.goal => 'goal',
+        };
+    return switch (key) {
+      'priority' => task.priority,
+      'reminder' => task.reminder,
+      'assignee' => task.assignee,
+      'deadline' => task.deadline,
+      'workType' => task.workType,
+      'folder' => task.folder,
+      'clientName' => task.clientName,
+      'refProject' => task.refProject,
+      'goal' => task.weekKey,
+      _ => null,
+    };
+  }
+
   void _showOverlay(
     BuildContext buttonContext,
     FloatingSheetType type, {
@@ -201,7 +265,9 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       loadProjects: _dataService.loadProjects,
       goalWeekKeys: _goalWeekOptions,
       onSelectOption: _onSelectOption,
+      onDeselectOption: _onDeselectOption,
       onSelectDateTime: _onSelectDateTime,
+      selectedValue: _selectedOverlayValue(type, fieldKey: fieldKey),
     );
   }
 

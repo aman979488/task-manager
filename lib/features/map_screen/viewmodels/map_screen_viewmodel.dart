@@ -366,10 +366,49 @@ class MapScreenViewModel extends ChangeNotifier {
     await _updateHomeWidgetSafely();
   }
 
-  Future<List<String>> loadClients() => _repository.loadClients();
-  Future<List<String>> loadAssignees() => _repository.loadAssignees();
-  Future<List<String>> loadWorkTypes() => _repository.loadWorkTypes();
-  Future<List<String>> loadProjects() => _repository.loadProjects();
+  List<String> _sortByUsage(
+    List<String> options,
+    Iterable<String> Function(Task task) valuesOf,
+  ) {
+    final counts = <String, int>{};
+    for (final task in _tasks) {
+      for (final raw in valuesOf(task)) {
+        final key = raw.trim().toLowerCase();
+        if (key.isEmpty) continue;
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+    }
+    int countOf(String value) => counts[value.trim().toLowerCase()] ?? 0;
+
+    final indexed = options.asMap().entries.toList()
+      ..sort((first, second) {
+        final countDifference = countOf(second.value) - countOf(first.value);
+        return countDifference != 0
+            ? countDifference
+            : first.key.compareTo(second.key);
+      });
+    return indexed.map((entry) => entry.value).toList();
+  }
+
+  Future<List<String>> loadClients() async => _sortByUsage(
+    await _repository.loadClients(),
+    (task) => [task.clientName ?? ''],
+  );
+
+  Future<List<String>> loadAssignees() async => _sortByUsage(
+    await _repository.loadAssignees(),
+    (task) => (task.assignee ?? '').split(','),
+  );
+
+  Future<List<String>> loadWorkTypes() async => _sortByUsage(
+    await _repository.loadWorkTypes(),
+    (task) => [task.workType ?? ''],
+  );
+
+  Future<List<String>> loadProjects() async => _sortByUsage(
+    await _repository.loadProjects(),
+    (task) => [task.refProject ?? ''],
+  );
 
   void sortTasks() {
     _tasks.sort(MapScreenViewModel.compareTasks);
@@ -472,12 +511,6 @@ class MapScreenViewModel extends ChangeNotifier {
   }
 
   static List<Task> myDayTasks(List<Task> source, {DateTime? now}) {
-    final currentDate = now ?? DateTime.now();
-    final today = DateTime(
-      currentDate.year,
-      currentDate.month,
-      currentDate.day,
-    );
     return source.where((task) {
       if (task.isDone) return false;
       if (task.isInMyDay) return true;
@@ -490,14 +523,7 @@ class MapScreenViewModel extends ChangeNotifier {
         return true;
       }
 
-      final scheduled = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
-      if (scheduled == null) return false;
-      final scheduledDate = DateTime(
-        scheduled.year,
-        scheduled.month,
-        scheduled.day,
-      );
-      return !scheduledDate.isAfter(today);
+      return DateTime.tryParse(task.deadline ?? task.reminder ?? '') != null;
     }).toList();
   }
 

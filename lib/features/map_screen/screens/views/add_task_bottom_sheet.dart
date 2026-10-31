@@ -235,6 +235,50 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     }
   }
 
+  String? _selectedQuickDateOption(String? value) {
+    final selectedDate = DateTime.tryParse(value ?? '');
+    if (selectedDate == null) return null;
+
+    final now = DateTime.now();
+    for (final option in QuickDateTimeOptions.options(now: now)) {
+      final optionDate = option.resolve(now);
+      if (selectedDate.year == optionDate.year &&
+          selectedDate.month == optionDate.month &&
+          selectedDate.day == optionDate.day &&
+          selectedDate.hour == optionDate.hour &&
+          selectedDate.minute == optionDate.minute) {
+        return option.label;
+      }
+    }
+    return 'Custom';
+  }
+
+  String? _selectedMetadataOption(
+    FloatingSheetType type,
+    AddTaskViewModel addVm,
+  ) {
+    switch (type) {
+      case FloatingSheetType.priority:
+        return addVm.priority;
+      case FloatingSheetType.remind:
+        return _selectedQuickDateOption(addVm.reminder);
+      case FloatingSheetType.assign:
+        return null;
+      case FloatingSheetType.deadline:
+        return _selectedQuickDateOption(addVm.deadline);
+      case FloatingSheetType.workType:
+        return addVm.workType;
+      case FloatingSheetType.folder:
+        return addVm.folder;
+      case FloatingSheetType.clientName:
+        return addVm.clientName;
+      case FloatingSheetType.refProject:
+        return addVm.refProject;
+      case FloatingSheetType.goal:
+        return addVm.weekKey;
+    }
+  }
+
   Future<void> _openFlashCompose({bool removeMention = false}) async {
     if (removeMention && _mentionStart >= 0) {
       final tokenResult = TaskMentionParser.removeMentionToken(
@@ -466,7 +510,15 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     final addVm = Provider.of<AddTaskViewModel>(context, listen: false);
 
     final isMulti = type == FloatingSheetType.assign;
-    final currentSelections = isMulti ? addVm.selectedAssignees : <String>[];
+    final isMentionSelection = _mentionQuery != null && _mentionStart >= 0;
+    final selectedOption = isMentionSelection
+        ? null
+        : _selectedMetadataOption(type, addVm);
+    final currentSelections = isMulti
+        ? (isMentionSelection ? <String>[] : addVm.selectedAssignees)
+        : selectedOption == null
+        ? <String>[]
+        : [selectedOption];
 
     FloatingMetadataSheet.show(
       context: context,
@@ -478,7 +530,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       loadAssignees: mapVm.loadAssignees,
       goalWeekKeys: addVm.goalWeekOptions,
       multiSelect: isMulti,
-      closeOnSelect: isMulti,
+      closeOnSelect: false,
       selectedValues: currentSelections,
       focusNodeToKeep: _focusNode,
       searchQuery: () => _mentionQuery ?? '',
@@ -486,7 +538,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
           ? () => _openFlashCompose(removeMention: _mentionSymbol == '*')
           : null,
       onSelected: (val) {
-        if (_mentionQuery != null && _mentionStart >= 0) {
+        if (isMentionSelection) {
           unawaited(_completeMention(val));
         } else {
           if (type == FloatingSheetType.assign) {
@@ -494,6 +546,14 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
           } else {
             _onMetadataChanged(type, val);
           }
+        }
+      },
+      onDeselected: (val) {
+        if (isMentionSelection) return;
+        if (type == FloatingSheetType.assign) {
+          addVm.removeAssignee(val);
+        } else {
+          _onMetadataChanged(type, null);
         }
       },
     );
@@ -1003,14 +1063,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
                                           multiSelect:
                                               pickerType ==
                                               FloatingSheetType.assign,
-                                          closeOnSelect:
-                                              pickerType ==
-                                              FloatingSheetType.assign,
-                                          selectedValues:
-                                              pickerType ==
-                                                  FloatingSheetType.assign
-                                              ? addVm.selectedAssignees
-                                              : null,
+                                          closeOnSelect: false,
                                           focusNodeToKeep: _focusNode,
                                           onFlashMessage:
                                               pickerType ==

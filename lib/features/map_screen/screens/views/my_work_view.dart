@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show listEquals;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/task.dart';
 
@@ -25,6 +26,7 @@ class MyWorkView extends StatefulWidget {
 
 class _MyWorkViewState extends State<MyWorkView>
     with AutomaticKeepAliveClientMixin<MyWorkView> {
+  static const _expandedSectionsPreferenceKey = 'my_work_expanded_sections';
   static const double _sectionHeaderHeight = 48;
   static const _defaultSectionNames = [
     'Urgent Works',
@@ -44,6 +46,7 @@ class _MyWorkViewState extends State<MyWorkView>
 
   final Set<String> _expandedSections = {};
   bool _restoredExpandedSections = false;
+  bool _hasChangedExpandedSections = false;
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _viewportKey = GlobalKey();
   final Map<String, GlobalKey> _sectionHeaderKeys = {};
@@ -58,6 +61,19 @@ class _MyWorkViewState extends State<MyWorkView>
   void initState() {
     super.initState();
     _scrollController.addListener(_updatePinnedSections);
+    _restoreExpandedSections();
+  }
+
+  Future<void> _restoreExpandedSections() async {
+    final preferences = await SharedPreferences.getInstance();
+    final saved = preferences.getStringList(_expandedSectionsPreferenceKey);
+    if (!mounted || _hasChangedExpandedSections || saved == null) return;
+
+    setState(() {
+      _expandedSections
+        ..clear()
+        ..addAll(saved.where(_sectionNames.contains));
+    });
   }
 
   @override
@@ -74,11 +90,16 @@ class _MyWorkViewState extends State<MyWorkView>
     }
   }
 
-  void _saveExpandedSections() {
+  Future<void> _saveExpandedSections() async {
     PageStorage.maybeOf(context)?.writeState(
       context,
       _expandedSections.toList(),
       identifier: const ValueKey('my-work-expanded-sections'),
+    );
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setStringList(
+      _expandedSectionsPreferenceKey,
+      _expandedSections.toList(),
     );
   }
 
@@ -104,6 +125,7 @@ class _MyWorkViewState extends State<MyWorkView>
           : populatedNames.take(1).toList();
       if (sectionNames.isEmpty) return;
       setState(() {
+        _hasChangedExpandedSections = true;
         final allExpanded = sectionNames.every(_expandedSections.contains);
         if (allExpanded) {
           _expandedSections.removeAll(sectionNames);
@@ -111,7 +133,7 @@ class _MyWorkViewState extends State<MyWorkView>
           _expandedSections.addAll(sectionNames);
         }
       });
-      _saveExpandedSections();
+      unawaited(_saveExpandedSections());
     });
   }
 
@@ -256,16 +278,18 @@ class _MyWorkViewState extends State<MyWorkView>
       child: InkWell(
         onTap: () {
           setState(() {
+            _hasChangedExpandedSections = true;
             if (isExpanded) {
               _expandedSections.remove(name);
             } else {
               _expandedSections.add(name);
             }
           });
-          _saveExpandedSections();
+          unawaited(_saveExpandedSections());
         },
         onDoubleTap: () {
           setState(() {
+            _hasChangedExpandedSections = true;
             if (_expandedSections.length == populatedNames.length) {
               _expandedSections.clear();
             } else {
@@ -274,7 +298,7 @@ class _MyWorkViewState extends State<MyWorkView>
                 ..addAll(populatedNames);
             }
           });
-          _saveExpandedSections();
+          unawaited(_saveExpandedSections());
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),

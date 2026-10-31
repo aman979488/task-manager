@@ -196,7 +196,7 @@ class DoneTasksView extends StatelessWidget {
     final durStr = '${_formatDuration(totalHours)}Hr';
     final scoStr = _formatScore(totalScore);
 
-    return '$y $m $d ${weekday}_Dur-${durStr}_Sco-$scoStr';
+    return '$d -$m- $y ${weekday}_Dur-${durStr}_Sco-$scoStr';
   }
 
   Widget _taskRow(Task task) {
