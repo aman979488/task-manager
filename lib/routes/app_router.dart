@@ -91,6 +91,7 @@ class AppRouter {
               extra['onAddTask'] as Future<List<Task>> Function()?;
           final taskResultsBuilder =
               extra['taskResultsBuilder'] as Widget Function(List<Task>)?;
+          final taskUpdates = extra['taskUpdates'] as Listenable?;
           return AssigneeTasksView(
             assigneeName: assigneeName,
             tasks: tasks,
@@ -99,6 +100,7 @@ class AppRouter {
             onAddSubstep: onAddSubstep,
             onAddTask: onAddTask,
             taskResultsBuilder: taskResultsBuilder,
+            taskUpdates: taskUpdates,
           );
         },
       ),

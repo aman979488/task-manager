@@ -55,8 +55,8 @@ class AddTaskBottomSheet extends StatefulWidget {
       isScrollControlled: true,
       useRootNavigator: true,
       isDismissible: true,
-      enableDrag: true,
-      showDragHandle: true,
+      enableDrag: false,
+      showDragHandle: false,
       backgroundColor: Colors.white,
       constraints: kIsWeb
           ? BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85)
@@ -100,8 +100,8 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
 
   bool _initialFocusScheduled = false;
   bool _detailRouteOpen = false;
-  bool _detailRouteDismissed = false;
-  bool _isExpandingSheet = false;
+  double _dragHandleDistance = 0;
+  bool _isDragHandleActive = false;
   String? _mentionQuery;
   String _mentionSymbol = '@';
   int _mentionStart = -1;
@@ -128,6 +128,34 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     _scrollController.dispose();
     _sheetController.dispose();
     super.dispose();
+  }
+
+  void _onDragHandleStart(DragStartDetails details) {
+    setState(() {
+      _dragHandleDistance = 0;
+      _isDragHandleActive = true;
+    });
+  }
+
+  void _onDragHandleUpdate(DragUpdateDetails details) {
+    setState(() {
+      _dragHandleDistance = (_dragHandleDistance - details.delta.dy)
+          .clamp(0.0, 48.0)
+          .toDouble();
+    });
+  }
+
+  void _onDragHandleEnd(DragEndDetails details) {
+    final shouldOpenDetail =
+        _dragHandleDistance >= 36 ||
+        details.velocity.pixelsPerSecond.dy <= -400;
+    setState(() {
+      _dragHandleDistance = 0;
+      _isDragHandleActive = false;
+    });
+    if (shouldOpenDetail) {
+      unawaited(_openDetailFromDraft());
+    }
   }
 
   Future<void> _openDetailFromDraft() async {
@@ -206,7 +234,6 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       text: draft.title,
       selection: TextSelection.collapsed(offset: draft.title.length),
     );
-    _detailRouteDismissed = true;
     if (_sheetController.isAttached) {
       await _sheetController.animateTo(
         0.55,
@@ -214,6 +241,12 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
         curve: Curves.easeOut,
       );
     }
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _focusNode.canRequestFocus) {
+        _focusNode.requestFocus();
+      }
+    });
   }
 
   void _onMetadataChanged(FloatingSheetType type, String? value) {
@@ -731,212 +764,197 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
           SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
         }
       },
-      child: NotificationListener<DraggableScrollableNotification>(
-        onNotification: (notification) {
-          if (notification.extent < 0.72) {
-            _detailRouteDismissed = false;
-          }
-          return false;
-        },
-        child: NotificationListener<ScrollNotification>(
-          onNotification: (notification) {
-            if (notification is ScrollStartNotification) {
-              _isExpandingSheet =
-                  _sheetController.isAttached && _sheetController.size < 0.9;
-            } else if (notification is ScrollEndNotification) {
-              final shouldOpenDetail =
-                  _isExpandingSheet &&
-                  _sheetController.isAttached &&
-                  _sheetController.size >= 0.9 &&
-                  !_detailRouteOpen &&
-                  !_detailRouteDismissed;
-              _isExpandingSheet = false;
-              if (shouldOpenDetail) {
-                unawaited(_openDetailFromDraft());
-              }
-            }
-            return false;
-          },
-          child: DraggableScrollableSheet(
-            controller: _sheetController,
-            initialChildSize: 0.55,
-            minChildSize: 0.35,
-            maxChildSize: kIsWeb ? 0.85 : 0.95,
-            expand: false,
-            builder: (context, sheetScrollController) => AddTaskSheet(
-              bottomPadding:
-                  bottomPadding + MediaQuery.viewInsetsOf(context).bottom,
-              scrollController: sheetScrollController,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AddTaskMetadataBar(
-                    buttonOrder: mobileButtonOrder,
-                    metadataOrder: addVm.metadataOrder,
-                    scrollController: _scrollController,
-                    compact: screenWidth < 600,
-                    buttonBuilder: (type, compact) =>
-                        _buildMetadataButton(type, compact, addVm),
-                  ),
-                  CheckboxListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 6),
-                    dense: true,
-                    visualDensity: VisualDensity.compact,
-                    value: addVm.isMonthlyGoal,
-                    onChanged: (value) => addVm.setMonthlyGoal(value ?? false),
-                    title: const Text(
-                      'Monthly goal',
-                      style: TextStyle(fontSize: 14),
+      child: DraggableScrollableSheet(
+        controller: _sheetController,
+        initialChildSize: 0.55,
+        minChildSize: 0.55,
+        maxChildSize: 0.55,
+        expand: false,
+        builder: (context, sheetScrollController) => AddTaskSheet(
+          bottomPadding:
+              bottomPadding + MediaQuery.viewInsetsOf(context).bottom,
+          scrollController: sheetScrollController,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragStart: _onDragHandleStart,
+                onVerticalDragUpdate: _onDragHandleUpdate,
+                onVerticalDragEnd: _onDragHandleEnd,
+                child: SizedBox(
+                  height: 28,
+                  width: double.infinity,
+                  child: Center(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 100),
+                      curve: Curves.easeOut,
+                      transform: Matrix4.translationValues(
+                        0,
+                        -(_dragHandleDistance * 0.35),
+                        0,
+                      ),
+                      width: 56 + (_dragHandleDistance * 0.25),
+                      height: 5 + (_dragHandleDistance * 0.08),
+                      decoration: BoxDecoration(
+                        color: _isDragHandleActive
+                            ? TaskConstants.secondaryColor
+                            : Colors.grey.shade700,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Builder(
-                          builder: (textFieldCtx) => Focus(
-                            onKeyEvent: (node, event) {
-                              if (event is KeyDownEvent &&
-                                  (event.logicalKey ==
-                                          LogicalKeyboardKey.enter ||
-                                      event.logicalKey ==
-                                          LogicalKeyboardKey.numpadEnter) &&
-                                  _mentionQuery != null) {
-                                if (_mentionQuery!.trim().isEmpty) {
-                                  return KeyEventResult.ignored;
-                                }
-                                unawaited(_selectMentionOnEnter());
-                                return KeyEventResult.handled;
-                              }
+                ),
+              ),
+              AddTaskMetadataBar(
+                buttonOrder: mobileButtonOrder,
+                metadataOrder: addVm.metadataOrder,
+                scrollController: _scrollController,
+                compact: screenWidth < 600,
+                buttonBuilder: (type, compact) =>
+                    _buildMetadataButton(type, compact, addVm),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Builder(
+                      builder: (textFieldCtx) => Focus(
+                        onKeyEvent: (node, event) {
+                          if (event is KeyDownEvent &&
+                              (event.logicalKey == LogicalKeyboardKey.enter ||
+                                  event.logicalKey ==
+                                      LogicalKeyboardKey.numpadEnter) &&
+                              _mentionQuery != null) {
+                            if (_mentionQuery!.trim().isEmpty) {
+                              return KeyEventResult.ignored;
+                            }
+                            unawaited(_selectMentionOnEnter());
+                            return KeyEventResult.handled;
+                          }
 
-                              if (event is! KeyDownEvent ||
-                                  event.logicalKey != LogicalKeyboardKey.tab ||
-                                  _mentionQuery == null) {
-                                return KeyEventResult.ignored;
-                              }
+                          if (event is! KeyDownEvent ||
+                              event.logicalKey != LogicalKeyboardKey.tab ||
+                              _mentionQuery == null) {
+                            return KeyEventResult.ignored;
+                          }
 
-                              final query = _mentionQuery!;
-                              final symbol = _mentionSymbol;
-                              unawaited(() async {
-                                try {
-                                  final source = await _loadMentionSource(
-                                    symbol,
-                                  );
-                                  final matches = source
-                                      .where(
-                                        (opt) =>
-                                            TaskMentionParser.matchesSearchQuery(
-                                              opt,
-                                              query,
-                                            ),
-                                      )
-                                      .toList();
-                                  if (matches.isEmpty) return;
-                                  final index = _highlightedIndex.clamp(
-                                    0,
-                                    matches.length - 1,
-                                  );
-                                  await _completeMention(matches[index]);
-                                } catch (error) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(this.context)
-                                        .showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'Could not load options: $error',
-                                            ),
-                                          ),
-                                        );
-                                  }
-                                }
-                              }());
-                              return KeyEventResult.handled;
-                            },
-                            child: RawAutocomplete<String>(
-                              textEditingController: _taskNameController,
-                              focusNode: _focusNode,
-                              optionsViewOpenDirection:
-                                  OptionsViewOpenDirection.up,
-                              optionsBuilder: (_) => const <String>[],
-                              onSelected: _completeMention,
-                              optionsViewBuilder: (ctx, onSelected, options) {
-                                final matches = options.toList();
-                                final highlightedIdx =
-                                    AutocompleteHighlightedOption.of(ctx);
-                                _highlightedIndex = highlightedIdx;
-                                return LayoutBuilder(
-                                  builder: (c, constraints) {
-                                    final availableHeight =
-                                        constraints.hasBoundedHeight
-                                        ? constraints.maxHeight
-                                        : 260.0;
-                                    final popupHeight = availableHeight
-                                        .clamp(0.0, 210.0)
+                          final query = _mentionQuery!;
+                          final symbol = _mentionSymbol;
+                          unawaited(() async {
+                            try {
+                              final source = await _loadMentionSource(symbol);
+                              final matches = source
+                                  .where(
+                                    (opt) =>
+                                        TaskMentionParser.matchesSearchQuery(
+                                          opt,
+                                          query,
+                                        ),
+                                  )
+                                  .toList();
+                              if (matches.isEmpty) return;
+                              final index = _highlightedIndex.clamp(
+                                0,
+                                matches.length - 1,
+                              );
+                              await _completeMention(matches[index]);
+                            } catch (error) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Could not load options: $error',
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          }());
+                          return KeyEventResult.handled;
+                        },
+                        child: RawAutocomplete<String>(
+                          textEditingController: _taskNameController,
+                          focusNode: _focusNode,
+                          optionsViewOpenDirection: OptionsViewOpenDirection.up,
+                          optionsBuilder: (_) => const <String>[],
+                          onSelected: _completeMention,
+                          optionsViewBuilder: (ctx, onSelected, options) {
+                            final matches = options.toList();
+                            final highlightedIdx =
+                                AutocompleteHighlightedOption.of(ctx);
+                            _highlightedIndex = highlightedIdx;
+                            return LayoutBuilder(
+                              builder: (c, constraints) {
+                                final availableHeight =
+                                    constraints.hasBoundedHeight
+                                    ? constraints.maxHeight
+                                    : 260.0;
+                                final popupHeight = availableHeight
+                                    .clamp(0.0, 210.0)
+                                    .toDouble();
+                                const doneAreaHeight = 56.0;
+                                final showDone = popupHeight >= doneAreaHeight;
+                                final listHeight =
+                                    (popupHeight -
+                                            (showDone ? doneAreaHeight : 0))
+                                        .clamp(0.0, 144.0)
                                         .toDouble();
-                                    const doneAreaHeight = 56.0;
-                                    final showDone =
-                                        popupHeight >= doneAreaHeight;
-                                    final listHeight =
-                                        (popupHeight -
-                                                (showDone ? doneAreaHeight : 0))
-                                            .clamp(0.0, 144.0)
-                                            .toDouble();
 
-                                    return Align(
-                                      alignment: Alignment.bottomRight,
-                                      child: Material(
-                                        elevation: 8,
-                                        borderRadius: BorderRadius.circular(12),
-                                        clipBehavior: Clip.antiAlias,
-                                        child: SizedBox(
-                                          width: 240,
-                                          child: ConstrainedBox(
-                                            constraints: BoxConstraints(
-                                              maxHeight: popupHeight,
+                                return Align(
+                                  alignment: Alignment.bottomRight,
+                                  child: Material(
+                                    elevation: 8,
+                                    borderRadius: BorderRadius.circular(12),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: SizedBox(
+                                      width: 240,
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                          maxHeight: popupHeight,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            SizedBox(
+                                              height: listHeight,
+                                              child: ListView.builder(
+                                                padding: EdgeInsets.zero,
+                                                itemCount: matches.length,
+                                                itemBuilder: (context, index) {
+                                                  final name = matches[index];
+                                                  return ListTile(
+                                                    dense: true,
+                                                    selected:
+                                                        index == highlightedIdx,
+                                                    selectedTileColor:
+                                                        TaskConstants
+                                                            .primaryColor
+                                                            .withValues(
+                                                              alpha: 0.45,
+                                                            ),
+                                                    title: Text(
+                                                      name,
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                      ),
+                                                    ),
+                                                    onTap: () =>
+                                                        onSelected(name),
+                                                  );
+                                                },
+                                              ),
                                             ),
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                SizedBox(
-                                                  height: listHeight,
-                                                  child: ListView.builder(
-                                                    padding: EdgeInsets.zero,
-                                                    itemCount: matches.length,
-                                                    itemBuilder: (context, index) {
-                                                      final name =
-                                                          matches[index];
-                                                      return ListTile(
-                                                        dense: true,
-                                                        selected:
-                                                            index ==
-                                                            highlightedIdx,
-                                                        selectedTileColor:
-                                                            TaskConstants
-                                                                .primaryColor
-                                                                .withValues(
-                                                                  alpha: 0.45,
-                                                                ),
-                                                        title: Text(
-                                                          name,
-                                                          style:
-                                                              const TextStyle(
-                                                                fontSize: 13,
-                                                              ),
-                                                        ),
-                                                        onTap: () =>
-                                                            onSelected(name),
-                                                      );
-                                                    },
-                                                  ),
+                                            if (showDone)
+                                              Padding(
+                                                padding: const EdgeInsets.all(
+                                                  8,
                                                 ),
-                                                if (showDone)
-                                                  Padding(
-                                                    padding:
-                                                        const EdgeInsets.all(8),
-                                                    child: SizedBox(
-                                                      width: double.infinity,
-                                                      child: ElevatedButton(
-                                                        style: ElevatedButton.styleFrom(
+                                                child: SizedBox(
+                                                  width: double.infinity,
+                                                  child: ElevatedButton(
+                                                    style:
+                                                        ElevatedButton.styleFrom(
                                                           backgroundColor:
                                                               TaskConstants
                                                                   .primaryColor,
@@ -944,208 +962,193 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
                                                               TaskConstants
                                                                   .secondaryColor,
                                                         ),
-                                                        onPressed: () {
-                                                          final idx =
-                                                              highlightedIdx.clamp(
-                                                                0,
-                                                                matches.length -
-                                                                    1,
-                                                              );
-                                                          onSelected(
-                                                            matches[idx],
+                                                    onPressed: () {
+                                                      final idx = highlightedIdx
+                                                          .clamp(
+                                                            0,
+                                                            matches.length - 1,
                                                           );
-                                                        },
-                                                        child: const Text(
-                                                          'Done',
-                                                        ),
-                                                      ),
-                                                    ),
+                                                      onSelected(matches[idx]);
+                                                    },
+                                                    child: const Text('Done'),
                                                   ),
-                                              ],
-                                            ),
-                                          ),
+                                                ),
+                                              ),
+                                          ],
                                         ),
                                       ),
-                                    );
-                                  },
+                                    ),
+                                  ),
                                 );
                               },
-                              fieldViewBuilder:
-                                  (
-                                    ctx,
-                                    controller,
-                                    focusNode,
-                                    onFieldSubmitted,
-                                  ) => TextField(
-                                    controller: controller,
-                                    focusNode: focusNode,
-                                    maxLength:
-                                        AddTaskViewModel.maxTaskTitleLength,
-                                    maxLengthEnforcement:
-                                        MaxLengthEnforcement.enforced,
-                                    onTap: () {
-                                      if (!focusNode.hasFocus) {
-                                        focusNode.requestFocus();
-                                      } else if (kIsWeb) {
-                                        SystemChannels.textInput
-                                            .invokeMethod<void>(
-                                              'TextInput.show',
-                                            );
-                                      }
-                                    },
-                                    onEditingComplete: () {},
-                                    onTapOutside: (_) {},
-                                    minLines: 1,
-                                    maxLines: 4,
-                                    textInputAction: _mentionQuery == null
-                                        ? TextInputAction.done
-                                        : TextInputAction.search,
-                                    decoration: const InputDecoration(
-                                      hintText: 'Add a task',
-                                      border: InputBorder.none,
-                                      counterText: '',
-                                    ),
-                                    onChanged: (val) {
-                                      final cursor =
-                                          controller.selection.baseOffset;
-                                      final safeCursor = cursor.clamp(
-                                        0,
-                                        val.length,
-                                      );
-                                      final m = TaskMentionParser.parseMention(
-                                        val,
-                                        safeCursor,
-                                      );
+                            );
+                          },
+                          fieldViewBuilder:
+                              (
+                                ctx,
+                                controller,
+                                focusNode,
+                                onFieldSubmitted,
+                              ) => TextField(
+                                controller: controller,
+                                focusNode: focusNode,
+                                maxLength: AddTaskViewModel.maxTaskTitleLength,
+                                maxLengthEnforcement:
+                                    MaxLengthEnforcement.enforced,
+                                onTap: () {
+                                  if (!focusNode.hasFocus) {
+                                    focusNode.requestFocus();
+                                  } else if (kIsWeb) {
+                                    SystemChannels.textInput.invokeMethod<void>(
+                                      'TextInput.show',
+                                    );
+                                  }
+                                },
+                                onEditingComplete: () {},
+                                onTapOutside: (_) {},
+                                minLines: 1,
+                                maxLines: 4,
+                                textInputAction: _mentionQuery == null
+                                    ? TextInputAction.done
+                                    : TextInputAction.search,
+                                decoration: const InputDecoration(
+                                  hintText: 'Add a task',
+                                  border: InputBorder.none,
+                                  counterText: '',
+                                ),
+                                onChanged: (val) {
+                                  final cursor =
+                                      controller.selection.baseOffset;
+                                  final safeCursor = cursor.clamp(
+                                    0,
+                                    val.length,
+                                  );
+                                  final m = TaskMentionParser.parseMention(
+                                    val,
+                                    safeCursor,
+                                  );
 
-                                      _mentionSourceText = val;
-                                      setState(() {
-                                        if (m != null) {
-                                          _mentionStart = m.start;
-                                          _mentionEnd = safeCursor;
-                                          _mentionQuery = m.query;
-                                          _mentionSymbol = m.symbol;
+                                  _mentionSourceText = val;
+                                  setState(() {
+                                    if (m != null) {
+                                      _mentionStart = m.start;
+                                      _mentionEnd = safeCursor;
+                                      _mentionQuery = m.query;
+                                      _mentionSymbol = m.symbol;
+                                    } else {
+                                      _mentionQuery = null;
+                                      _mentionStart = -1;
+                                      _mentionEnd = -1;
+                                    }
+                                  });
+
+                                  if (m == null) {
+                                    _activePickerSymbol = null;
+                                    FloatingMetadataSheet.hide();
+                                    return;
+                                  }
+
+                                  final pickerType =
+                                      TaskMentionParser.typeForSymbol(m.symbol);
+                                  if (pickerType == null) return;
+
+                                  if (_activePickerSymbol != m.symbol) {
+                                    _activePickerSymbol = m.symbol;
+                                    FloatingMetadataSheet.show(
+                                      context: context,
+                                      buttonContext:
+                                          _buttonKeys[pickerType]
+                                              ?.currentContext ??
+                                          textFieldCtx,
+                                      type: pickerType,
+                                      loadWorkTypes: mapVm.loadWorkTypes,
+                                      loadClients: mapVm.loadClients,
+                                      loadProjects: mapVm.loadProjects,
+                                      loadAssignees: mapVm.loadAssignees,
+                                      shouldShow: () =>
+                                          _activePickerSymbol == m.symbol,
+                                      searchQuery: () => _mentionQuery ?? '',
+                                      multiSelect:
+                                          pickerType ==
+                                          FloatingSheetType.assign,
+                                      closeOnSelect: false,
+                                      focusNodeToKeep: _focusNode,
+                                      onFlashMessage:
+                                          pickerType == FloatingSheetType.remind
+                                          ? () => _openFlashCompose(
+                                              removeMention:
+                                                  _mentionSymbol == '*',
+                                            )
+                                          : null,
+                                      onSelected: (opt) {
+                                        if (pickerType ==
+                                            FloatingSheetType.assign) {
+                                          addVm.addAssignee(opt);
                                         } else {
-                                          _mentionQuery = null;
-                                          _mentionStart = -1;
-                                          _mentionEnd = -1;
+                                          unawaited(_completeMention(opt));
                                         }
-                                      });
-
-                                      if (m == null) {
+                                      },
+                                      onDone: () {
                                         _activePickerSymbol = null;
-                                        FloatingMetadataSheet.hide();
-                                        return;
-                                      }
-
-                                      final pickerType =
-                                          TaskMentionParser.typeForSymbol(
-                                            m.symbol,
-                                          );
-                                      if (pickerType == null) return;
-
-                                      if (_activePickerSymbol != m.symbol) {
-                                        _activePickerSymbol = m.symbol;
-                                        FloatingMetadataSheet.show(
-                                          context: context,
-                                          buttonContext:
-                                              _buttonKeys[pickerType]
-                                                  ?.currentContext ??
-                                              textFieldCtx,
-                                          type: pickerType,
-                                          loadWorkTypes: mapVm.loadWorkTypes,
-                                          loadClients: mapVm.loadClients,
-                                          loadProjects: mapVm.loadProjects,
-                                          loadAssignees: mapVm.loadAssignees,
-                                          shouldShow: () =>
-                                              _activePickerSymbol == m.symbol,
-                                          searchQuery: () =>
-                                              _mentionQuery ?? '',
-                                          multiSelect:
-                                              pickerType ==
-                                              FloatingSheetType.assign,
-                                          closeOnSelect: false,
-                                          focusNodeToKeep: _focusNode,
-                                          onFlashMessage:
-                                              pickerType ==
-                                                  FloatingSheetType.remind
-                                              ? () => _openFlashCompose(
-                                                  removeMention:
-                                                      _mentionSymbol == '*',
-                                                )
-                                              : null,
-                                          onSelected: (opt) {
-                                            if (pickerType ==
-                                                FloatingSheetType.assign) {
-                                              addVm.addAssignee(opt);
-                                            } else {
-                                              unawaited(_completeMention(opt));
-                                            }
-                                          },
-                                          onDone: () {
-                                            _activePickerSymbol = null;
-                                            if (pickerType ==
-                                                FloatingSheetType.assign) {
-                                              final token =
-                                                  TaskMentionParser.removeMentionToken(
-                                                    text: _taskNameController
-                                                        .text,
-                                                    start: _mentionStart,
-                                                    end: _mentionEnd,
-                                                  );
-                                              _taskNameController
-                                                  .value = TextEditingValue(
-                                                text: token.newText,
-                                                selection:
-                                                    TextSelection.collapsed(
-                                                      offset: token.newCursor,
-                                                    ),
+                                        if (pickerType ==
+                                            FloatingSheetType.assign) {
+                                          final token =
+                                              TaskMentionParser.removeMentionToken(
+                                                text: _taskNameController.text,
+                                                start: _mentionStart,
+                                                end: _mentionEnd,
                                               );
-                                              setState(() {
-                                                _mentionQuery = null;
-                                                _mentionStart = -1;
-                                                _mentionEnd = -1;
-                                              });
-                                            }
-                                          },
-                                        );
-                                      } else {
-                                        FloatingMetadataSheet.update();
-                                      }
-                                    },
-                                    onSubmitted: (_) {
-                                      if (_mentionQuery != null &&
-                                          _mentionQuery!.trim().isNotEmpty) {
-                                        unawaited(_selectMentionOnEnter());
-                                        return;
-                                      }
-                                      onFieldSubmitted();
-                                      _handleSubmit();
-                                    },
-                                  ),
-                            ),
-                          ),
+                                          _taskNameController
+                                              .value = TextEditingValue(
+                                            text: token.newText,
+                                            selection: TextSelection.collapsed(
+                                              offset: token.newCursor,
+                                            ),
+                                          );
+                                          setState(() {
+                                            _mentionQuery = null;
+                                            _mentionStart = -1;
+                                            _mentionEnd = -1;
+                                          });
+                                        }
+                                      },
+                                    );
+                                  } else {
+                                    FloatingMetadataSheet.update();
+                                  }
+                                },
+                                onSubmitted: (_) {
+                                  if (_mentionQuery != null &&
+                                      _mentionQuery!.trim().isNotEmpty) {
+                                    unawaited(_selectMentionOnEnter());
+                                    return;
+                                  }
+                                  onFieldSubmitted();
+                                  _handleSubmit();
+                                },
+                              ),
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'Task shortcuts',
-                        onPressed: () => showTaskSymbolHelpDialog(context),
-                        icon: const Icon(
-                          Icons.info_outline,
-                          color: TaskConstants.secondaryColor,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _handleSubmit,
-                        icon: const Icon(
-                          Icons.send,
-                          color: TaskConstants.secondaryColor,
-                        ),
-                      ),
-                    ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Task shortcuts',
+                    onPressed: () => showTaskSymbolHelpDialog(context),
+                    icon: const Icon(
+                      Icons.info_outline,
+                      color: TaskConstants.secondaryColor,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _handleSubmit,
+                    icon: const Icon(
+                      Icons.send,
+                      color: TaskConstants.secondaryColor,
+                    ),
                   ),
                 ],
               ),
-            ),
+            ],
           ),
         ),
       ),

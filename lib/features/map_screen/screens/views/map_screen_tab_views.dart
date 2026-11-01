@@ -398,6 +398,7 @@ class MapScreenTabViews extends StatelessWidget {
                   'onAddSubstep': onAddSubstep,
                   'taskResultsBuilder': _buildMyWorkTaskResults,
                   'onAddTask': () => _addTaskForAssignee(assignContext, name),
+                  'taskUpdates': viewModel,
                 },
               ),
               onOpenTask: onOpenTask,

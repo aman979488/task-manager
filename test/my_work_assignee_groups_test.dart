@@ -149,6 +149,38 @@ void main() {
     expect(find.text('LATER'), findsOneWidget);
   });
 
+  testWidgets('assignee task moves sections when its priority changes', (
+    tester,
+  ) async {
+    final taskUpdates = ValueNotifier(0);
+    addTearDown(taskUpdates.dispose);
+    final task = Task('Calm down', priority: 'Today', assignee: 'Aman');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssigneeTasksView(
+          assigneeName: 'Aman',
+          tasks: [task],
+          onOpenTask: (_) {},
+          taskUpdates: taskUpdates,
+          taskResultsBuilder: (tasks) => Column(
+            children: [for (final task in tasks) Text('Shared: ${task.title}')],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('TODAY'), findsOneWidget);
+    expect(find.text('TOMORROW'), findsNothing);
+
+    task.priority = 'Tomorrow';
+    taskUpdates.value++;
+    await tester.pumpAndSettle();
+
+    expect(find.text('TODAY'), findsNothing);
+    expect(find.text('TOMORROW'), findsOneWidget);
+  });
+
   testWidgets('assignee task view uses the shared My Work task renderer', (
     tester,
   ) async {
@@ -287,6 +319,6 @@ void main() {
 
     expect(addedTask, isTrue);
     expect(find.text('2 Pending • 0 Done'), findsOneWidget);
-    expect(find.text('MONITOR'), findsOneWidget);
+    expect(find.text('FREE'), findsOneWidget);
   });
 }

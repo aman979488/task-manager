@@ -20,6 +20,7 @@ class AssigneeTasksView extends StatefulWidget {
   final Future<void> Function(Task task)? onAddSubstep;
   final Future<List<Task>> Function()? onAddTask;
   final Widget Function(List<Task> tasks)? taskResultsBuilder;
+  final Listenable? taskUpdates;
 
   const AssigneeTasksView({
     super.key,
@@ -30,6 +31,7 @@ class AssigneeTasksView extends StatefulWidget {
     this.onAddSubstep,
     this.onAddTask,
     this.taskResultsBuilder,
+    this.taskUpdates,
   });
 
   static Future<void> _defaultToggleTaskDone(
@@ -54,14 +56,29 @@ class _AssigneeTasksViewState extends State<AssigneeTasksView> {
   void initState() {
     super.initState();
     _tasks = List.of(widget.tasks);
+    widget.taskUpdates?.addListener(_handleTaskUpdates);
   }
 
   @override
   void didUpdateWidget(covariant AssigneeTasksView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.taskUpdates != widget.taskUpdates) {
+      oldWidget.taskUpdates?.removeListener(_handleTaskUpdates);
+      widget.taskUpdates?.addListener(_handleTaskUpdates);
+    }
     if (oldWidget.tasks != widget.tasks) {
       _tasks = List.of(widget.tasks);
     }
+  }
+
+  void _handleTaskUpdates() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.taskUpdates?.removeListener(_handleTaskUpdates);
+    super.dispose();
   }
 
   Future<void> _addTask() async {
