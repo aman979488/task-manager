@@ -75,6 +75,8 @@ class Task {
   String? assigneeUid;
 
   int? priorityUpdatedAt;
+  String? priorityUpdatedByUid;
+  int? overdueAcknowledgedAt;
   int? completedAt;
 
   List<TaskStep> steps;
@@ -109,6 +111,8 @@ class Task {
     this.editedBy,
     this.assigneeUid,
     this.priorityUpdatedAt,
+    this.priorityUpdatedByUid,
+    this.overdueAcknowledgedAt,
     this.completedAt,
     List<TaskStep>? steps,
     List<TaskFile>? files,
@@ -145,6 +149,8 @@ class Task {
       'editedBy': editedBy,
       'assigneeUid': assigneeUid,
       'priorityUpdatedAt': priorityUpdatedAt,
+      'priorityUpdatedByUid': priorityUpdatedByUid,
+      'overdueAcknowledgedAt': overdueAcknowledgedAt,
       'completedAt': completedAt,
       'steps': steps.map((s) => s.toMap()).toList(),
       'files': files.map((f) => f.toMap()).toList(),
@@ -167,6 +173,16 @@ class Task {
       parsedPriorityUpdatedAt = priorityUpdatedAtValue.toInt();
     } else if (priorityUpdatedAtValue is String) {
       parsedPriorityUpdatedAt = int.tryParse(priorityUpdatedAtValue);
+    }
+
+    final dynamic overdueAcknowledgedAtValue = data['overdueAcknowledgedAt'];
+    int? parsedOverdueAcknowledgedAt;
+    if (overdueAcknowledgedAtValue is int) {
+      parsedOverdueAcknowledgedAt = overdueAcknowledgedAtValue;
+    } else if (overdueAcknowledgedAtValue is num) {
+      parsedOverdueAcknowledgedAt = overdueAcknowledgedAtValue.toInt();
+    } else if (overdueAcknowledgedAtValue is String) {
+      parsedOverdueAcknowledgedAt = int.tryParse(overdueAcknowledgedAtValue);
     }
 
     final dynamic completedAtValue = data['completedAt'];
@@ -212,6 +228,8 @@ class Task {
           : null,
       assigneeUid: data['assigneeUid']?.toString(),
       priorityUpdatedAt: parsedPriorityUpdatedAt,
+      priorityUpdatedByUid: data['priorityUpdatedByUid']?.toString(),
+      overdueAcknowledgedAt: parsedOverdueAcknowledgedAt,
       completedAt: parsedCompletedAt,
       steps: parsedSteps
           .map((e) => TaskStep.fromMap(e))

@@ -118,11 +118,6 @@ class DoneTasksView extends StatelessWidget {
     return double.parse((mins / 60.0).toStringAsFixed(2));
   }
 
-  double _taskScore(Task task) {
-    final hours = _taskHours(task);
-    return double.parse((hours * 4.0).toStringAsFixed(2));
-  }
-
   String _formatDuration(double hours) {
     if (hours == 0) return '0';
     return hours.toStringAsFixed(2);
@@ -284,43 +279,58 @@ class DoneTasksView extends StatelessWidget {
       );
     }
 
-    // Har task apni alag date header ke saath (grouping nahi)
-    final entries =
-        [
-          for (var i = 0; i < tasks.length; i++)
-            (index: i, task: tasks[i], date: _createdDate(tasks[i])),
-        ]..sort((a, b) {
-          if (a.date == null && b.date == null) {
-            return a.index.compareTo(b.index);
-          }
-          if (a.date == null) {
-            return 1;
-          }
-          if (b.date == null) {
-            return -1;
-          }
-          final byDate = b.date!.compareTo(a.date!);
-          return byDate != 0 ? byDate : a.index.compareTo(b.index);
-        });
+    final tasksByDate = <DateTime?, List<Task>>{};
+    for (final task in tasks) {
+      tasksByDate.putIfAbsent(_createdDate(task), () => []).add(task);
+    }
+    final entries = tasksByDate.entries.toList()
+      ..sort((a, b) {
+        if (a.key == null) return b.key == null ? 0 : 1;
+        if (b.key == null) return -1;
+        return b.key!.compareTo(a.key!);
+      });
+    final groupedRows = entries.map((entry) {
+      final totalHours =
+          entry.value.fold<int>(
+            0,
+            (total, task) => total + _workedMinutes(task),
+          ) /
+          60;
+      final roundedHours = double.parse(totalHours.toStringAsFixed(2));
+      return (
+        date: entry.key,
+        tasks: entry.value,
+        totalHours: roundedHours,
+        totalScore: double.parse((roundedHours * 4).toStringAsFixed(2)),
+      );
+    });
 
     return refreshable(
       ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 100),
         children: [
-          for (final entry in entries) ...[
-            _dateHeader(entry.task, entry.date),
-            _taskRow(entry.task),
+          for (final entry in groupedRows) ...[
+            _dateHeader(
+              entry.date,
+              totalHours: entry.totalHours,
+              totalScore: entry.totalScore,
+            ),
+            for (final task in entry.tasks) _taskRow(task),
           ],
         ],
       ),
     );
   }
 
-  Widget _dateHeader(Task task, DateTime? date) {
+  Widget _dateHeader(
+    DateTime? date, {
+    required double totalHours,
+    required double totalScore,
+  }) {
     final headerText = date == null
         ? 'Date not set'
-        : _dateHeaderLabel(date, _taskHours(task), _taskScore(task));
+        : _dateHeaderLabel(date, totalHours, totalScore);
 
     return Container(
       width: double.infinity,

@@ -117,6 +117,109 @@ void main() {
     },
   );
 
+  test(
+    'changing a task priority updates it before persistence finishes',
+    () async {
+      final repository = _TaskRepositoryStub();
+      final viewModel = MapScreenViewModel(
+        repository: repository,
+        assignmentNotificationService: _AssignmentNotificationServiceStub(),
+      );
+      final task = Task(
+        'Overdue task',
+        priority: 'U1',
+        deadline: DateTime.now()
+            .subtract(const Duration(days: 1))
+            .toIso8601String(),
+      );
+      repository.tasksToFetch = [task];
+      await viewModel.refreshTasks(_AuthViewModelStub());
+      var notified = false;
+      viewModel.addListener(() => notified = true);
+
+      final save = viewModel.updateTaskPriority(
+        task,
+        'IMP',
+        updatedByUid: 'user-1',
+      );
+
+      expect(task.priority, 'IMP');
+      expect(task.priorityUpdatedAt, isNotNull);
+      expect(task.priorityUpdatedByUid, 'user-1');
+      expect(task.overdueAcknowledgedAt, task.priorityUpdatedAt);
+      expect(viewModel.overdueTasks(), isEmpty);
+      expect(viewModel.myWorkSections([task])['IMP Works'], [task]);
+      expect(notified, isTrue);
+
+      repository.updateCompleter.complete();
+      await save;
+      final restored = Task.fromMap('overdue-task', task.toMap());
+      expect(restored.priorityUpdatedByUid, 'user-1');
+      expect(restored.overdueAcknowledgedAt, task.overdueAcknowledgedAt);
+      viewModel.dispose();
+    },
+  );
+
+  test(
+    'failed priority save restores the previous priority and reports error',
+    () async {
+      final repository = _TaskRepositoryStub();
+      final viewModel = MapScreenViewModel(
+        repository: repository,
+        assignmentNotificationService: _AssignmentNotificationServiceStub(),
+      );
+      final previousTimestamp = now.millisecondsSinceEpoch;
+      final task = Task(
+        'Overdue task',
+        priority: 'U1',
+        priorityUpdatedAt: previousTimestamp,
+        priorityUpdatedByUid: 'original-user',
+        overdueAcknowledgedAt: previousTimestamp,
+      );
+
+      final save = viewModel.updateTaskPriority(
+        task,
+        'IMP',
+        updatedByUid: 'user-1',
+      );
+      repository.updateCompleter.completeError(StateError('permission denied'));
+      await save;
+
+      expect(task.priority, 'U1');
+      expect(task.priorityUpdatedAt, previousTimestamp);
+      expect(task.priorityUpdatedByUid, 'original-user');
+      expect(task.overdueAcknowledgedAt, previousTimestamp);
+      expect(
+        viewModel.takeErrorMessage(),
+        contains('Could not update priority'),
+      );
+      viewModel.dispose();
+    },
+  );
+
+  test('reprioritized overdue tasks leave Overdue for every priority', () {
+    final acknowledgedAt = DateTime.now().millisecondsSinceEpoch;
+    for (final priority in TaskConstants.priorityOptions) {
+      final task = Task(
+        'Overdue task',
+        priority: priority,
+        deadline: DateTime.now()
+            .subtract(const Duration(days: 1))
+            .toIso8601String(),
+        overdueAcknowledgedAt: acknowledgedAt,
+      );
+
+      expect(MapScreenViewModel.isTaskOverdue(task), isFalse, reason: priority);
+      final sections = MapScreenViewModel.sectionsForWork([task]);
+      expect(sections['Overdue Works'], isEmpty, reason: priority);
+      expect(
+        sections.values.expand((tasks) => tasks),
+        contains(task),
+        reason: priority,
+      );
+    }
+  });
+
   test('My Day includes today-priority and overdue scheduled tasks', () {
     final todayByPriority = Task('Today priority', priority: ' TODAY ');
     final todayByDeadline = Task(
@@ -255,6 +358,29 @@ void main() {
     );
   });
 
+  test('My Work includes tasks whose priority I changed', () {
+    final reprioritizedByMe = Task(
+      'Reprioritized task',
+      priority: 'IMP',
+      priorityUpdatedByUid: 'user-1',
+    );
+    final reprioritizedBySomeoneElse = Task(
+      'Someone else reprioritized',
+      priority: 'U2',
+      priorityUpdatedByUid: 'user-2',
+    );
+
+    expect(
+      MapScreenViewModel.myTasksForUser(
+        [reprioritizedByMe, reprioritizedBySomeoneElse],
+        userUid: 'user-1',
+        userEmail: 'user@example.com',
+        userName: 'User',
+      ),
+      [reprioritizedByMe],
+    );
+  });
+
   test('Done tasks are ordered by most recently completed', () {
     final olderDone = Task(
       'Older completed',
@@ -373,7 +499,7 @@ void main() {
     );
   });
 
-  test('monitor priority gets its own My Work section and not tomorrow', () {
+  test('monitor priority goes to Free Works, not Tomorrow', () {
     final monitorTask = Task('Monitor task', priority: 'Monitor');
     final tomorrowTask = Task('Tomorrow task', priority: 'Tomorrow');
 
@@ -382,7 +508,8 @@ void main() {
       tomorrowTask,
     ]);
 
-    expect(sections['Monitor Works'], [monitorTask]);
+    expect(sections['Monitor Works'], isNull);
+    expect(sections['Free Works'], [monitorTask]);
     expect(sections['Tomorrow Works'], [tomorrowTask]);
     expect(sections.keys.toList(), [
       'Urgent Works',
@@ -394,7 +521,6 @@ void main() {
       'Day Later Works',
       'Process Works',
       'Hold Works',
-      'Monitor Works',
       'Free Works',
     ]);
   });
@@ -441,7 +567,6 @@ void main() {
       'Day Later Works',
       'Process Works',
       'Hold Works',
-      'Monitor Works',
       'Free Works',
     ]);
     expect(sections['Overdue Works'], [overdueImp]);
@@ -467,7 +592,8 @@ void main() {
       overdue.priority = 'Monitor';
       sections = MapScreenViewModel.sectionsForWork([overdue]);
       expect(sections['Overdue Works'], isEmpty);
-      expect(sections['Monitor Works'], [overdue]);
+      expect(sections['Monitor Works'], isNull);
+      expect(sections['Free Works'], [overdue]);
 
       overdue.priority = 'Free';
       sections = MapScreenViewModel.sectionsForWork([overdue]);

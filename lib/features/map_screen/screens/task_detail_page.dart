@@ -67,6 +67,14 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   bool _needsPersistDefaultFollowUp = false;
 
   Task get task => widget.task;
+  String get _currentUserUid {
+    try {
+      return Provider.of<AuthViewModel>(context, listen: false).userUid;
+    } on ProviderNotFoundException {
+      return '';
+    }
+  }
+
   bool _isSaving = false;
 
   static const Color primaryColor = Color(0xFFFBE64E);
@@ -159,7 +167,11 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       switch (key) {
         case 'priority':
           task.priority = label;
-          task.priorityUpdatedAt = DateTime.now().millisecondsSinceEpoch;
+          final updatedAt = DateTime.now().millisecondsSinceEpoch;
+          task
+            ..priorityUpdatedAt = updatedAt
+            ..priorityUpdatedByUid = _currentUserUid
+            ..overdueAcknowledgedAt = updatedAt;
           final reminder = reminderForPriority(label);
           if (reminder != null) {
             task
@@ -201,6 +213,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       } else {
         task.deadline = iso;
       }
+      task.overdueAcknowledgedAt = null;
     });
     widget.onChanged();
   }
@@ -210,7 +223,11 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       switch (key) {
         case 'priority':
           task.priority = null;
-          task.priorityUpdatedAt = DateTime.now().millisecondsSinceEpoch;
+          final updatedAt = DateTime.now().millisecondsSinceEpoch;
+          task
+            ..priorityUpdatedAt = updatedAt
+            ..priorityUpdatedByUid = _currentUserUid
+            ..overdueAcknowledgedAt = updatedAt;
           break;
         case 'assignee':
           task.assignee = null;
@@ -232,9 +249,11 @@ class _TaskDetailPageState extends State<TaskDetailPage>
           break;
         case 'reminder':
           task.reminder = null;
+          task.overdueAcknowledgedAt = null;
           break;
         case 'deadline':
           task.deadline = null;
+          task.overdueAcknowledgedAt = null;
           break;
       }
     });
@@ -787,9 +806,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                                 child: Switch(
                                   key: const ValueKey('task-done-toggle'),
                                   value: task.isDone,
-                                  onChanged: _isSaving
-                                      ? null
-                                      : _setTaskDone,
+                                  onChanged: _isSaving ? null : _setTaskDone,
                                   activeTrackColor: secondaryColor,
                                 ),
                               ),

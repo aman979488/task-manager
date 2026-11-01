@@ -329,9 +329,23 @@ class MapScreenViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> updateTaskPriority(Task task, String? priority) async {
+  Future<void> updateTaskPriority(
+    Task task,
+    String? priority, {
+    required String updatedByUid,
+  }) async {
+    final previousPriority = task.priority;
+    final previousPriorityUpdatedAt = task.priorityUpdatedAt;
+    final previousPriorityUpdatedByUid = task.priorityUpdatedByUid;
+    final previousOverdueAcknowledgedAt = task.overdueAcknowledgedAt;
+    final previousReminder = task.reminder;
+    final previousReminderSent = task.reminderSent;
+    final updatedAt = DateTime.now().millisecondsSinceEpoch;
     task.priority = priority;
-    task.priorityUpdatedAt = DateTime.now().millisecondsSinceEpoch;
+    task
+      ..priorityUpdatedAt = updatedAt
+      ..priorityUpdatedByUid = updatedByUid
+      ..overdueAcknowledgedAt = updatedAt;
     final reminder = reminderForPriority(priority);
     if (reminder != null) {
       task
@@ -339,7 +353,21 @@ class MapScreenViewModel extends ChangeNotifier {
         ..reminderSent = false;
     }
     sortTasks();
-    await updateTask(task);
+    try {
+      await updateTask(task);
+    } catch (error) {
+      task
+        ..priority = previousPriority
+        ..priorityUpdatedAt = previousPriorityUpdatedAt
+        ..priorityUpdatedByUid = previousPriorityUpdatedByUid
+        ..overdueAcknowledgedAt = previousOverdueAcknowledgedAt
+        ..reminder = previousReminder
+        ..reminderSent = previousReminderSent;
+      _lastErrorMessage =
+          'Could not update priority for "${task.title}". Please try again.';
+      debugPrint('Error updating task priority for "${task.title}": $error');
+      sortTasks();
+    }
   }
 
   Future<void> addSubstep(Task task, String title) async {
@@ -534,10 +562,16 @@ class MapScreenViewModel extends ChangeNotifier {
     }).toList();
   }
 
-  bool isOverdue(Task task) {
+  bool isOverdue(Task task) => isTaskOverdue(task);
+
+  static bool isTaskOverdue(Task task, {DateTime? now}) {
     if (task.isDone) return false;
     final date = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
-    return date != null && date.isBefore(DateTime.now());
+    final currentTime = now ?? DateTime.now();
+    if (date == null || !date.isBefore(currentTime)) return false;
+    final acknowledgedAt = task.overdueAcknowledgedAt;
+    return acknowledgedAt == null ||
+        acknowledgedAt < date.millisecondsSinceEpoch;
   }
 
   List<Task> myTasks(AuthViewModel authViewModel) {
@@ -591,7 +625,15 @@ class MapScreenViewModel extends ChangeNotifier {
           return person == identity || personParts.contains(identity);
         }),
       );
-      return isCreator || isAssignedToMe || isMonitoredByMe;
+      final priorityUpdatedByUid = (task.priorityUpdatedByUid ?? '')
+          .trim()
+          .toLowerCase();
+      final isPriorityUpdatedByMe =
+          myUid.isNotEmpty && priorityUpdatedByUid == myUid;
+      return isCreator ||
+          isAssignedToMe ||
+          isMonitoredByMe ||
+          isPriorityUpdatedByMe;
     }).toList();
   }
 
@@ -615,12 +657,12 @@ class MapScreenViewModel extends ChangeNotifier {
           }.contains(task.priority?.trim().toLowerCase()),
         )
         .toList();
-    final monitorWorks = pending
-        .where((task) => task.priority?.trim().toLowerCase() == 'monitor')
-        .toList();
     final freeWorks = pending.where((task) {
       final priority = task.priority?.trim().toLowerCase();
-      return priority == null || priority.isEmpty || priority == 'free';
+      return priority == null ||
+          priority.isEmpty ||
+          priority == 'free' ||
+          priority == 'monitor';
     }).toList();
     final todayWorks = withPriority('today');
     final overdueWorks = pending.where((task) {
@@ -631,9 +673,7 @@ class MapScreenViewModel extends ChangeNotifier {
           priority == 'monitor') {
         return false;
       }
-      final date = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
-      return date != null &&
-          date.isBefore(now) &&
+      return isTaskOverdue(task, now: now) &&
           !urgentWorks.contains(task) &&
           !todayWorks.contains(task);
     }).toList();
@@ -661,7 +701,7 @@ class MapScreenViewModel extends ChangeNotifier {
       'Hold Works': withPriority('hold')
           .where((task) => !isOverdue(task))
           .toList(),
-      'Monitor Works': monitorWorks,
+
       'Free Works': freeWorks,
     };
   }

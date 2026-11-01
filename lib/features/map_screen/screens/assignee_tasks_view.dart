@@ -130,7 +130,6 @@ class _AssigneeTasksViewState extends State<AssigneeTasksView> {
       'Day Later Works',
       'Process Works',
       'Hold Works',
-      'Monitor Works',
       'Free Works',
       if (completedTasks.isNotEmpty) 'Completed Tasks',
     ];
