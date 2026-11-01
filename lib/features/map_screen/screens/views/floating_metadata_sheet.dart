@@ -4,9 +4,11 @@ import 'package:flutter/services.dart';
 
 import '../../models/floating_sheet_type.dart';
 import '../../models/quick_date_time_option.dart';
+import '../../utils/frequent_option_usage.dart';
 import '../../utils/task_constants.dart';
 import '../../utils/task_mention_parser.dart';
 import '../../utils/task_week_helpers.dart';
+
 import '../../../flash/flash_alert_service.dart';
 import 'date_time_picker_dialog.dart';
 
@@ -38,6 +40,7 @@ class FloatingMetadataSheet {
     Future<List<String>> Function()? loadWorkTypes,
     Future<List<String>> Function()? loadClients,
     Future<List<String>> Function()? loadProjects,
+    Future<List<String>> Function()? loadFolders,
     Future<List<String>> Function()? loadAssignees,
     void Function(String)? onSelected,
     void Function(String)? onDeselected,
@@ -71,6 +74,10 @@ class FloatingMetadataSheet {
     if (type == FloatingSheetType.refProject && loadProjects != null) {
       projects = await loadProjects();
     }
+    List<String>? folders;
+    if (type == FloatingSheetType.folder && loadFolders != null) {
+      folders = await loadFolders();
+    }
     List<String>? assignees;
     if (type == FloatingSheetType.assign && loadAssignees != null) {
       assignees = await loadAssignees();
@@ -83,6 +90,44 @@ class FloatingMetadataSheet {
       selectedValues ?? const <String>[],
     );
     final initiallySelectedValues = List<String>.from(activeSelectedValues);
+    List<String> optionsForType() {
+      switch (type) {
+        case FloatingSheetType.priority:
+          return TaskConstants.priorityOptions;
+        case FloatingSheetType.remind:
+          return [
+            ...QuickDateTimeOptions.labels(),
+            if (onFlashMessage != null) kFlashOption,
+          ];
+        case FloatingSheetType.deadline:
+          return QuickDateTimeOptions.labels();
+        case FloatingSheetType.assign:
+          return assignees ?? [];
+        case FloatingSheetType.workType:
+          return workTypes ?? TaskConstants.defaultWorkTypes;
+        case FloatingSheetType.folder:
+          return folders ?? TaskConstants.folderOptions;
+        case FloatingSheetType.clientName:
+          return clients ?? [];
+        case FloatingSheetType.refProject:
+          return projects ?? [];
+        case FloatingSheetType.goal:
+          return goalWeekKeys ??
+              weeksOfMonth(
+                DateTime.now().year,
+                DateTime.now().month,
+              ).map((week) => week.key).toList();
+      }
+    }
+
+    final rankedOptions = await FrequentOptionUsage.orderOptions(
+      type.name,
+      optionsForType(),
+      selectedValues: initiallySelectedValues,
+    );
+    if (!buttonContext.mounted || !context.mounted) return;
+    if (shouldShow != null && !shouldShow()) return;
+
     final BuildContext rootContext = Navigator.of(
       buttonContext,
       rootNavigator: true,
@@ -107,44 +152,7 @@ class FloatingMetadataSheet {
 
     List<Widget> buildOptions(StateSetter? setOverlayState) {
       final typedQuery = currentQuery();
-      List<String> options = [];
-      switch (type) {
-        case FloatingSheetType.priority:
-          options = TaskConstants.priorityOptions;
-          break;
-        case FloatingSheetType.remind:
-          options = [
-            ...QuickDateTimeOptions.labels(),
-            if (onFlashMessage != null) kFlashOption,
-          ];
-          break;
-        case FloatingSheetType.deadline:
-          options = QuickDateTimeOptions.labels();
-          break;
-        case FloatingSheetType.assign:
-          options = assignees ?? [];
-          break;
-        case FloatingSheetType.workType:
-          options = workTypes ?? TaskConstants.defaultWorkTypes;
-          break;
-        case FloatingSheetType.folder:
-          options = TaskConstants.folderOptions;
-          break;
-        case FloatingSheetType.clientName:
-          options = clients ?? [];
-          break;
-        case FloatingSheetType.refProject:
-          options = projects ?? [];
-          break;
-        case FloatingSheetType.goal:
-          options =
-              goalWeekKeys ??
-              weeksOfMonth(
-                DateTime.now().year,
-                DateTime.now().month,
-              ).map((week) => week.key).toList();
-          break;
-      }
+      final options = rankedOptions;
 
       final matchingOptions = typedQuery.isEmpty
           ? const <String>[]
@@ -164,12 +172,7 @@ class FloatingMetadataSheet {
         orElse: () => matchingOptions.isEmpty ? '' : matchingOptions.first,
       );
 
-      final orderedOptions = [
-        ...options.where((opt) => initiallySelectedValues.contains(opt)),
-        ...options.where((opt) => !initiallySelectedValues.contains(opt)),
-      ];
-
-      return orderedOptions.map((opt) {
+      return options.map((opt) {
         final bool isSelected = activeSelectedValues.contains(opt);
         final bool isHighlighted =
             highlightedOption.isNotEmpty && opt == highlightedOption;
@@ -258,6 +261,7 @@ class FloatingMetadataSheet {
               }
             }
 
+            await FrequentOptionUsage.recordSelection(type.name, opt);
             if (onSelected != null) onSelected(finalVal);
             if (multiSelect && !activeSelectedValues.contains(finalVal)) {
               activeSelectedValues.add(finalVal);

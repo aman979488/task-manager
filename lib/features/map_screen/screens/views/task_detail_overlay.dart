@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/floating_sheet_type.dart';
 import '../../models/quick_date_time_option.dart';
 import '../../utils/task_constants.dart';
+import '../../utils/frequent_option_usage.dart';
 import '../../utils/task_week_helpers.dart';
 import 'date_time_picker_dialog.dart';
 
@@ -106,11 +107,7 @@ class TaskDetailOverlay {
       switch (key) {
         case 'goal':
           return goalWeekKeys
-              .map(
-                (weekKey) => ListTile(
-                  title: Text(weekLabelForKey(weekKey)),
-                ),
-              )
+              .map((weekKey) => ListTile(title: Text(weekLabelForKey(weekKey))))
               .toList();
         case 'priority':
           return TaskConstants.priorityOptions
@@ -187,6 +184,46 @@ class TaskDetailOverlay {
     } else {
       selectedOptionLabel = selectedValue;
     }
+
+    String optionValueForLabel(String label) {
+      if (resolvedKey != 'goal') return label;
+      return goalWeekKeys.firstWhere(
+        (weekKey) => weekLabelForKey(weekKey) == label,
+        orElse: () => label,
+      );
+    }
+
+    final usageListKey = switch (resolvedKey) {
+      'reminder' => 'remind',
+      'assignee' => 'assign',
+      _ => resolvedKey,
+    };
+    final optionValues = tileWidgets.whereType<ListTile>().map((tile) {
+      return optionValueForLabel((tile.title as Text).data ?? '');
+    }).toList();
+    final orderedOptionValues = await FrequentOptionUsage.orderOptions(
+      usageListKey,
+      optionValues,
+      selectedValues: [
+        if (selectedOptionLabel != null)
+          optionValueForLabel(selectedOptionLabel),
+      ],
+    );
+    if (!buttonContext.mounted) return;
+    final optionRanks = {
+      for (var index = 0; index < orderedOptionValues.length; index++)
+        orderedOptionValues[index]: index,
+    };
+    tileWidgets.sort((first, second) {
+      if (first is! ListTile || second is! ListTile) return 0;
+      final firstValue = optionValueForLabel((first.title as Text).data ?? '');
+      final secondValue = optionValueForLabel(
+        (second.title as Text).data ?? '',
+      );
+      return (optionRanks[firstValue] ?? optionRanks.length).compareTo(
+        optionRanks[secondValue] ?? optionRanks.length,
+      );
+    });
 
     final markedTiles = tileWidgets.map((tile) {
       if (tile is! ListTile) return tile;
@@ -396,6 +433,10 @@ class TaskDetailOverlay {
                                                 }
 
                                                 if (computed != null) {
+                                                  await FrequentOptionUsage.recordSelection(
+                                                    usageListKey,
+                                                    optionValueForLabel(label),
+                                                  );
                                                   onSelectDateTime(
                                                     resolvedKey,
                                                     computed,
@@ -412,6 +453,16 @@ class TaskDetailOverlay {
                                                             label,
                                                       )
                                                     : label;
+                                                if (label != 'Assign to me' &&
+                                                    label !=
+                                                        'Assign to someone else' &&
+                                                    label !=
+                                                        'No clients found') {
+                                                  await FrequentOptionUsage.recordSelection(
+                                                    usageListKey,
+                                                    selectedValue,
+                                                  );
+                                                }
                                                 onSelectOption(
                                                   resolvedKey,
                                                   selectedValue,

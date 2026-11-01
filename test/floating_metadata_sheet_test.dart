@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:task_manager/features/map_screen/models/floating_sheet_type.dart';
 import 'package:task_manager/features/map_screen/screens/views/floating_metadata_sheet.dart';
 import 'package:task_manager/features/map_screen/utils/task_constants.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets(
     'single-select dropdown restores, replaces and clears selection',
     (tester) async {
@@ -222,11 +226,11 @@ void main() {
 
       await openDropdown();
       expect(
-        tester.getCenter(find.text('B').first).dy,
-        lessThan(tester.getCenter(find.text('C').first).dy),
+        tester.getCenter(find.text('C').first).dy,
+        lessThan(tester.getCenter(find.text('B').first).dy),
       );
       expect(
-        tester.getCenter(find.text('C').first).dy,
+        tester.getCenter(find.text('B').first).dy,
         lessThan(tester.getCenter(find.text('A').first).dy),
       );
       FloatingMetadataSheet.hide();

@@ -7,13 +7,14 @@ import 'package:provider/provider.dart';
 
 import '../../../viewmodels/auth_viewmodel.dart';
 import '../models/floating_sheet_type.dart';
+import '../models/quick_date_time_option.dart';
 import '../models/task.dart';
 import '../services/task_assignment_notification_service.dart';
 import '../services/task_detail_data_service.dart';
 import '../utils/priority_reminder.dart';
 import '../utils/task_week_helpers.dart';
-import 'views/task_detail_overlay.dart';
 import 'views/date_time_picker_dialog.dart';
+import 'views/floating_metadata_sheet.dart';
 import 'views/task_files_section.dart';
 import 'views/task_step_list_widget.dart';
 
@@ -44,8 +45,6 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   late final TaskAssignmentNotificationService _assignmentNotificationService =
       TaskAssignmentNotificationService();
   late final TaskDetailDataService _dataService = TaskDetailDataService();
-  late final TaskDetailOverlay _overlay = TaskDetailOverlay();
-
   late TextEditingController _noteController;
   bool _showAdditionalDetails = false;
   Future<String?>? _createdByNameFuture;
@@ -64,6 +63,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   final GlobalKey _goalAnchorKey = GlobalKey();
   Timer? _titleVisibilityTimer;
   bool _isEditingTitle = false;
+  bool _isEditingTitleFromTap = false;
   bool _needsPersistDefaultFollowUp = false;
 
   Task get task => widget.task;
@@ -107,7 +107,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _titleVisibilityTimer?.cancel();
-    _overlay.dispose();
+    FloatingMetadataSheet.hide();
     task.note = _noteController.text;
     _noteController.dispose();
     _titleController.dispose();
@@ -116,7 +116,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
   @override
   void didChangeMetrics() {
-    if (!_isEditingTitle ||
+    if (!_isEditingTitleFromTap ||
         WidgetsBinding
                 .instance
                 .platformDispatcher
@@ -293,21 +293,59 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     FloatingSheetType type, {
     String? fieldKey,
   }) {
-    _overlay.show(
-      buttonContext: buttonContext,
-      type: type,
-      fieldKey: fieldKey,
-      loadWorkTypes: _dataService.loadWorkTypes,
-      loadAssignees: _dataService.loadAssignees,
-      loadClients: _dataService.loadClients,
-      loadFolders: _dataService.loadFolders,
-      loadProjects: _dataService.loadProjects,
-      goalWeekKeys: _goalWeekOptions,
-      onSelectOption: _onSelectOption,
-      onDeselectOption: _onDeselectOption,
-      onSelectDateTime: _onSelectDateTime,
-      selectedValue: _selectedOverlayValue(type, fieldKey: fieldKey),
+    final selectedValue = _selectedOverlayValue(type, fieldKey: fieldKey);
+    final isDateTime =
+        type == FloatingSheetType.remind || type == FloatingSheetType.deadline;
+    final selectedOption = isDateTime
+        ? _selectedQuickDateOption(selectedValue)
+        : selectedValue;
+    final key =
+        fieldKey ??
+        switch (type) {
+          FloatingSheetType.remind => 'reminder',
+          _ => type.name,
+        };
+    unawaited(
+      FloatingMetadataSheet.show(
+        context: context,
+        buttonContext: buttonContext,
+        type: type,
+        loadWorkTypes: _dataService.loadWorkTypes,
+        loadAssignees: _dataService.loadAssignees,
+        loadClients: _dataService.loadClients,
+        loadProjects: _dataService.loadProjects,
+        loadFolders: _dataService.loadFolders,
+        goalWeekKeys: _goalWeekOptions,
+        selectedValues: selectedOption == null ? const [] : [selectedOption],
+        onSelected: (value) {
+          if (isDateTime) {
+            final selectedDate = DateTime.tryParse(value);
+            if (selectedDate != null) _onSelectDateTime(key, selectedDate);
+          } else {
+            _onSelectOption(key, value);
+          }
+        },
+        onDeselected: (_) => _onDeselectOption(key),
+      ),
     );
+  }
+
+  String? _selectedQuickDateOption(String? value) {
+    final selectedDate = DateTime.tryParse(value ?? '');
+    if (selectedDate == null) return null;
+
+    final now = DateTime.now();
+    for (final option in QuickDateTimeOptions.options(now: now)) {
+      final optionDate = option.resolve(now);
+      if (selectedDate.year == optionDate.year &&
+          selectedDate.month == optionDate.month &&
+          selectedDate.day == optionDate.day &&
+          selectedDate.hour == optionDate.hour &&
+          selectedDate.minute == optionDate.minute) {
+        return option.label;
+      }
+    }
+    return 'Custom';
   }
 
   List<String> get _goalWeekOptions {
@@ -612,7 +650,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
             height: MediaQuery.sizeOf(context).height * 0.6,
             child: ListView(
               children: [
-                _peopleSectionTitle('Clients'),
+                if (label != 'Monitor') _peopleSectionTitle('Clients'),
                 if (clients.isEmpty)
                   const ListTile(
                     dense: true,
@@ -635,7 +673,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                       }
                     }),
                   ),
-                _peopleSectionTitle('Staff'),
+                if (label != 'Monitor') _peopleSectionTitle('Staff'),
                 if (staff.isEmpty)
                   const ListTile(
                     dense: true,
@@ -697,6 +735,9 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     return Scaffold(
       appBar: AppBar(
         backgroundColor: primaryColor,
+        leading: widget.isNewTask
+            ? BackButton(onPressed: () => Navigator.of(context).pop(false))
+            : null,
         title: const Text(
           "Task",
           style: TextStyle(color: secondaryColor, fontWeight: FontWeight.bold),
@@ -738,8 +779,8 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                 child: NotificationListener<UserScrollNotification>(
                   onNotification: (notification) {
                     if (notification.direction != ScrollDirection.idle &&
-                        _overlay.isShowing) {
-                      _overlay.hide();
+                        FloatingMetadataSheet.isShowing) {
+                      FloatingMetadataSheet.hide();
                     }
                     return false;
                   },
@@ -778,6 +819,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                               if (_isEditingTitle) return;
                               setState(() {
                                 _isEditingTitle = true;
+                                _isEditingTitleFromTap = true;
                                 _titleController.selection =
                                     TextSelection.collapsed(
                                       offset: _titleController.text.length,

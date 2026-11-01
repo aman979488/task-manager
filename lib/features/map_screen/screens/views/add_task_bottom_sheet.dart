@@ -138,6 +138,15 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
   }
 
   void _onDragHandleUpdate(DragUpdateDetails details) {
+    final minSize = 0.55;
+    final maxSize = kIsWeb ? 0.85 : 0.95;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    if (_sheetController.isAttached && screenHeight > 0) {
+      final nextSize = (_sheetController.size - details.delta.dy / screenHeight)
+          .clamp(minSize, maxSize)
+          .toDouble();
+      _sheetController.jumpTo(nextSize);
+    }
     setState(() {
       _dragHandleDistance = (_dragHandleDistance - details.delta.dy)
           .clamp(0.0, 48.0)
@@ -149,12 +158,24 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     final shouldOpenDetail =
         _dragHandleDistance >= 36 ||
         details.velocity.pixelsPerSecond.dy <= -400;
+    unawaited(_finishHandleDrag(shouldOpenDetail));
+  }
+
+  Future<void> _finishHandleDrag(bool shouldOpenDetail) async {
+    if (_sheetController.isAttached) {
+      await _sheetController.animateTo(
+        shouldOpenDetail ? (kIsWeb ? 0.85 : 0.95) : 0.55,
+        duration: const Duration(milliseconds: 480),
+        curve: Curves.easeInOutCubic,
+      );
+    }
+    if (!mounted) return;
     setState(() {
       _dragHandleDistance = 0;
       _isDragHandleActive = false;
     });
     if (shouldOpenDetail) {
-      unawaited(_openDetailFromDraft());
+      await _openDetailFromDraft();
     }
   }
 
@@ -187,41 +208,41 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       assigneeUid: addVm.assignee,
     );
 
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => MultiProvider(
-          providers: [
-            ChangeNotifierProvider<AuthViewModel>.value(value: authVm),
-            ChangeNotifierProvider<AddTaskViewModel>.value(value: addVm),
-            ChangeNotifierProvider<MapScreenViewModel>.value(value: mapVm),
-          ],
-          child: TaskDetailPage(
-            task: draft,
-            isNewTask: true,
-            onChanged: () {},
-            onSave: () async {
-              final added = await addVm.submitTask(
-                title: draft.title,
-                authViewModel: authVm,
-                mapViewModel: mapVm,
-                taskDraft: draft,
-                onTaskSaved: scheduledFlash == null
-                    ? null
-                    : (task) => FlashAlertService.send(
-                        scheduledFlash.copyWith(taskId: task.id),
-                        senderUid: authVm.userUid,
-                        senderName: authVm.userName,
-                      ),
-              );
-              if (!added) {
-                throw StateError('Could not save the task. Please try again.');
-              }
-              _scheduledFlash = null;
-            },
-          ),
+    final detailRoute = MaterialPageRoute<bool>(
+      builder: (_) => MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthViewModel>.value(value: authVm),
+          ChangeNotifierProvider<AddTaskViewModel>.value(value: addVm),
+          ChangeNotifierProvider<MapScreenViewModel>.value(value: mapVm),
+        ],
+        child: TaskDetailPage(
+          task: draft,
+          isNewTask: true,
+          onChanged: () {},
+          onSave: () async {
+            final added = await addVm.submitTask(
+              title: draft.title,
+              authViewModel: authVm,
+              mapViewModel: mapVm,
+              taskDraft: draft,
+              onTaskSaved: scheduledFlash == null
+                  ? null
+                  : (task) => FlashAlertService.send(
+                      scheduledFlash.copyWith(taskId: task.id),
+                      senderUid: authVm.userUid,
+                      senderName: authVm.userName,
+                    ),
+            );
+            if (!added) {
+              throw StateError('Could not save the task. Please try again.');
+            }
+            _scheduledFlash = null;
+          },
         ),
       ),
     );
+    final saved = await Navigator.of(context).push<bool>(detailRoute);
+    await detailRoute.completed;
 
     if (!mounted) return;
     _detailRouteOpen = false;
@@ -236,17 +257,22 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     );
     if (_sheetController.isAttached) {
       await _sheetController.animateTo(
-        0.55,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
+        kIsWeb ? 0.58 : 0.56,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeInOutCubic,
       );
     }
+    await _restoreTaskNameKeyboard();
+  }
+
+  Future<void> _restoreTaskNameKeyboard() async {
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !_focusNode.canRequestFocus) return;
+    FocusScope.of(context).requestFocus(_focusNode);
+    _focusNode.requestFocus();
+    await Future<void>.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _focusNode.canRequestFocus) {
-        _focusNode.requestFocus();
-      }
-    });
+    await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
   }
 
   void _onMetadataChanged(FloatingSheetType type, String? value) {
@@ -767,8 +793,8 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       child: DraggableScrollableSheet(
         controller: _sheetController,
         initialChildSize: 0.55,
-        minChildSize: 0.55,
-        maxChildSize: 0.55,
+        minChildSize: 0.35,
+        maxChildSize: kIsWeb ? 0.85 : 0.95,
         expand: false,
         builder: (context, sheetScrollController) => AddTaskSheet(
           bottomPadding:
@@ -786,9 +812,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
                   height: 28,
                   width: double.infinity,
                   child: Center(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 100),
-                      curve: Curves.easeOut,
+                    child: Container(
                       transform: Matrix4.translationValues(
                         0,
                         -(_dragHandleDistance * 0.35),

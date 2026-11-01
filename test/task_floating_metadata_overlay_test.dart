@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:task_manager/features/map_screen/models/floating_sheet_type.dart';
 import 'package:task_manager/features/map_screen/screens/views/floating_metadata_sheet.dart';
 import 'package:task_manager/features/map_screen/utils/task_mention_parser.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   group('FloatingMetadataSheet', () {
     test('matches metadata options without case sensitivity', () {
       expect(
@@ -17,49 +21,48 @@ void main() {
       );
     });
 
-    testWidgets(
-      'filters assignee options from the search field',
-      (tester) async {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Builder(
-                builder: (context) => TextButton(
-                  onPressed: () {
-                    FloatingMetadataSheet.show(
-                      context: context,
-                      buttonContext: context,
-                      type: FloatingSheetType.assign,
-                      loadAssignees: () async => const [
-                        'Aman Yadav',
-                        'Other person',
-                      ],
-                      onSelected: (_) {},
-                    );
-                  },
-                  child: const Text('Open suggestions'),
-                ),
+    testWidgets('filters assignee options from the search field', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () {
+                  FloatingMetadataSheet.show(
+                    context: context,
+                    buttonContext: context,
+                    type: FloatingSheetType.assign,
+                    loadAssignees: () async => const [
+                      'Aman Yadav',
+                      'Other person',
+                    ],
+                    onSelected: (_) {},
+                  );
+                },
+                child: const Text('Open suggestions'),
               ),
             ),
           ),
-        );
+        ),
+      );
 
-        await tester.tap(find.text('Open suggestions'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('Open suggestions'));
+      await tester.pumpAndSettle();
 
-        expect(find.text('Search...'), findsOneWidget);
-        expect(find.text('Aman Yadav'), findsOneWidget);
-        expect(find.text('Other person'), findsOneWidget);
+      expect(find.text('Search...'), findsOneWidget);
+      expect(find.text('Aman Yadav'), findsOneWidget);
+      expect(find.text('Other person'), findsOneWidget);
 
-        await tester.enterText(find.byType(TextField), 'aman');
-        await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'aman');
+      await tester.pumpAndSettle();
 
-        expect(find.text('Aman Yadav'), findsOneWidget);
-        expect(find.text('Other person'), findsNothing);
+      expect(find.text('Aman Yadav'), findsOneWidget);
+      expect(find.text('Other person'), findsNothing);
 
-        FloatingMetadataSheet.hide();
-        await tester.pumpAndSettle();
-      },
-    );
+      FloatingMetadataSheet.hide();
+      await tester.pumpAndSettle();
+    });
   });
 }

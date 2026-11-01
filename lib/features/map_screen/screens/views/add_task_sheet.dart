@@ -14,11 +14,11 @@ class AddTaskSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
-        controller: scrollController,
-        physics: const ClampingScrollPhysics(),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
-          child: child,
-        ),
-      );
+    controller: scrollController,
+    physics: const NeverScrollableScrollPhysics(),
+    child: Padding(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
+      child: child,
+    ),
+  );
 }

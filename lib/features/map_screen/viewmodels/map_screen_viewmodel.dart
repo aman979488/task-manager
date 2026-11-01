@@ -254,7 +254,12 @@ class MapScreenViewModel extends ChangeNotifier {
     task
       ..title = cleanTitle
       ..createdBy = authViewModel.actorMetadata
-      ..assigneeUid = task.assignee;
+      ..assigneeUid = task.assignee
+      ..isInMyDay =
+          task.isInMyDay ||
+          const {'today', 'tomorrow'}.contains(
+            task.priority?.trim().toLowerCase(),
+          );
     if (taskDraft == null) {
       task
         ..weekKey = weekKey
