@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/task.dart';
+import '../../utils/task_priority_color.dart';
 
 class MyWorkView extends StatefulWidget {
   const MyWorkView({
@@ -38,7 +39,6 @@ class _MyWorkViewState extends State<MyWorkView>
     'Day Later Works',
     'Process Works',
     'Hold Works',
-    'Monitor Works',
     'Free Works',
   ];
 
@@ -161,11 +161,11 @@ class _MyWorkViewState extends State<MyWorkView>
       case 'Completed Tasks':
         return Colors.green.shade700;
       case 'Urgent Works':
-      case 'Monitor Works':
-        return const Color(0xFF9B5965);
-      case 'IMP Works':
         return const Color(0xFF526D8A);
+      case 'IMP Works':
+        return taskPriorityColor('IMP');
       case 'Today Works':
+        return taskPriorityColor('Today');
       case 'Tomorrow Works':
         return const Color(0xFF557E9B);
       case 'Hold Works':

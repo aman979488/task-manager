@@ -49,7 +49,10 @@ void main() {
       expect(taskTitle.style?.decoration, TextDecoration.lineThrough);
 
       // Timing under the task
-      expect(find.text('9:00AM-10:30AM_1.50Hr_0 Days_Personal'), findsOneWidget);
+      expect(
+        find.text('9:00AM-10:30AM_1.50Hr_0 Days_Personal'),
+        findsOneWidget,
+      );
 
       // Priority badge
       expect(find.text('IMP'), findsOneWidget);
@@ -87,5 +90,41 @@ void main() {
     await tester.tap(find.text('Finished report'));
 
     expect(openedTask, same(task));
+  });
+
+  testWidgets('groups all completed tasks by assigned date', (tester) async {
+    final firstTask = Task(
+      'First task',
+      isDone: true,
+      createdDate: '29/10/2026 • 9:00',
+      completedAt: DateTime(2026, 10, 29, 10).millisecondsSinceEpoch,
+      startTime: '09:00AM',
+      endTime: '10:00AM',
+    );
+    final secondTask = Task(
+      'Second task',
+      isDone: true,
+      createdDate: '29/10/2026 • 10:00',
+      completedAt: DateTime(2026, 10, 29, 12).millisecondsSinceEpoch,
+      startTime: '10:00AM',
+      endTime: '12:00PM',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DoneTasksView(
+            tasks: [firstTask, secondTask],
+            viewType: 'Detailed list',
+            calendarBuilder: (_) => const SizedBox.shrink(),
+            refreshable: (child) => child,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('29 -10- 2026 Thu_Dur-3.00Hr_Sco-12'), findsOneWidget);
+    expect(find.text('First task'), findsOneWidget);
+    expect(find.text('Second task'), findsOneWidget);
   });
 }

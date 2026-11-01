@@ -187,4 +187,63 @@ void main() {
     expect((badgeBox.center.dy - textBox.center.dy).abs(), lessThan(1));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('grid task priority badge opens the priority editor', (
+    tester,
+  ) async {
+    var priorityEditorOpened = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MapTaskListItem(
+            task: Task('Overdue task', priority: 'U1'),
+            viewType: 'Grid',
+            isSelected: false,
+            taskName: 'Overdue task',
+            description: null,
+            onEditPriority: (_) => priorityEditorOpened = true,
+            onToggleDone: () {},
+            onToggleSelection: () {},
+            onOpen: () {},
+            onAddSubtask: () {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('U1'));
+
+    expect(priorityEditorOpened, isTrue);
+  });
+
+  for (final viewType in ['List', 'Detailed list', 'Grid']) {
+    testWidgets('$viewType priority editor receives the badge anchor', (
+      tester,
+    ) async {
+      RenderObject? anchor;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MapTaskListItem(
+              task: Task('Overdue task', priority: 'U1'),
+              viewType: viewType,
+              isSelected: false,
+              taskName: 'Overdue task',
+              description: null,
+              onEditPriority: (context) => anchor = context.findRenderObject(),
+              onToggleDone: () {},
+              onToggleSelection: () {},
+              onOpen: () {},
+              onAddSubtask: () {},
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('U1'));
+
+      expect(anchor, isA<RenderBox>());
+      expect((anchor as RenderBox).hasSize, isTrue);
+    });
+  }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:task_manager/features/map_screen/models/floating_sheet_type.dart';
 import 'package:task_manager/features/map_screen/screens/views/floating_metadata_sheet.dart';
+import 'package:task_manager/features/map_screen/utils/task_constants.dart';
 
 void main() {
   testWidgets(
@@ -70,6 +71,44 @@ void main() {
       expect(selectedValue, isNull);
     },
   );
+
+  testWidgets('every priority option can be selected', (tester) async {
+    String? selectedValue;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () {
+                FloatingMetadataSheet.show(
+                  context: context,
+                  buttonContext: context,
+                  type: FloatingSheetType.priority,
+                  selectedValues: [if (selectedValue != null) selectedValue!],
+                  onSelected: (value) => selectedValue = value,
+                );
+              },
+              child: const Text('Open priority'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    for (final priority in TaskConstants.priorityOptions) {
+      await tester.tap(find.text('Open priority'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), priority);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(priority).last);
+      await tester.pumpAndSettle();
+      expect(selectedValue, priority);
+    }
+
+    FloatingMetadataSheet.hide();
+    await tester.pumpAndSettle();
+  });
 
   testWidgets('updates mention suggestions as the query changes', (
     tester,

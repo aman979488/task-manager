@@ -111,10 +111,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _activePointers[event.pointer] = event.position;
     if (_activePointers.length != 2 || _pinchStartDistance <= 0) return;
 
-    final newZoom = (_pinchStartZoom *
-            (_pointerDistance() / _pinchStartDistance))
-        .clamp(0.8, 1.4)
-        .toDouble();
+    final newZoom =
+        (_pinchStartZoom * (_pointerDistance() / _pinchStartDistance))
+            .clamp(0.8, 1.4)
+            .toDouble();
     if (newZoom != viewModel.zoom) viewModel.setZoom(newZoom);
   }
 
@@ -226,13 +226,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   void _onEditPriority(BuildContext badgeContext, Task task) {
     final vm = Provider.of<MapScreenViewModel>(context, listen: false);
+    final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
     FloatingMetadataSheet.show(
       context: context,
       buttonContext: badgeContext,
       type: FloatingSheetType.priority,
       selectedValues: task.priority == null ? const [] : [task.priority!],
-      onSelected: (val) => vm.updateTaskPriority(task, val),
-      onDeselected: (_) => vm.updateTaskPriority(task, null),
+      onSelected: (val) =>
+          vm.updateTaskPriority(task, val, updatedByUid: authViewModel.userUid),
     );
   }
 

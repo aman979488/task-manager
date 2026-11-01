@@ -83,6 +83,30 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Today and IMP section headers use their priority colors', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MyWorkView(
+            sections: {
+              'Today Works': [Task('Today task')],
+              'IMP Works': [Task('Important task')],
+            },
+            taskResultsBuilder: (tasks) => const SizedBox.shrink(),
+          ),
+        ),
+      ),
+    );
+
+    final todayLabel = tester.widget<Text>(find.text('TODAY'));
+    final impLabel = tester.widget<Text>(find.text('IMP'));
+
+    expect(todayLabel.style?.color, const Color(0xFF2E7D32));
+    expect(impLabel.style?.color, const Color(0xFFB38600));
+  });
+
   testWidgets('section counts stay smaller than labels for large numbers', (
     tester,
   ) async {

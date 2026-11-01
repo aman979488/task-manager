@@ -9,6 +9,7 @@ class TaskGridCard extends StatelessWidget {
     required this.task,
     required this.taskName,
     required this.description,
+    required this.priorityWidget,
     required this.isSelected,
     this.dense = false,
     this.showMetadata = false,
@@ -20,6 +21,7 @@ class TaskGridCard extends StatelessWidget {
   final Task task;
   final String taskName;
   final String? description;
+  final Widget priorityWidget;
   final bool isSelected;
   final bool dense;
   final bool showMetadata;
@@ -57,15 +59,7 @@ class TaskGridCard extends StatelessWidget {
                   size: dense ? 17 : 20,
                 ),
                 const SizedBox(width: 8),
-                if (task.priority?.isNotEmpty == true)
-                  Text(
-                    task.priority!,
-                    style: TextStyle(
-                      color: Color(0xFF6B5800),
-                      fontWeight: FontWeight.w600,
-                      fontSize: dense ? 10 : 12,
-                    ),
-                  ),
+                priorityWidget,
               ],
             ),
             SizedBox(height: dense ? 6 : 10),

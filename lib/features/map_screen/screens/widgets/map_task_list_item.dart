@@ -51,6 +51,14 @@ class MapTaskListItem extends StatelessWidget {
         task: task,
         taskName: taskName,
         description: description,
+        priorityWidget: Builder(
+          builder: (badgeContext) => _priorityBadge(
+            compact: true,
+            onTap: priorityEditable && !readOnly
+                ? () => onEditPriority(badgeContext)
+                : _ignoreAction,
+          ),
+        ),
         showMetadata: showMetadata,
         taskNameMaxLines: taskNameMaxLines ?? 1,
         isSelected: isSelected,
@@ -68,11 +76,13 @@ class MapTaskListItem extends StatelessWidget {
         showMetadata: showMetadata,
         isSelected: isSelected,
         dense: dense,
-        priorityBadge: _priorityBadge(
-          compact: true,
-          onTap: priorityEditable && !readOnly
-              ? () => onEditPriority(context)
-              : _ignoreAction,
+        priorityBadge: Builder(
+          builder: (badgeContext) => _priorityBadge(
+            compact: true,
+            onTap: priorityEditable && !readOnly
+                ? () => onEditPriority(badgeContext)
+                : _ignoreAction,
+          ),
         ),
         onToggleDone: readOnly ? _ignoreAction : onToggleDone,
         onAddSubtask: readOnly
@@ -125,6 +135,7 @@ class MapTaskListItem extends StatelessWidget {
     final priority = task.priority?.trim();
     final color = taskPriorityColor(priority);
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
         width: compact ? null : 84,
