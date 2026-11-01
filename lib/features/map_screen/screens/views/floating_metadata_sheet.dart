@@ -40,6 +40,7 @@ class FloatingMetadataSheet {
     Future<List<String>> Function()? loadProjects,
     Future<List<String>> Function()? loadAssignees,
     void Function(String)? onSelected,
+    void Function(String)? onDeselected,
     Future<void> Function()? onFlashMessage,
     VoidCallback? onDone,
     bool Function()? shouldShow,
@@ -78,6 +79,10 @@ class FloatingMetadataSheet {
     if (!buttonContext.mounted || !context.mounted) return;
     if (shouldShow != null && !shouldShow()) return;
 
+    final activeSelectedValues = List<String>.from(
+      selectedValues ?? const <String>[],
+    );
+    final initiallySelectedValues = List<String>.from(activeSelectedValues);
     final BuildContext rootContext = Navigator.of(
       buttonContext,
       rootNavigator: true,
@@ -132,10 +137,12 @@ class FloatingMetadataSheet {
           options = projects ?? [];
           break;
         case FloatingSheetType.goal:
-          options = goalWeekKeys ??
-              weeksOfMonth(DateTime.now().year, DateTime.now().month)
-                  .map((week) => week.key)
-                  .toList();
+          options =
+              goalWeekKeys ??
+              weeksOfMonth(
+                DateTime.now().year,
+                DateTime.now().month,
+              ).map((week) => week.key).toList();
           break;
       }
 
@@ -144,9 +151,7 @@ class FloatingMetadataSheet {
           : options
                 .where(
                   (opt) => TaskMentionParser.matchesSearchQuery(
-                    type == FloatingSheetType.goal
-                        ? weekLabelForKey(opt)
-                        : opt,
+                    type == FloatingSheetType.goal ? weekLabelForKey(opt) : opt,
                     typedQuery,
                   ),
                 )
@@ -159,18 +164,30 @@ class FloatingMetadataSheet {
         orElse: () => matchingOptions.isEmpty ? '' : matchingOptions.first,
       );
 
-      return options.map((opt) {
-        final bool isSelected = selectedValues?.contains(opt) ?? false;
+      final orderedOptions = [
+        ...options.where((opt) => initiallySelectedValues.contains(opt)),
+        ...options.where((opt) => !initiallySelectedValues.contains(opt)),
+      ];
+
+      return orderedOptions.map((opt) {
+        final bool isSelected = activeSelectedValues.contains(opt);
         final bool isHighlighted =
             highlightedOption.isNotEmpty && opt == highlightedOption;
         return ListTile(
           dense: true,
           selected: isSelected || isHighlighted,
           selectedTileColor: TaskConstants.primaryColor.withValues(alpha: 0.22),
-          leading:
-              type == FloatingSheetType.priority ||
-                  type == FloatingSheetType.remind ||
-                  type == FloatingSheetType.deadline
+          leading: multiSelect
+              ? Icon(
+                  isSelected ? Icons.check_box : Icons.check_box_outline_blank,
+                  size: 20,
+                  color: isSelected
+                      ? TaskConstants.secondaryColor
+                      : Colors.grey,
+                )
+              : type == FloatingSheetType.priority ||
+                    type == FloatingSheetType.remind ||
+                    type == FloatingSheetType.deadline
               ? Icon(
                   type == FloatingSheetType.priority
                       ? Icons.flag
@@ -190,7 +207,7 @@ class FloatingMetadataSheet {
                   : Colors.black87,
             ),
           ),
-          trailing: isSelected
+          trailing: isSelected && !multiSelect
               ? const Icon(
                   Icons.check,
                   size: 16,
@@ -203,6 +220,22 @@ class FloatingMetadataSheet {
                 onFlashMessage != null) {
               hide();
               await onFlashMessage();
+              return;
+            }
+            if (isSelected) {
+              if (multiSelect) {
+                activeSelectedValues.remove(opt);
+                onDeselected?.call(opt);
+                if (closeOnSelect) {
+                  hide();
+                  onDone?.call();
+                } else if (setOverlayState != null) {
+                  setOverlayState(() {});
+                }
+              } else {
+                onDeselected?.call(opt);
+                hide();
+              }
               return;
             }
             final now = DateTime.now();
@@ -226,6 +259,9 @@ class FloatingMetadataSheet {
             }
 
             if (onSelected != null) onSelected(finalVal);
+            if (multiSelect && !activeSelectedValues.contains(finalVal)) {
+              activeSelectedValues.add(finalVal);
+            }
 
             if (!multiSelect || closeOnSelect) {
               hide();

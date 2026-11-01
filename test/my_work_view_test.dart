@@ -1,9 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:task_manager/features/map_screen/models/task.dart';
 import 'package:task_manager/features/map_screen/screens/views/my_work_view.dart';
 
 void main() {
+  testWidgets('restores expanded work sections after app restart', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final sections = {
+      'Urgent Works': [Task('Urgent task')],
+      'Today Works': [Task('Today task')],
+    };
+
+    Widget buildApp() => MaterialApp(
+      home: Scaffold(
+        body: MyWorkView(
+          sections: sections,
+          taskResultsBuilder: (tasks) =>
+              Column(children: [for (final task in tasks) Text(task.title)]),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(buildApp());
+    final sectionHeader = find.ancestor(
+      of: find.text('TODAY').last,
+      matching: find.byType(InkWell),
+    );
+    tester.widget<InkWell>(sectionHeader.last).onTap!();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Today task'), findsOneWidget);
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getStringList('my_work_expanded_sections'), [
+      'Today Works',
+    ]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(buildApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Today task'), findsOneWidget);
+    expect(find.text('Urgent task'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('all work section headers use compact consistent spacing', (
     tester,
   ) async {

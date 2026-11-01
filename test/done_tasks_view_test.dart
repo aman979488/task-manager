@@ -37,9 +37,9 @@ void main() {
       );
 
       // Date header with grey background and blue text
-      expect(find.text('2026 10 23 Fri_Dur-1.50Hr_Sco-6'), findsOneWidget);
+      expect(find.text('23 -10- 2026 Fri_Dur-1.50Hr_Sco-6'), findsOneWidget);
       final headerText = tester.widget<Text>(
-        find.text('2026 10 23 Fri_Dur-1.50Hr_Sco-6'),
+        find.text('23 -10- 2026 Fri_Dur-1.50Hr_Sco-6'),
       );
       expect(headerText.style?.color, const Color(0xFF265492));
 
@@ -49,8 +49,7 @@ void main() {
       expect(taskTitle.style?.decoration, TextDecoration.lineThrough);
 
       // Timing under the task
-      expect(find.text('9:00 AM - 10:30 AM'), findsOneWidget);
-      expect(find.text('Personal (Personal)'), findsOneWidget);
+      expect(find.text('9:00AM-10:30AM_1.50Hr_0 Days_Personal'), findsOneWidget);
 
       // Priority badge
       expect(find.text('IMP'), findsOneWidget);

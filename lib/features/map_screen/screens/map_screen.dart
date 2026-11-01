@@ -35,8 +35,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   late TabController _tabController;
   late final bool _hasAdminAccess;
   final TextEditingController _taskSearchController = TextEditingController();
+  final Map<int, Offset> _activePointers = {};
   bool _hasBoundViewModel = false;
   bool _isNavigating = false;
+  double _pinchStartDistance = 0;
+  double _pinchStartZoom = 1.0;
 
   @override
   void initState() {
@@ -86,6 +89,38 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  double _pointerDistance() {
+    final points = _activePointers.values.toList();
+    return (points[0] - points[1]).distance;
+  }
+
+  void _onPointerDown(PointerDownEvent event, MapScreenViewModel viewModel) {
+    _activePointers[event.pointer] = event.position;
+    if (_activePointers.length == 2) {
+      _pinchStartDistance = _pointerDistance();
+      _pinchStartZoom = viewModel.zoom;
+    } else if (_activePointers.length > 2) {
+      _pinchStartDistance = 0;
+    }
+  }
+
+  void _onPointerMove(PointerMoveEvent event, MapScreenViewModel viewModel) {
+    if (!_activePointers.containsKey(event.pointer)) return;
+    _activePointers[event.pointer] = event.position;
+    if (_activePointers.length != 2 || _pinchStartDistance <= 0) return;
+
+    final newZoom = (_pinchStartZoom *
+            (_pointerDistance() / _pinchStartDistance))
+        .clamp(0.8, 1.4)
+        .toDouble();
+    if (newZoom != viewModel.zoom) viewModel.setZoom(newZoom);
+  }
+
+  void _onPointerEnd(PointerEvent event) {
+    _activePointers.remove(event.pointer);
+    if (_activePointers.length < 2) _pinchStartDistance = 0;
   }
 
   Future<void> _refreshTasks() async {
@@ -195,7 +230,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       context: context,
       buttonContext: badgeContext,
       type: FloatingSheetType.priority,
+      selectedValues: task.priority == null ? const [] : [task.priority!],
       onSelected: (val) => vm.updateTaskPriority(task, val),
+      onDeselected: (_) => vm.updateTaskPriority(task, null),
     );
   }
 
@@ -311,18 +348,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           ),
           const SizedBox(height: 4),
           Expanded(
-            child: MapScreenTabViews(
-              tabController: _tabController,
-              hasAdminAccess: _hasAdminAccess,
-
-              viewModel: viewModel,
-              authViewModel: authViewModel,
-              onOpenTask: _openTaskDetail,
-              onRefresh: _refreshTasks,
-              onToggleTaskDone: _toggleTaskDone,
-              onAddSubstep: _promptAddSubstep,
-              onSetTaskTime: _promptSetTaskTime,
-              onEditPriority: _onEditPriority,
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (event) => _onPointerDown(event, viewModel),
+              onPointerMove: (event) => _onPointerMove(event, viewModel),
+              onPointerUp: _onPointerEnd,
+              onPointerCancel: _onPointerEnd,
+              child: MapScreenTabViews(
+                tabController: _tabController,
+                hasAdminAccess: _hasAdminAccess,
+                viewModel: viewModel,
+                authViewModel: authViewModel,
+                onOpenTask: _openTaskDetail,
+                onRefresh: _refreshTasks,
+                onToggleTaskDone: _toggleTaskDone,
+                onAddSubstep: _promptAddSubstep,
+                onSetTaskTime: _promptSetTaskTime,
+                onEditPriority: _onEditPriority,
+              ),
             ),
           ),
         ],

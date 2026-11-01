@@ -113,9 +113,7 @@ void main() {
     expect(saveCalled, isTrue);
   });
 
-  testWidgets('save toggle saves without marking the task done', (
-    tester,
-  ) async {
+  testWidgets('done toggle saves and marks the task done', (tester) async {
     final task = Task(
       'Finish report',
       followUp: DateTime(2026, 10, 29, 9).toIso8601String(),
@@ -141,11 +139,18 @@ void main() {
     await tester.tap(doneToggle);
     await tester.pumpAndSettle();
 
-    expect(task.isDone, isFalse);
-    expect(task.completedAt, isNull);
+    expect(task.isDone, isTrue);
+    expect(task.completedAt, isNotNull);
     expect(saveCalled, isTrue);
     expect(find.text('Mark task as done?'), findsNothing);
-    expect(tester.widget<Switch>(doneToggle).value, isFalse);
+    expect(tester.widget<Switch>(doneToggle).value, isTrue);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('task-title-input')))
+          .style
+          ?.decoration,
+      TextDecoration.lineThrough,
+    );
   });
 
   testWidgets('new task detail keeps the entered title editable', (
@@ -360,6 +365,36 @@ void main() {
       expect(task.priority, 'Free');
     },
   );
+
+  testWidgets('task detail priority is marked and can be cleared', (
+    tester,
+  ) async {
+    final task = Task('Priority task', priority: 'U1');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(task: task, onChanged: () {}, onSave: () async {}),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('Priority'));
+    await tester.tap(find.text('Priority'));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.check), findsOneWidget);
+    final selectedOptionText = find.descendant(
+      of: find.byType(ListView).last,
+      matching: find.text('U1'),
+    );
+    final selectedOption = find.ancestor(
+      of: selectedOptionText,
+      matching: find.byType(InkWell),
+    );
+    tester.widget<InkWell>(selectedOption.last).onTap!();
+    await tester.pumpAndSettle();
+
+    expect(task.priority, isNull);
+  });
 
   testWidgets(
     'deadline picker opens just above its button near screen bottom',

@@ -35,7 +35,9 @@ class TaskDetailOverlay {
     required Future<List<String>> Function() loadFolders,
     required Future<List<String>> Function() loadProjects,
     required void Function(String key, String value) onSelectOption,
+    required void Function(String key) onDeselectOption,
     required void Function(String key, DateTime value) onSelectDateTime,
+    String? selectedValue,
     List<String> goalWeekKeys = const [],
   }) async {
     if (_overlayEntry != null) hide();
@@ -162,6 +164,44 @@ class TaskDetailOverlay {
     }
 
     final tileWidgets = tilesFor(resolvedKey);
+    String? selectedOptionLabel;
+    if (resolvedKey == 'goal' && selectedValue != null) {
+      selectedOptionLabel = weekLabelForKey(selectedValue);
+    } else if (resolvedKey == 'reminder' || resolvedKey == 'deadline') {
+      final selectedDate = DateTime.tryParse(selectedValue ?? '');
+      if (selectedDate != null) {
+        selectedOptionLabel = 'Custom';
+        final now = DateTime.now();
+        for (final option in QuickDateTimeOptions.options(now: now)) {
+          final optionDate = option.resolve(now);
+          if (selectedDate.year == optionDate.year &&
+              selectedDate.month == optionDate.month &&
+              selectedDate.day == optionDate.day &&
+              selectedDate.hour == optionDate.hour &&
+              selectedDate.minute == optionDate.minute) {
+            selectedOptionLabel = option.label;
+            break;
+          }
+        }
+      }
+    } else {
+      selectedOptionLabel = selectedValue;
+    }
+
+    final markedTiles = tileWidgets.map((tile) {
+      if (tile is! ListTile) return tile;
+      final label = (tile.title as Text).data ?? '';
+      final isSelected = label == selectedOptionLabel;
+      return ListTile(
+        leading: tile.leading,
+        title: tile.title,
+        trailing: isSelected
+            ? const Icon(Icons.check, color: TaskConstants.secondaryColor)
+            : tile.trailing,
+        selected: isSelected,
+        selectedTileColor: TaskConstants.primaryColor.withValues(alpha: 0.22),
+      );
+    }).toList();
 
     final bool hasSearchBar =
         resolvedKey == 'assignee' ||
@@ -202,7 +242,7 @@ class TaskDetailOverlay {
                 .toDouble();
             final desiredMenuHeight =
                 (hasSearchBar ? 72.0 : 0.0) +
-                (tileWidgets.length.clamp(0, visibleOptionCount) *
+                (markedTiles.length.clamp(0, visibleOptionCount) *
                     optionRowHeight);
             final openAbove =
                 buttonTop >= usableHeight * 0.6 ||
@@ -242,7 +282,7 @@ class TaskDetailOverlay {
                         width: menuWidth,
                         child: StatefulBuilder(
                           builder: (context, setOverlayState) {
-                            final allTiles = tileWidgets;
+                            final allTiles = markedTiles;
                             final filteredTiles =
                                 hasSearchBar && _searchQuery.isNotEmpty
                                 ? allTiles.where((tile) {
@@ -328,6 +368,13 @@ class TaskDetailOverlay {
                                               final label =
                                                   (tile.title as Text).data ??
                                                   '';
+
+                                              if (label ==
+                                                  selectedOptionLabel) {
+                                                onDeselectOption(resolvedKey);
+                                                hide();
+                                                return;
+                                              }
 
                                               if (resolvedKey == 'reminder' ||
                                                   resolvedKey == 'deadline') {
