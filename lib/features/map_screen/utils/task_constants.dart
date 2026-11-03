@@ -13,6 +13,7 @@ class TaskConstants {
     FloatingSheetType.workType,
     FloatingSheetType.remind,
     FloatingSheetType.assign,
+    FloatingSheetType.monitor,
     FloatingSheetType.clientName,
     FloatingSheetType.deadline,
     FloatingSheetType.goal,

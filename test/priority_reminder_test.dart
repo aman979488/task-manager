@@ -34,4 +34,18 @@ void main() {
     expect(reminder.minute, 0);
     viewModel.dispose();
   });
+
+  test('monitor selections stay separate from task priority', () {
+    final viewModel = AddTaskViewModel();
+
+    viewModel.setValue(FloatingSheetType.priority, 'Today');
+    viewModel.addMonitor('Aman');
+    viewModel.addMonitor('Priya');
+
+    expect(viewModel.monitor, 'Aman, Priya');
+    expect(viewModel.selectedMonitors, ['Aman', 'Priya']);
+    expect(viewModel.priority, 'Today');
+
+    viewModel.dispose();
+  });
 }

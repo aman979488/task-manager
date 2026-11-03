@@ -358,6 +358,78 @@ void main() {
     );
   });
 
+  test('My Work separates monitored tasks from priority sections', () {
+    final monitoredTask = Task(
+      'Follow up',
+      priority: 'Today',
+      assignee: 'Priya',
+      monitor: 'Aman Yadav',
+    );
+    final assignedTask = Task(
+      'Assigned today',
+      priority: 'Today',
+      assignee: 'Aman Yadav',
+    );
+
+    final viewModel = MapScreenViewModel(
+      repository: _TaskRepositoryStub(),
+      assignmentNotificationService: _AssignmentNotificationServiceStub(),
+    );
+    final monitorSections = viewModel.myWorkSections([
+      monitoredTask,
+    ], userName: 'Aman Yadav');
+    final assigneeSections = viewModel.myWorkSections([
+      monitoredTask,
+      assignedTask,
+    ], userName: 'Priya');
+
+    expect(monitorSections['Monitor Works'], [monitoredTask]);
+    expect(monitorSections['Today Works'], isEmpty);
+    expect(assigneeSections['Today Works'], [monitoredTask, assignedTask]);
+    expect(monitoredTask.priority, 'Today');
+    viewModel.dispose();
+  });
+
+  test('task assigner sees Monitor while assignee sees priority section', () {
+    final task = Task(
+      'Follow up',
+      priority: 'IMP',
+      assignee: 'Priya',
+      createdBy: {
+        'uid': 'assigner-1',
+        'email': 'assigner@example.com',
+        'name': 'Assigner',
+      },
+    );
+    final viewModel = MapScreenViewModel(
+      repository: _TaskRepositoryStub(),
+      assignmentNotificationService: _AssignmentNotificationServiceStub(),
+    );
+
+    final assignerSections = viewModel.myWorkSections(
+      [task],
+      userUid: 'assigner-1',
+      userEmail: 'assigner@example.com',
+      userName: 'Assigner',
+    );
+    final assigneeSections = viewModel.myWorkSections([
+      task,
+    ], userName: 'Priya');
+
+    expect(assignerSections['Monitor Works'], [task]);
+    expect(assignerSections['IMP Works'], isEmpty);
+    expect(assigneeSections['Monitor Works'], isEmpty);
+    expect(assigneeSections['IMP Works'], [task]);
+    viewModel.dispose();
+  });
+
+  test('monitor names are serialized for monitor task queries', () {
+    final task = Task('Follow up', monitor: 'Aman Yadav, Priya');
+
+    expect(task.toMap()['monitorNames'], ['Aman Yadav', 'Priya']);
+    expect(Task.fromMap('task-1', task.toMap()).monitor, 'Aman Yadav, Priya');
+  });
+
   test('My Work includes tasks whose priority I changed', () {
     final reprioritizedByMe = Task(
       'Reprioritized task',

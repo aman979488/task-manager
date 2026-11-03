@@ -57,6 +57,9 @@ class TaskDetailOverlay {
         case FloatingSheetType.assign:
           resolvedKey = 'assignee';
           break;
+        case FloatingSheetType.monitor:
+          resolvedKey = 'monitor';
+          break;
         case FloatingSheetType.deadline:
           resolvedKey = 'deadline';
           break;
@@ -86,7 +89,7 @@ class TaskDetailOverlay {
 
     if (resolvedKey == 'workType') {
       workTypes = await loadWorkTypes();
-    } else if (resolvedKey == 'assignee') {
+    } else if (resolvedKey == 'assignee' || resolvedKey == 'monitor') {
       assignees = await loadAssignees();
     } else if (resolvedKey == 'clientName') {
       clients = await loadClients();

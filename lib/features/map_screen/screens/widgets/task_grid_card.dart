@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
+import '../../utils/task_title_formatter.dart';
 import 'task_metadata_badges.dart';
 
 class TaskGridCard extends StatelessWidget {
@@ -13,6 +14,9 @@ class TaskGridCard extends StatelessWidget {
     required this.isSelected,
     this.dense = false,
     this.showMetadata = false,
+    this.includeScheduleMetadata = false,
+    this.assigneeLabel,
+    this.highlightedTitlePrefix,
     this.taskNameMaxLines = 1,
     required this.onToggleSelection,
     required this.onOpen,
@@ -25,6 +29,9 @@ class TaskGridCard extends StatelessWidget {
   final bool isSelected;
   final bool dense;
   final bool showMetadata;
+  final bool includeScheduleMetadata;
+  final String? assigneeLabel;
+  final String? highlightedTitlePrefix;
   final int taskNameMaxLines;
   final VoidCallback onToggleSelection;
   final VoidCallback onOpen;
@@ -63,15 +70,10 @@ class TaskGridCard extends StatelessWidget {
               ],
             ),
             SizedBox(height: dense ? 6 : 10),
-            Text(
-              taskName,
+            Text.rich(
+              _titleSpan(),
               maxLines: taskNameMaxLines,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: dense ? 13 : 14,
-                decoration: task.isDone ? TextDecoration.lineThrough : null,
-              ),
             ),
             const Spacer(),
             if (description?.isNotEmpty == true)
@@ -85,16 +87,43 @@ class TaskGridCard extends StatelessWidget {
                 ),
               ),
             if (showMetadata &&
-                (task.assignee?.trim().isNotEmpty == true ||
+                (includeScheduleMetadata ||
+                    task.assignee?.trim().isNotEmpty == true ||
                     task.workType?.trim().isNotEmpty == true ||
                     task.clientName?.trim().isNotEmpty == true))
               Padding(
                 padding: EdgeInsets.only(top: dense ? 3 : 6),
-                child: TaskMetadataBadges(task: task, compact: true),
+                child: TaskMetadataBadges(
+                  task: task,
+                  compact: true,
+                  includeScheduleMetadata: includeScheduleMetadata,
+                  assigneeLabel: assigneeLabel,
+                ),
               ),
           ],
         ),
       ),
     ),
   );
+
+  TextSpan _titleSpan() {
+    final titleStyle = TextStyle(
+      fontWeight: FontWeight.w600,
+      fontSize: dense ? 13 : 14,
+      decoration: task.isDone ? TextDecoration.lineThrough : null,
+    );
+    final prefix = highlightedTitlePrefix?.trim();
+    if (prefix == null || prefix.isEmpty) {
+      return TextSpan(text: taskName, style: titleStyle);
+    }
+    return TextSpan(
+      children: [
+        TextSpan(
+          text: '$prefix - ',
+          style: titleStyle.copyWith(color: Colors.black),
+        ),
+        TextSpan(text: capitalizeFirstCharacter(taskName), style: titleStyle),
+      ],
+    );
+  }
 }

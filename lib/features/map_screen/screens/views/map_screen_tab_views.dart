@@ -76,6 +76,10 @@ class MapScreenTabViews extends StatelessWidget {
     String? viewType,
     bool dense = false,
     bool showMetadata = false,
+    bool includeScheduleMetadata = false,
+    String? assigneeLabel,
+    String? highlightedTitlePrefix,
+    String? taskName,
     bool hideTaskMetadata = false,
     bool confirmCompletion = false,
     bool tapCompletesTask = false,
@@ -90,8 +94,11 @@ class MapScreenTabViews extends StatelessWidget {
       viewType: viewType ?? viewModel.viewType,
       dense: dense,
       showMetadata: showMetadata && !hideTaskMetadata,
+      includeScheduleMetadata: includeScheduleMetadata,
+      assigneeLabel: assigneeLabel,
+      highlightedTitlePrefix: highlightedTitlePrefix,
       taskNameMaxLines: taskNameMaxLines,
-      taskName: task.title,
+      taskName: taskName ?? task.title,
       description: _taskDescription(
         task,
         hideMetadataMentions: hideTaskMetadata,
@@ -125,6 +132,10 @@ class MapScreenTabViews extends StatelessWidget {
     int index, {
     bool dense = true,
     bool showMetadata = false,
+    bool includeScheduleMetadata = false,
+    String? assigneeLabel,
+    String? highlightedTitlePrefix,
+    String? taskName,
     bool hideTaskMetadata = false,
     bool confirmCompletion = false,
     bool tapCompletesTask = false,
@@ -146,6 +157,10 @@ class MapScreenTabViews extends StatelessWidget {
             showMetadata:
                 !hideTaskMetadata &&
                 (showMetadata || effectiveViewType == 'Detailed list'),
+            includeScheduleMetadata: includeScheduleMetadata,
+            assigneeLabel: assigneeLabel,
+            highlightedTitlePrefix: highlightedTitlePrefix,
+            taskName: taskName,
             hideTaskMetadata: hideTaskMetadata,
             confirmCompletion: confirmCompletion,
             tapCompletesTask: tapCompletesTask,
@@ -170,6 +185,10 @@ class MapScreenTabViews extends StatelessWidget {
       showMetadata:
           !hideTaskMetadata &&
           (showMetadata || effectiveViewType == 'Detailed list'),
+      includeScheduleMetadata: includeScheduleMetadata,
+      assigneeLabel: assigneeLabel,
+      highlightedTitlePrefix: highlightedTitlePrefix,
+      taskName: taskName,
       hideTaskMetadata: hideTaskMetadata,
       confirmCompletion: confirmCompletion,
       tapCompletesTask: tapCompletesTask,
@@ -227,7 +246,12 @@ class MapScreenTabViews extends StatelessWidget {
     );
   }
 
-  Widget _buildMyWorkTaskResults(List<Task> sectionTasks) {
+  Widget _buildMyWorkTaskResults(
+    List<Task> sectionTasks, {
+    bool includeScheduleMetadata = false,
+    bool showAssignerName = false,
+    bool showWorkTypeInTitle = false,
+  }) {
     return MyWorkTaskResultsView(
       tasks: viewModel.getVisibleTasks(source: sectionTasks),
       viewType: viewModel.viewType,
@@ -240,7 +264,13 @@ class MapScreenTabViews extends StatelessWidget {
         task,
         index,
         dense: true,
-        hideTaskMetadata: true,
+        showMetadata: includeScheduleMetadata,
+        includeScheduleMetadata: includeScheduleMetadata,
+        assigneeLabel: showAssignerName
+            ? (_myWorkAssignmentLabel(task) ?? '')
+            : null,
+        highlightedTitlePrefix: showWorkTypeInTitle ? task.workType : null,
+        hideTaskMetadata: !includeScheduleMetadata,
         confirmCompletion: true,
         taskNameMaxLines: 1,
       ),
@@ -250,8 +280,13 @@ class MapScreenTabViews extends StatelessWidget {
             task,
             viewType: 'Detailed list',
             dense: true,
-            showMetadata: false,
-            hideTaskMetadata: true,
+            showMetadata: includeScheduleMetadata,
+            includeScheduleMetadata: includeScheduleMetadata,
+            assigneeLabel: showAssignerName
+                ? (_myWorkAssignmentLabel(task) ?? '')
+                : null,
+            highlightedTitlePrefix: showWorkTypeInTitle ? task.workType : null,
+            hideTaskMetadata: !includeScheduleMetadata,
             taskNameMaxLines: 1,
             confirmCompletion: true,
           ),
@@ -265,6 +300,44 @@ class MapScreenTabViews extends StatelessWidget {
     );
   }
 
+  Widget _buildAssignedTaskResults(List<Task> sectionTasks) {
+    return _buildMyWorkTaskResults(sectionTasks, includeScheduleMetadata: true);
+  }
+
+  String? _myWorkAssignmentLabel(Task task) {
+    final assignee = task.assignee?.trim();
+    if (assignee == null || assignee.isEmpty) return null;
+
+    final myName = authViewModel.userName.trim().toLowerCase();
+    final myEmail = authViewModel.userEmail.trim().toLowerCase();
+    final myUid = authViewModel.userUid.trim().toLowerCase();
+    final assigneeNames = assignee
+        .split(',')
+        .map((name) => name.trim().toLowerCase())
+        .where((name) => name.isNotEmpty);
+    final isAssignedToMe = assigneeNames.any(
+      (name) => [
+        myName,
+        myEmail,
+        myUid,
+      ].any((identity) => identity.isNotEmpty && name == identity),
+    );
+
+    if (!isAssignedToMe) return null;
+
+    final creator = task.createdBy;
+    final creatorUid = creator?['uid']?.toString().trim().toLowerCase() ?? '';
+    final creatorEmail =
+        creator?['email']?.toString().trim().toLowerCase() ?? '';
+    final creatorName = creator?['name']?.toString().trim() ?? '';
+    final isCreatedByMe =
+        (myUid.isNotEmpty && creatorUid == myUid) ||
+        (myEmail.isNotEmpty && creatorEmail == myEmail) ||
+        (myName.isNotEmpty && creatorName.toLowerCase() == myName);
+
+    return isCreatedByMe || creatorName.isEmpty ? null : creatorName;
+  }
+
   Widget _buildMyWorkSections(
     Map<String, List<Task>> sections, {
     List<String>? sectionNames,
@@ -275,7 +348,12 @@ class MapScreenTabViews extends StatelessWidget {
         sections: sections,
         sectionNames: sectionNames,
         emptyMessage: emptyMessage,
-        taskResultsBuilder: _buildMyWorkTaskResults,
+        taskResultsBuilder: (tasks) => _buildMyWorkTaskResults(
+          tasks,
+          includeScheduleMetadata: true,
+          showAssignerName: true,
+          showWorkTypeInTitle: true,
+        ),
       ),
     );
   }
@@ -359,8 +437,14 @@ class MapScreenTabViews extends StatelessWidget {
           ),
           Builder(
             key: const PageStorageKey('my-work-tab'),
-            builder: (_) =>
-                _buildMyWorkSections(viewModel.myWorkSections(myTasks)),
+            builder: (_) => _buildMyWorkSections(
+              viewModel.myWorkSections(
+                myTasks,
+                userUid: authViewModel.userUid,
+                userEmail: authViewModel.userEmail,
+                userName: authViewModel.userName,
+              ),
+            ),
           ),
           Builder(
             key: const PageStorageKey('done-tasks-tab'),
@@ -396,7 +480,7 @@ class MapScreenTabViews extends StatelessWidget {
                   'onOpenTask': onOpenTask,
                   'onToggleTaskDone': onToggleTaskDone,
                   'onAddSubstep': onAddSubstep,
-                  'taskResultsBuilder': _buildMyWorkTaskResults,
+                  'taskResultsBuilder': _buildAssignedTaskResults,
                   'onAddTask': () => _addTaskForAssignee(assignContext, name),
                   'taskUpdates': viewModel,
                 },

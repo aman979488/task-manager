@@ -206,20 +206,28 @@ class DoneTasksView extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                width: 60,
+                height: 22,
+                constraints: const BoxConstraints(maxWidth: 60, maxHeight: 22),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: priorityColor.withValues(alpha: 0.08),
+                  color: priorityColor.withValues(alpha: 0.07),
                   border: Border.all(
-                    color: priorityColor.withValues(alpha: 0.35),
+                    color: priorityColor.withValues(alpha: 0.42),
                   ),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text(
-                  priority?.isNotEmpty == true ? priority! : 'None',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: priorityColor,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    priority?.isNotEmpty == true ? priority! : 'None',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: priorityColor,
+                    ),
                   ),
                 ),
               ),

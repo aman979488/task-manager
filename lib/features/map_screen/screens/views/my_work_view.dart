@@ -39,6 +39,7 @@ class _MyWorkViewState extends State<MyWorkView>
     'Day Later Works',
     'Process Works',
     'Hold Works',
+    'Monitor Works',
     'Free Works',
   ];
 
@@ -50,6 +51,7 @@ class _MyWorkViewState extends State<MyWorkView>
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _viewportKey = GlobalKey();
   final Map<String, GlobalKey> _sectionHeaderKeys = {};
+  final Map<String, double> _sectionHeaderOffsets = {};
   List<String> _pinnedSections = const [];
   Timer? _blankTapTimer;
   int _blankTapCount = 0;
@@ -138,17 +140,33 @@ class _MyWorkViewState extends State<MyWorkView>
   }
 
   void _updatePinnedSections() {
+    if (!_scrollController.hasClients) return;
     final viewport = _viewportKey.currentContext?.findRenderObject();
     if (viewport is! RenderBox || !viewport.hasSize) return;
 
-    final pinned = <String>[];
-    for (final name in _sectionNames.take(3)) {
+    final firstThreeSections = _sectionNames
+        .where((name) => widget.sections[name]?.isNotEmpty ?? false)
+        .take(3)
+        .toList();
+    final scrollOffset = _scrollController.offset;
+    for (final name in firstThreeSections) {
       final header = _sectionHeaderKeys[name]?.currentContext
           ?.findRenderObject();
-      if (header is! RenderBox || !header.hasSize) continue;
+      if (header is RenderBox && header.hasSize) {
+        _sectionHeaderOffsets[name] =
+            header.localToGlobal(Offset.zero, ancestor: viewport).dy +
+            scrollOffset;
+      }
+    }
 
-      final top = header.localToGlobal(Offset.zero, ancestor: viewport).dy;
-      if (top > pinned.length * _sectionHeaderHeight) break;
+    final pinned = <String>[];
+    for (var index = 0; index < firstThreeSections.length; index++) {
+      final name = firstThreeSections[index];
+      final headerOffset = _sectionHeaderOffsets[name];
+      if (headerOffset == null ||
+          headerOffset - scrollOffset > pinned.length * _sectionHeaderHeight) {
+        break;
+      }
       pinned.add(name);
     }
 
@@ -166,10 +184,14 @@ class _MyWorkViewState extends State<MyWorkView>
         return taskPriorityColor('IMP');
       case 'Today Works':
         return taskPriorityColor('Today');
+      case 'Overdue Works':
+        return const Color(0xFFC65353);
       case 'Tomorrow Works':
         return const Color(0xFF557E9B);
       case 'Hold Works':
         return const Color(0xFF99765B);
+      case 'Monitor Works':
+        return const Color(0xFF526D8A);
       default:
         return const Color(0xFF71808D);
     }
@@ -181,19 +203,22 @@ class _MyWorkViewState extends State<MyWorkView>
     final populatedNames = _sectionNames
         .where((name) => widget.sections[name]?.isNotEmpty ?? false)
         .toList();
+    final stickySectionNames = populatedNames.take(3).toSet();
+    _sectionHeaderKeys.removeWhere(
+      (name, _) => !stickySectionNames.contains(name),
+    );
+    _sectionHeaderOffsets.removeWhere(
+      (name, _) => !stickySectionNames.contains(name),
+    );
+    for (final name in stickySectionNames) {
+      _sectionHeaderKeys.putIfAbsent(name, GlobalKey.new);
+    }
     Widget blankArea({double? height}) => GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _handleBlankTap(populatedNames),
       child: SizedBox(height: height, width: double.infinity),
     );
 
-    final stickySectionNames = _sectionNames
-        .take(3)
-        .where(populatedNames.contains)
-        .toList();
-    _sectionHeaderKeys.removeWhere(
-      (name, _) => !stickySectionNames.contains(name),
-    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _updatePinnedSections();
     });
@@ -255,10 +280,13 @@ class _MyWorkViewState extends State<MyWorkView>
     final isExpanded = _expandedSections.contains(name);
     return Column(
       children: [
-        KeyedSubtree(
-          key: _sectionHeaderKeys.putIfAbsent(name, GlobalKey.new),
-          child: _buildSectionHeader(name, populatedNames),
-        ),
+        if (_sectionHeaderKeys.containsKey(name))
+          KeyedSubtree(
+            key: _sectionHeaderKeys[name],
+            child: _buildSectionHeader(name, populatedNames),
+          )
+        else
+          _buildSectionHeader(name, populatedNames),
         if (isExpanded)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -279,13 +307,25 @@ class _MyWorkViewState extends State<MyWorkView>
         onTap: () {
           setState(() {
             _hasChangedExpandedSections = true;
-            if (isExpanded) {
+            if (name == 'Urgent Works') {
+              _expandedSections.add(name);
+            } else if (isExpanded) {
               _expandedSections.remove(name);
             } else {
               _expandedSections.add(name);
             }
           });
           unawaited(_saveExpandedSections());
+          if (name == 'Urgent Works') {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted || !_scrollController.hasClients) return;
+              _scrollController.animateTo(
+                0,
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+              );
+            });
+          }
         },
         onDoubleTap: () {
           setState(() {

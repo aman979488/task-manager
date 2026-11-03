@@ -11,6 +11,9 @@ class TaskTile extends StatelessWidget {
     required this.isSelected,
     this.dense = false,
     this.showMetadata = false,
+    this.includeScheduleMetadata = false,
+    this.assigneeLabel,
+    this.highlightedTitlePrefix,
     this.taskNameMaxLines = 1,
     required this.taskName,
     required this.description,
@@ -27,6 +30,9 @@ class TaskTile extends StatelessWidget {
   final bool isSelected;
   final bool dense;
   final bool showMetadata;
+  final bool includeScheduleMetadata;
+  final String? assigneeLabel;
+  final String? highlightedTitlePrefix;
   final int? taskNameMaxLines;
   final String taskName;
   final String? description;
@@ -82,21 +88,12 @@ class TaskTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    capitalizeFirstCharacter(taskName),
+                  Text.rich(
+                    _titleSpan(),
                     maxLines: taskNameMaxLines,
                     overflow: taskNameMaxLines == null
-                        ? null
+                        ? TextOverflow.clip
                         : TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: dense ? 13 : 15,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF26364A),
-                      decoration: task.isDone
-                          ? TextDecoration.lineThrough
-                          : TextDecoration.none,
-                      decorationColor: Colors.blueGrey.shade400,
-                    ),
                   ),
                   if (description?.isNotEmpty == true)
                     Padding(
@@ -115,12 +112,18 @@ class TaskTile extends StatelessWidget {
                       ),
                     ),
                   if (showMetadata &&
-                      (task.assignee?.trim().isNotEmpty == true ||
+                      (includeScheduleMetadata ||
+                          task.assignee?.trim().isNotEmpty == true ||
                           task.workType?.trim().isNotEmpty == true ||
                           task.clientName?.trim().isNotEmpty == true))
                     Padding(
                       padding: EdgeInsets.only(top: dense ? 1 : 3),
-                      child: TaskMetadataBadges(task: task, compact: true),
+                      child: TaskMetadataBadges(
+                        task: task,
+                        compact: true,
+                        includeScheduleMetadata: includeScheduleMetadata,
+                        assigneeLabel: assigneeLabel,
+                      ),
                     ),
                 ],
               ),
@@ -156,4 +159,32 @@ class TaskTile extends StatelessWidget {
       ),
     ),
   );
+
+  TextSpan _titleSpan() {
+    final titleStyle = TextStyle(
+      fontSize: dense ? 13 : 15,
+      fontWeight: FontWeight.w600,
+      color: const Color(0xFF26364A),
+      decoration: task.isDone
+          ? TextDecoration.lineThrough
+          : TextDecoration.none,
+      decorationColor: Colors.blueGrey.shade400,
+    );
+    final prefix = highlightedTitlePrefix?.trim();
+    if (prefix == null || prefix.isEmpty) {
+      return TextSpan(
+        text: capitalizeFirstCharacter(taskName),
+        style: titleStyle,
+      );
+    }
+    return TextSpan(
+      children: [
+        TextSpan(
+          text: '$prefix - ',
+          style: titleStyle.copyWith(color: Colors.black),
+        ),
+        TextSpan(text: capitalizeFirstCharacter(taskName), style: titleStyle),
+      ],
+    );
+  }
 }

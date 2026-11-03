@@ -57,7 +57,8 @@ class FloatingMetadataSheet {
     hide();
 
     final keepKeyboardOpen =
-        type == FloatingSheetType.assign &&
+        (type == FloatingSheetType.assign ||
+            type == FloatingSheetType.monitor) &&
         ((focusNodeToKeep?.hasFocus ?? false) ||
             MediaQuery.viewInsetsOf(buttonContext).bottom > 0 ||
             MediaQuery.viewInsetsOf(context).bottom > 0);
@@ -79,7 +80,9 @@ class FloatingMetadataSheet {
       folders = await loadFolders();
     }
     List<String>? assignees;
-    if (type == FloatingSheetType.assign && loadAssignees != null) {
+    if ((type == FloatingSheetType.assign ||
+            type == FloatingSheetType.monitor) &&
+        loadAssignees != null) {
       assignees = await loadAssignees();
     }
 
@@ -102,6 +105,7 @@ class FloatingMetadataSheet {
         case FloatingSheetType.deadline:
           return QuickDateTimeOptions.labels();
         case FloatingSheetType.assign:
+        case FloatingSheetType.monitor:
           return assignees ?? [];
         case FloatingSheetType.workType:
           return workTypes ?? TaskConstants.defaultWorkTypes;
@@ -441,6 +445,9 @@ class FloatingMetadataSheet {
                                         ),
                                       )
                                     : ListView(
+                                        primary: false,
+                                        physics:
+                                            const AlwaysScrollableScrollPhysics(),
                                         padding: EdgeInsets.zero,
                                         shrinkWrap: true,
                                         children: filteredOptions,

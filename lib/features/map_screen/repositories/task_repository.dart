@@ -89,7 +89,9 @@ class TaskRepository {
     if (name.isNotEmpty) {
       queries
         ..add(_tasks.where('assignee', isEqualTo: name))
-        ..add(_tasks.where('monitor', isEqualTo: name));
+        ..add(_tasks.where('assigneeNames', arrayContains: name))
+        ..add(_tasks.where('monitor', isEqualTo: name))
+        ..add(_tasks.where('monitorNames', arrayContains: name));
     }
     return queries;
   }

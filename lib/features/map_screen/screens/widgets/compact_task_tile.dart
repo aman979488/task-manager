@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
+import '../../utils/task_title_formatter.dart';
 import 'task_metadata_badges.dart';
 
 class CompactTaskTile extends StatelessWidget {
@@ -12,6 +13,9 @@ class CompactTaskTile extends StatelessWidget {
     required this.isSelected,
     this.dense = false,
     this.showMetadata = false,
+    this.includeScheduleMetadata = false,
+    this.assigneeLabel,
+    this.highlightedTitlePrefix,
     required this.priorityBadge,
     required this.onToggleDone,
     required this.onAddSubtask,
@@ -27,6 +31,9 @@ class CompactTaskTile extends StatelessWidget {
   final bool isSelected;
   final bool dense;
   final bool showMetadata;
+  final bool includeScheduleMetadata;
+  final String? assigneeLabel;
+  final String? highlightedTitlePrefix;
   final Widget priorityBadge;
   final VoidCallback onToggleDone;
   final VoidCallback onAddSubtask;
@@ -39,7 +46,8 @@ class CompactTaskTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasMetadata =
         showMetadata &&
-        (task.assignee?.trim().isNotEmpty == true ||
+        (includeScheduleMetadata ||
+            task.assignee?.trim().isNotEmpty == true ||
             task.workType?.trim().isNotEmpty == true ||
             task.clientName?.trim().isNotEmpty == true);
     return ListTile(
@@ -54,17 +62,10 @@ class CompactTaskTile extends StatelessWidget {
         activeColor: const Color(0xFF6B5800),
         onChanged: (_) => onToggleDone(),
       ),
-      title: Text(
-        taskName,
+      title: Text.rich(
+        _titleSpan(),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: dense ? 13 : 15,
-          fontWeight: FontWeight.w600,
-          color: const Color(0xFF26364A),
-          decoration: task.isDone ? TextDecoration.lineThrough : null,
-          decorationColor: Colors.blueGrey.shade400,
-        ),
       ),
       subtitle: description?.isNotEmpty != true && !hasMetadata
           ? null
@@ -85,7 +86,12 @@ class CompactTaskTile extends StatelessWidget {
                 if (hasMetadata)
                   Padding(
                     padding: EdgeInsets.only(top: dense ? 1 : 3),
-                    child: TaskMetadataBadges(task: task, compact: true),
+                    child: TaskMetadataBadges(
+                      task: task,
+                      compact: true,
+                      includeScheduleMetadata: includeScheduleMetadata,
+                      assigneeLabel: assigneeLabel,
+                    ),
                   ),
               ],
             ),
@@ -108,6 +114,29 @@ class CompactTaskTile extends StatelessWidget {
       ),
       onLongPress: onToggleSelection,
       onTap: onOpen,
+    );
+  }
+
+  TextSpan _titleSpan() {
+    final titleStyle = TextStyle(
+      fontSize: dense ? 13 : 15,
+      fontWeight: FontWeight.w600,
+      color: const Color(0xFF26364A),
+      decoration: task.isDone ? TextDecoration.lineThrough : null,
+      decorationColor: Colors.blueGrey.shade400,
+    );
+    final prefix = highlightedTitlePrefix?.trim();
+    if (prefix == null || prefix.isEmpty) {
+      return TextSpan(text: taskName, style: titleStyle);
+    }
+    return TextSpan(
+      children: [
+        TextSpan(
+          text: '$prefix - ',
+          style: titleStyle.copyWith(color: Colors.black),
+        ),
+        TextSpan(text: capitalizeFirstCharacter(taskName), style: titleStyle),
+      ],
     );
   }
 }

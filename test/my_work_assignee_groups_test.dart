@@ -5,6 +5,7 @@ import 'package:task_manager/features/map_screen/screens/assignee_tasks_view.dar
 import 'package:task_manager/features/map_screen/screens/views/group_by_assignee_view.dart';
 import 'package:task_manager/features/map_screen/screens/views/group_by_view.dart';
 import 'package:task_manager/features/map_screen/screens/views/my_work_view.dart';
+import 'package:task_manager/features/map_screen/screens/widgets/map_task_list_item.dart';
 
 void main() {
   testWidgets('My Work layout expands dynamically named assignee sections', (
@@ -209,6 +210,43 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Shared: Urgent task'), findsOneWidget);
+  });
+
+  testWidgets('assigned task tile shows labeled task metadata', (tester) async {
+    final task = Task(
+      'Prepare proposal',
+      clientName: 'Northwind',
+      reminder: 'invalid reminder',
+      assignee: 'Aman',
+      deadline: 'invalid deadline',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MapTaskListItem(
+            task: task,
+            viewType: 'Detailed list',
+            dense: true,
+            showMetadata: true,
+            includeScheduleMetadata: true,
+            isSelected: false,
+            taskName: task.title,
+            description: null,
+            onEditPriority: (_) {},
+            onToggleDone: () {},
+            onToggleSelection: () {},
+            onOpen: () {},
+            onAddSubtask: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Client: Northwind'), findsOneWidget);
+    expect(find.text('Reminder: invalid reminder'), findsOneWidget);
+    expect(find.text('Assign: Aman'), findsOneWidget);
+    expect(find.text('Deadline: invalid deadline'), findsOneWidget);
   });
 
   testWidgets('assignee task displays priority and substeps', (tester) async {

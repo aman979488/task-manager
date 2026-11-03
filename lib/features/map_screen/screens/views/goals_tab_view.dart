@@ -185,9 +185,11 @@ class _WeeklyGoalsViewState extends State<_WeeklyGoalsView> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    context.read<WeeklyGoalsViewModel>().watchGoals(
-      widget.authViewModel.userUid,
-    );
+    final userUid = widget.authViewModel.userUid;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<WeeklyGoalsViewModel>().watchGoals(userUid);
+    });
   }
 
   List<Task> _tasksForWeek(String key) => widget.viewModel.tasks.where((task) {

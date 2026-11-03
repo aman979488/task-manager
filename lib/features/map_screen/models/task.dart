@@ -82,6 +82,17 @@ class Task {
   List<TaskStep> steps;
   List<TaskFile> files;
 
+  List<String> get monitorNames => (monitor ?? '')
+      .split(RegExp(r'[,;\n]'))
+      .map((name) => name.trim())
+      .where((name) => name.isNotEmpty)
+      .toList();
+  List<String> get assigneeNames => (assignee ?? '')
+      .split(RegExp(r'[,;\n]'))
+      .map((name) => name.trim())
+      .where((name) => name.isNotEmpty)
+      .toList();
+
   Task(
     this.title, {
     this.id,
@@ -133,6 +144,7 @@ class Task {
       'deadlineReminderSent': deadlineReminderSent,
       'isInMyDay': isInMyDay,
       'assignee': assignee,
+      'assigneeNames': assigneeNames,
       'deadline': deadline,
       'workType': workType,
       'folder': folder,
@@ -144,6 +156,7 @@ class Task {
       'isMonthlyGoal': isMonthlyGoal,
       'accompaniedBy': accompaniedBy,
       'monitor': monitor,
+      'monitorNames': monitorNames,
       'remark': remark,
       'createdBy': createdBy,
       'editedBy': editedBy,
@@ -162,8 +175,24 @@ class Task {
     final title = rawTitle is String ? rawTitle : '';
     final rawSteps = data['steps'];
     final rawFiles = data['files'];
+    final rawMonitorNames = data['monitorNames'];
+    final rawAssigneeNames = data['assigneeNames'];
     final parsedSteps = rawSteps is List ? rawSteps : const <dynamic>[];
     final parsedFiles = rawFiles is List ? rawFiles : const <dynamic>[];
+    final parsedMonitorNames = rawMonitorNames is List
+        ? rawMonitorNames
+              .map((name) => name.toString().trim())
+              .where((name) => name.isNotEmpty)
+              .toList()
+        : const <String>[];
+    final parsedAssigneeNames = rawAssigneeNames is List
+        ? rawAssigneeNames
+              .map((name) => name.toString().trim())
+              .where((name) => name.isNotEmpty)
+              .toList()
+        : const <String>[];
+    final rawMonitor = data['monitor']?.toString();
+    final rawAssignee = data['assignee']?.toString();
 
     final dynamic priorityUpdatedAtValue = data['priorityUpdatedAt'];
     int? parsedPriorityUpdatedAt;
@@ -207,7 +236,11 @@ class Task {
       reminderSent: data['reminderSent'] ?? false,
       deadlineReminderSent: data['deadlineReminderSent'] ?? false,
       isInMyDay: data['isInMyDay'] == true,
-      assignee: data['assignee']?.toString(),
+      assignee: rawAssignee?.trim().isNotEmpty == true
+          ? rawAssignee
+          : parsedAssigneeNames.isEmpty
+          ? rawAssignee
+          : parsedAssigneeNames.join(', '),
       deadline: data['deadline']?.toString(),
       workType: data['workType']?.toString(),
       folder: data['folder']?.toString(),
@@ -218,7 +251,11 @@ class Task {
       weekKey: data['weekKey']?.toString(),
       isMonthlyGoal: data['isMonthlyGoal'] == true,
       accompaniedBy: data['accompaniedBy']?.toString(),
-      monitor: data['monitor']?.toString(),
+      monitor: rawMonitor?.trim().isNotEmpty == true
+          ? rawMonitor
+          : parsedMonitorNames.isEmpty
+          ? rawMonitor
+          : parsedMonitorNames.join(', '),
       remark: data['remark']?.toString(),
       createdBy: data['createdBy'] is Map
           ? Map<String, dynamic>.from(data['createdBy'] as Map)

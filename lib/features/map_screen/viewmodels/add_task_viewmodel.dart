@@ -29,6 +29,7 @@ class AddTaskViewModel extends ChangeNotifier {
   String? get priority => valueFor(FloatingSheetType.priority);
   String? get reminder => valueFor(FloatingSheetType.remind);
   String? get assignee => valueFor(FloatingSheetType.assign);
+  String? get monitor => valueFor(FloatingSheetType.monitor);
   String? get deadline => valueFor(FloatingSheetType.deadline);
   String? get workType => valueFor(FloatingSheetType.workType);
   String? get folder => valueFor(FloatingSheetType.folder);
@@ -48,7 +49,12 @@ class AddTaskViewModel extends ChangeNotifier {
     return monthKeys.toList()..sort();
   }
 
-  List<String> get selectedAssignees => (assignee ?? '')
+  List<String> get selectedAssignees =>
+      _selectedPeople(FloatingSheetType.assign);
+  List<String> get selectedMonitors =>
+      _selectedPeople(FloatingSheetType.monitor);
+
+  List<String> _selectedPeople(FloatingSheetType type) => (valueFor(type) ?? '')
       .split(',')
       .map((name) => name.trim())
       .where((name) => name.isNotEmpty)
@@ -70,6 +76,9 @@ class AddTaskViewModel extends ChangeNotifier {
           )
           .where((type) => type != FloatingSheetType.folder)
           .toList();
+      if (!_buttonOrder.contains(FloatingSheetType.monitor)) {
+        _buttonOrder.add(FloatingSheetType.monitor);
+      }
     }
     notifyListeners();
   }
@@ -110,24 +119,37 @@ class AddTaskViewModel extends ChangeNotifier {
   }
 
   void addAssignee(String name) {
-    final current = selectedAssignees;
+    _addPerson(FloatingSheetType.assign, name);
+  }
+
+  void addMonitor(String name) {
+    _addPerson(FloatingSheetType.monitor, name);
+  }
+
+  void _addPerson(FloatingSheetType type, String name) {
+    final current = _selectedPeople(type);
     if (!current.any(
       (element) => element.toLowerCase() == name.toLowerCase(),
     )) {
       current.add(name);
-      setValue(FloatingSheetType.assign, current.join(', '));
+      setValue(type, current.join(', '));
     }
   }
 
   void removeAssignee(String name) {
-    final current = selectedAssignees;
+    _removePerson(FloatingSheetType.assign, name);
+  }
+
+  void removeMonitor(String name) {
+    _removePerson(FloatingSheetType.monitor, name);
+  }
+
+  void _removePerson(FloatingSheetType type, String name) {
+    final current = _selectedPeople(type);
     current.removeWhere(
       (element) => element.toLowerCase() == name.toLowerCase(),
     );
-    setValue(
-      FloatingSheetType.assign,
-      current.isEmpty ? null : current.join(', '),
-    );
+    setValue(type, current.isEmpty ? null : current.join(', '));
   }
 
   void setMonthlyGoal(bool value) {
@@ -141,6 +163,7 @@ class AddTaskViewModel extends ChangeNotifier {
     required MapScreenViewModel mapViewModel,
     Future<void> Function(Task task)? onTaskSaved,
     Task? taskDraft,
+    bool waitForPersistence = false,
   }) async {
     final cleanTitle = title.trim();
     if (cleanTitle.isEmpty || cleanTitle.length > maxTaskTitleLength) {
@@ -157,11 +180,13 @@ class AddTaskViewModel extends ChangeNotifier {
       priority: priority,
       reminder: reminder,
       assignee: assignee,
+      monitor: monitor,
       deadline: deadline,
       workType: workType,
       folder: folder,
       clientName: clientName,
       refProject: refProject,
+      waitForPersistence: waitForPersistence,
     );
 
     if (added) {

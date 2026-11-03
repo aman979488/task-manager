@@ -186,6 +186,126 @@ void main() {
     expect(task.title, 'Draft title continued');
   });
 
+  testWidgets('back saves a newly entered task title', (tester) async {
+    var saveCount = 0;
+    bool? savedResult;
+    var detailClosed = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                savedResult = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute<bool>(
+                    builder: (_) => TaskDetailPage(
+                      task: Task('Draft title'),
+                      isNewTask: true,
+                      onChanged: () {},
+                      onSave: () async => saveCount++,
+                    ),
+                  ),
+                );
+                detailClosed = true;
+              },
+              child: const Text('Open task'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open task'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('task-title-input')),
+      'Saved task title',
+    );
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    expect(saveCount, 1);
+    expect(detailClosed, isTrue);
+    expect(savedResult, isTrue);
+  });
+
+  testWidgets('keyboard Done saves a newly entered task title', (tester) async {
+    var saveCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(
+          task: Task('Draft title'),
+          isNewTask: true,
+          onChanged: () {},
+          onSave: () async => saveCount++,
+        ),
+      ),
+    );
+
+    final titleField = find.byKey(const ValueKey('task-title-input'));
+    await tester.enterText(titleField, 'Saved from keyboard');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(saveCount, 1);
+    expect(find.text('Saved from keyboard'), findsOneWidget);
+  });
+
+  testWidgets('leaving the new task title field saves without closing detail', (
+    tester,
+  ) async {
+    var saveCount = 0;
+    bool? savedResult;
+    var detailClosed = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                savedResult = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute<bool>(
+                    builder: (_) => TaskDetailPage(
+                      task: Task('Draft title'),
+                      isNewTask: true,
+                      onChanged: () {},
+                      onSave: () async => saveCount++,
+                    ),
+                  ),
+                );
+                detailClosed = true;
+              },
+              child: const Text('Open task'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open task'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('task-title-input')),
+      'Saved on blur',
+    );
+    await tester.tap(find.text('Task'));
+    await tester.pumpAndSettle();
+
+    expect(saveCount, 1);
+    expect(detailClosed, isFalse);
+    expect(find.text('Saved on blur'), findsOneWidget);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    expect(saveCount, 2);
+    expect(detailClosed, isTrue);
+    expect(savedResult, isTrue);
+  });
+
   testWidgets('new task defaults Date & Time to now and shows the year', (
     tester,
   ) async {

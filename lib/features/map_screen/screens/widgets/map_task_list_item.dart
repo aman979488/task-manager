@@ -13,6 +13,9 @@ class MapTaskListItem extends StatelessWidget {
     required this.viewType,
     this.dense = false,
     this.showMetadata = false,
+    this.includeScheduleMetadata = false,
+    this.assigneeLabel,
+    this.highlightedTitlePrefix,
     this.taskNameMaxLines,
     required this.isSelected,
     required this.taskName,
@@ -31,6 +34,9 @@ class MapTaskListItem extends StatelessWidget {
   final String viewType;
   final bool dense;
   final bool showMetadata;
+  final bool includeScheduleMetadata;
+  final String? assigneeLabel;
+  final String? highlightedTitlePrefix;
   final int? taskNameMaxLines;
   final bool isSelected;
   final String taskName;
@@ -60,6 +66,9 @@ class MapTaskListItem extends StatelessWidget {
           ),
         ),
         showMetadata: showMetadata,
+        includeScheduleMetadata: includeScheduleMetadata,
+        assigneeLabel: assigneeLabel,
+        highlightedTitlePrefix: highlightedTitlePrefix,
         taskNameMaxLines: taskNameMaxLines ?? 1,
         isSelected: isSelected,
         dense: dense,
@@ -74,6 +83,9 @@ class MapTaskListItem extends StatelessWidget {
         taskName: taskName,
         description: description,
         showMetadata: showMetadata,
+        includeScheduleMetadata: includeScheduleMetadata,
+        assigneeLabel: assigneeLabel,
+        highlightedTitlePrefix: highlightedTitlePrefix,
         isSelected: isSelected,
         dense: dense,
         priorityBadge: Builder(
@@ -102,6 +114,9 @@ class MapTaskListItem extends StatelessWidget {
       taskName: taskName,
       description: description,
       showMetadata: showMetadata,
+      includeScheduleMetadata: includeScheduleMetadata,
+      assigneeLabel: assigneeLabel,
+      highlightedTitlePrefix: highlightedTitlePrefix,
       taskNameMaxLines: taskNameMaxLines ?? 1,
       priorityWidget: Builder(
         builder: (badgeContext) => _priorityBadge(

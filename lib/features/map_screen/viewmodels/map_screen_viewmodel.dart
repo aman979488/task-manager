@@ -23,7 +23,7 @@ class MapScreenViewModel extends ChangeNotifier {
   final List<Task> _tasks = [];
   final Set<Task> _pendingTasks = {};
   final Set<Task> _selectedTasks = {};
-  final Map<Task, Future<void>> _pendingTaskSaves = {};
+  final Map<Task, Future<bool>> _pendingTaskSaves = {};
 
   StreamSubscription<List<Task>>? _tasksSubscription;
   bool _isAddingTask = false;
@@ -221,6 +221,7 @@ class MapScreenViewModel extends ChangeNotifier {
     String? weekKey,
     bool isMonthlyGoal = false,
     String? monitor,
+    bool waitForPersistence = false,
   }) async {
     if (_isAddingTask) return false;
     final cleanTitle = title.trim();
@@ -257,9 +258,10 @@ class MapScreenViewModel extends ChangeNotifier {
       ..assigneeUid = task.assignee
       ..isInMyDay =
           task.isInMyDay ||
-          const {'today', 'tomorrow'}.contains(
-            task.priority?.trim().toLowerCase(),
-          );
+          const {
+            'today',
+            'tomorrow',
+          }.contains(task.priority?.trim().toLowerCase());
     if (taskDraft == null) {
       task
         ..weekKey = weekKey
@@ -285,11 +287,12 @@ class MapScreenViewModel extends ChangeNotifier {
         ),
       );
     }
-    final saveOperation = _saveNewTask(task, onTaskSaved);
+    final Future<bool> saveOperation = _saveNewTask(task, onTaskSaved);
     _pendingTaskSaves[task] = saveOperation;
-    unawaited(saveOperation);
     _isAddingTask = false;
     notifyListeners();
+    if (waitForPersistence) return saveOperation;
+    unawaited(saveOperation.then<void>((_) {}));
     return true;
   }
 
@@ -383,7 +386,9 @@ class MapScreenViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       final pendingSave = _pendingTaskSaves[task];
-      if (pendingSave != null) await pendingSave;
+      if (pendingSave != null && !await pendingSave) {
+        throw StateError('Task has not been saved yet.');
+      }
       if (task.id == null) {
         throw StateError('Task has not been saved yet.');
       }
@@ -610,25 +615,17 @@ class MapScreenViewModel extends ChangeNotifier {
                 (email == myEmail || myEmail.contains(email))) ||
             (name.isNotEmpty && (name == myName || myName.contains(name)));
       }
-      final assignee = (task.assignee ?? '').trim().toLowerCase();
-      final assigneeUid = (task.assigneeUid ?? '').trim().toLowerCase();
-      final isAssignedToMe =
-          (myName.isNotEmpty && assignee.contains(myName)) ||
-          (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
-          (myUid.isNotEmpty &&
-              (assignee.contains(myUid) || assigneeUid.contains(myUid)));
-      final monitorPeople = (task.monitor ?? '')
-          .split(RegExp(r'[,;\n]'))
-          .map((person) => person.trim().toLowerCase())
-          .where((person) => person.isNotEmpty);
-      final isMonitoredByMe = monitorPeople.any(
-        (person) => [myName, myEmail, myUid].any((identity) {
-          if (identity.isEmpty) return false;
-          final personParts = person
-              .split(RegExp(r'[^a-z0-9@._-]+'))
-              .where((part) => part.isNotEmpty);
-          return person == identity || personParts.contains(identity);
-        }),
+      final isAssignedToMe = _isAssignedToUser(
+        task,
+        userUid: myUid,
+        userEmail: myEmail,
+        userName: myName,
+      );
+      final isMonitoredByMe = _isMonitoredByUser(
+        task,
+        userUid: myUid,
+        userEmail: myEmail,
+        userName: myName,
       );
       final priorityUpdatedByUid = (task.priorityUpdatedByUid ?? '')
           .trim()
@@ -642,8 +639,117 @@ class MapScreenViewModel extends ChangeNotifier {
     }).toList();
   }
 
-  Map<String, List<Task>> myWorkSections(List<Task> myTasks) {
-    return sectionsForWork(myTasks);
+  static bool _isAssignedToUser(
+    Task task, {
+    required String userUid,
+    required String userEmail,
+    required String userName,
+  }) {
+    final assignee = (task.assignee ?? '').trim().toLowerCase();
+    final assigneeUid = (task.assigneeUid ?? '').trim().toLowerCase();
+    return (userName.isNotEmpty && assignee.contains(userName)) ||
+        (userEmail.isNotEmpty && assignee.contains(userEmail)) ||
+        (userUid.isNotEmpty &&
+            (assignee.contains(userUid) || assigneeUid.contains(userUid)));
+  }
+
+  static bool _isCreatedByUser(
+    Task task, {
+    required String userUid,
+    required String userEmail,
+    required String userName,
+  }) {
+    final creator = task.createdBy;
+    if (creator == null) return false;
+    final creatorUid = (creator['uid'] ?? '').toString().trim().toLowerCase();
+    final creatorEmail = (creator['email'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    final creatorName = (creator['name'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    return (userUid.isNotEmpty &&
+            creatorUid.isNotEmpty &&
+            (creatorUid == userUid || userUid.contains(creatorUid))) ||
+        (userEmail.isNotEmpty && creatorEmail == userEmail) ||
+        (userName.isNotEmpty && creatorName == userName);
+  }
+
+  static bool _isMonitoredByUser(
+    Task task, {
+    required String userUid,
+    required String userEmail,
+    required String userName,
+  }) {
+    final monitorPeople = (task.monitor ?? '')
+        .split(RegExp(r'[,;\n]'))
+        .map((person) => person.trim().toLowerCase())
+        .where((person) => person.isNotEmpty);
+    return monitorPeople.any(
+      (person) => [userName, userEmail, userUid].any((identity) {
+        if (identity.isEmpty) return false;
+        final personParts = person
+            .split(RegExp(r'[^a-z0-9@._-]+'))
+            .where((part) => part.isNotEmpty);
+        return person == identity || personParts.contains(identity);
+      }),
+    );
+  }
+
+  Map<String, List<Task>> myWorkSections(
+    List<Task> myTasks, {
+    String userUid = '',
+    String userEmail = '',
+    String userName = '',
+  }) {
+    final sections = sectionsForWork(myTasks);
+    final normalizedUid = userUid.trim().toLowerCase();
+    final normalizedEmail = userEmail.trim().toLowerCase();
+    final normalizedName = userName.trim().toLowerCase();
+    if (normalizedUid.isEmpty &&
+        normalizedEmail.isEmpty &&
+        normalizedName.isEmpty) {
+      return sections;
+    }
+
+    final monitoredTasks = myTasks
+        .where(
+          (task) {
+            if (task.isDone ||
+                _isAssignedToUser(
+                  task,
+                  userUid: normalizedUid,
+                  userEmail: normalizedEmail,
+                  userName: normalizedName,
+                )) {
+              return false;
+            }
+            final assignedToSomeoneElse =
+                (task.assignee ?? '').trim().isNotEmpty;
+            return _isMonitoredByUser(
+                  task,
+                  userUid: normalizedUid,
+                  userEmail: normalizedEmail,
+                  userName: normalizedName,
+                ) ||
+                (assignedToSomeoneElse &&
+                    _isCreatedByUser(
+                      task,
+                      userUid: normalizedUid,
+                      userEmail: normalizedEmail,
+                      userName: normalizedName,
+                    ));
+          },
+        )
+        .toList();
+
+    for (final sectionTasks in sections.values) {
+      sectionTasks.removeWhere(monitoredTasks.contains);
+    }
+    sections['Monitor Works'] = monitoredTasks;
+    return sections;
   }
 
   static Map<String, List<Task>> sectionsForWork(List<Task> myTasks) {
@@ -761,7 +867,7 @@ class MapScreenViewModel extends ChangeNotifier {
     return result;
   }
 
-  Future<void> _saveNewTask(
+  Future<bool> _saveNewTask(
     Task task,
     Future<void> Function(Task task)? onTaskSaved,
   ) async {
@@ -779,6 +885,7 @@ class MapScreenViewModel extends ChangeNotifier {
         }
       }
       await _updateHomeWidgetSafely();
+      return true;
     } catch (error) {
       debugPrint('Error adding task: $error');
       _pendingTasks.remove(task);
@@ -789,6 +896,7 @@ class MapScreenViewModel extends ChangeNotifier {
       );
       _lastErrorMessage = 'Could not send "${task.title}". Please try again.';
       notifyListeners();
+      return false;
     } finally {
       _pendingTaskSaves.remove(task);
     }

@@ -99,6 +99,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
   };
 
   bool _initialFocusScheduled = false;
+  double _lastKeyboardInset = 0;
   bool _detailRouteOpen = false;
   double _dragHandleDistance = 0;
   bool _isDragHandleActive = false;
@@ -117,6 +118,22 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final addVm = Provider.of<AddTaskViewModel>(context, listen: false);
       addVm.loadButtonOrder();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    if (keyboardInset == _lastKeyboardInset) return;
+    _lastKeyboardInset = keyboardInset;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_sheetController.isAttached) return;
+      _sheetController.animateTo(
+        keyboardInset > 0 ? (kIsWeb ? 0.85 : 0.95) : 0.55,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
     });
   }
 
@@ -197,6 +214,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       priority: addVm.priority,
       reminder: addVm.reminder,
       assignee: addVm.assignee,
+      monitor: addVm.monitor,
       deadline: addVm.deadline,
       workType: addVm.workType,
       folder: addVm.folder,
@@ -208,6 +226,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       assigneeUid: addVm.assignee,
     );
 
+    var taskWasPersisted = false;
     final detailRoute = MaterialPageRoute<bool>(
       builder: (_) => MultiProvider(
         providers: [
@@ -220,11 +239,16 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
           isNewTask: true,
           onChanged: () {},
           onSave: () async {
+            if (taskWasPersisted) {
+              await mapVm.updateTask(draft);
+              return;
+            }
             final added = await addVm.submitTask(
               title: draft.title,
               authViewModel: authVm,
               mapViewModel: mapVm,
               taskDraft: draft,
+              waitForPersistence: true,
               onTaskSaved: scheduledFlash == null
                   ? null
                   : (task) => FlashAlertService.send(
@@ -236,6 +260,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
             if (!added) {
               throw StateError('Could not save the task. Please try again.');
             }
+            taskWasPersisted = true;
             _scheduledFlash = null;
           },
         ),
@@ -323,6 +348,8 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
         return _selectedQuickDateOption(addVm.reminder);
       case FloatingSheetType.assign:
         return null;
+      case FloatingSheetType.monitor:
+        return addVm.monitor;
       case FloatingSheetType.deadline:
         return _selectedQuickDateOption(addVm.deadline);
       case FloatingSheetType.workType:
@@ -568,13 +595,18 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     final mapVm = Provider.of<MapScreenViewModel>(context, listen: false);
     final addVm = Provider.of<AddTaskViewModel>(context, listen: false);
 
-    final isMulti = type == FloatingSheetType.assign;
+    final isMulti =
+        type == FloatingSheetType.assign || type == FloatingSheetType.monitor;
     final isMentionSelection = _mentionQuery != null && _mentionStart >= 0;
     final selectedOption = isMentionSelection
         ? null
         : _selectedMetadataOption(type, addVm);
     final currentSelections = isMulti
-        ? (isMentionSelection ? <String>[] : addVm.selectedAssignees)
+        ? (isMentionSelection
+              ? <String>[]
+              : type == FloatingSheetType.monitor
+              ? addVm.selectedMonitors
+              : addVm.selectedAssignees)
         : selectedOption == null
         ? <String>[]
         : [selectedOption];
@@ -602,6 +634,8 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
         } else {
           if (type == FloatingSheetType.assign) {
             addVm.addAssignee(val);
+          } else if (type == FloatingSheetType.monitor) {
+            addVm.addMonitor(val);
           } else {
             _onMetadataChanged(type, val);
           }
@@ -611,6 +645,8 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
         if (isMentionSelection) return;
         if (type == FloatingSheetType.assign) {
           addVm.removeAssignee(val);
+        } else if (type == FloatingSheetType.monitor) {
+          addVm.removeMonitor(val);
         } else {
           _onMetadataChanged(type, null);
         }
@@ -647,6 +683,12 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
         icon = Icons.assignment;
         label = 'Assign';
         selectedValue = addVm.assignee;
+        onClear = () => _onMetadataChanged(type, null);
+        break;
+      case FloatingSheetType.monitor:
+        icon = Icons.desktop_windows_outlined;
+        label = 'Monitor';
+        selectedValue = addVm.monitor;
         onClear = () => _onMetadataChanged(type, null);
         break;
       case FloatingSheetType.deadline:
@@ -761,6 +803,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     final screenWidth = MediaQuery.of(context).size.width;
     final systemNavBar = MediaQuery.of(context).padding.bottom;
     final bottomPadding = 16.0 + (kIsWeb ? 0.0 : systemNavBar);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
     final isIosWeb = kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
     if (!_initialFocusScheduled && !isIosWeb) {
@@ -792,13 +835,12 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       },
       child: DraggableScrollableSheet(
         controller: _sheetController,
-        initialChildSize: 0.55,
+        initialChildSize: keyboardInset > 0 ? (kIsWeb ? 0.85 : 0.95) : 0.55,
         minChildSize: 0.35,
         maxChildSize: kIsWeb ? 0.85 : 0.95,
         expand: false,
         builder: (context, sheetScrollController) => AddTaskSheet(
-          bottomPadding:
-              bottomPadding + MediaQuery.viewInsetsOf(context).bottom,
+          bottomPadding: bottomPadding,
           scrollController: sheetScrollController,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1032,6 +1074,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
                                 onTapOutside: (_) {},
                                 minLines: 1,
                                 maxLines: 4,
+                                textAlignVertical: TextAlignVertical.top,
                                 textInputAction: _mentionQuery == null
                                     ? TextInputAction.done
                                     : TextInputAction.search,
@@ -1039,6 +1082,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
                                   hintText: 'Add a task',
                                   border: InputBorder.none,
                                   counterText: '',
+                                  contentPadding: EdgeInsets.only(top: 4),
                                 ),
                                 onChanged: (val) {
                                   final cursor =
