@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../features/auth/login_page.dart';
+import '../features/call_history/screens/all_calls_view.dart';
+import '../features/call_history/viewmodels/call_log_controller.dart';
 import '../features/map_screen/models/task.dart';
 import '../features/map_screen/screens/map_screen.dart';
 import '../features/map_screen/screens/task_detail_page.dart';
@@ -40,6 +42,13 @@ class AppRouter {
             const Scaffold(body: Center(child: CircularProgressIndicator())),
       ),
       GoRoute(path: AppRoutes.login, builder: (_, _) => const LoginPage()),
+      GoRoute(
+        path: AppRoutes.callHistory,
+        builder: (_, _) => ChangeNotifierProvider<CallLogController>(
+          create: (_) => CallLogController(),
+          child: const AllCallsView(),
+        ),
+      ),
       GoRoute(
         path: AppRoutes.home,
         builder: (context, state) => MultiProvider(

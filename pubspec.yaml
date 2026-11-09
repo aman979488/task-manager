@@ -48,6 +48,7 @@ dependencies:
   printing: ^5.15.1
   pdf: ^3.13.1
   home_widget: ^0.10.0
+  flutter_contacts: ^2.6.0
 
 dev_dependencies:
   flutter_test:
