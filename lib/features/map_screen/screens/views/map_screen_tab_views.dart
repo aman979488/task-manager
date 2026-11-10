@@ -218,13 +218,21 @@ class MapScreenTabViews extends StatelessWidget {
     List<Task> visibleTasks, {
     bool priorityEditable = true,
     bool readOnly = false,
+    bool useCompletionDate = false,
   }) {
     return CalendarView(
       tasks: visibleTasks,
       selectedDate: viewModel.calendarDate,
       onDateChanged: viewModel.setCalendarDate,
-      scheduledDate: (t) =>
-          TaskDateFormatter.scheduledDate(t.deadline, t.reminder),
+      scheduledDate: (task) {
+        if (useCompletionDate && task.completedAt != null) {
+          final completed = DateTime.fromMillisecondsSinceEpoch(
+            task.completedAt!,
+          );
+          return DateTime(completed.year, completed.month, completed.day);
+        }
+        return TaskDateFormatter.scheduledDate(task.deadline, task.reminder);
+      },
       refreshable: _refreshableScrollView,
       taskBuilder: (task, index) => Column(
         children: [
@@ -374,8 +382,22 @@ class MapScreenTabViews extends StatelessWidget {
   Widget build(BuildContext context) {
     final allTasks = viewModel.tasks;
     final myTasks = viewModel.myTasks(authViewModel);
+    final assignedTasks = hasAdminAccess
+        ? viewModel.getVisibleTasks(source: allTasks)
+        : MapScreenViewModel.assignedTasksForUser(
+            viewModel.getVisibleTasks(source: allTasks),
+            userUid: authViewModel.userUid,
+            userEmail: authViewModel.userEmail,
+            userName: authViewModel.userName,
+          );
     final myDayTasks = MapScreenViewModel.myDayTasks(myTasks);
-    final doneTasks = viewModel.doneTasks();
+    final doneTasks = MapScreenViewModel.doneTasksForUser(
+      allTasks,
+      canViewAll: hasAdminAccess,
+      userUid: authViewModel.userUid,
+      userEmail: authViewModel.userEmail,
+      userName: authViewModel.userName,
+    );
     final overdueTasks = viewModel.overdueTasks();
     final visibleAllTasks = viewModel.getVisibleTasks(source: allTasks);
     final visibleMyDayTasks = viewModel.getVisibleTasks(source: myDayTasks);
@@ -436,6 +458,14 @@ class MapScreenTabViews extends StatelessWidget {
             ),
           ),
           Builder(
+            key: const PageStorageKey('goals-tab'),
+            builder: (_) => GoalsTabView(
+              viewModel: viewModel,
+              authViewModel: authViewModel,
+              taskResultsBuilder: _buildMyWorkTaskResults,
+            ),
+          ),
+          Builder(
             key: const PageStorageKey('my-work-tab'),
             builder: (_) => _buildMyWorkSections(
               viewModel.myWorkSections(
@@ -453,23 +483,19 @@ class MapScreenTabViews extends StatelessWidget {
               viewType: viewModel.viewType,
               onEditTaskTime: onSetTaskTime,
               onOpenTask: onOpenTask,
-              calendarBuilder: (tasks) =>
-                  _buildCalendarView(tasks, readOnly: true),
+              onMarkUndone: (task) => onToggleTaskDone(task),
+              calendarBuilder: (tasks) => _buildCalendarView(
+                tasks,
+                readOnly: true,
+                useCompletionDate: true,
+              ),
               refreshable: _refreshableScrollView,
-            ),
-          ),
-          Builder(
-            key: const PageStorageKey('goals-tab'),
-            builder: (_) => GoalsTabView(
-              viewModel: viewModel,
-              authViewModel: authViewModel,
-              taskResultsBuilder: _buildMyWorkTaskResults,
             ),
           ),
           Builder(
             key: const PageStorageKey('assign-tab'),
             builder: (assignContext) => GroupByAssigneeView(
-              groups: MapScreenViewModel.assignedTasksByName(visibleAllTasks),
+              groups: MapScreenViewModel.assignedTasksByName(assignedTasks),
               pageStorageId: 'assign-tab',
               refreshable: _refreshableScrollView,
               onOpenAssignee: (name, tasks) => assignContext.push(

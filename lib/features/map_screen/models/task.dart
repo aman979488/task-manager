@@ -42,6 +42,43 @@ class TaskFile {
   }
 }
 
+class TaskNotification {
+  const TaskNotification({
+    required this.templateLabel,
+    required this.message,
+    required this.timing,
+    required this.scheduledAt,
+    this.isEnabled = true,
+  });
+
+  final String templateLabel;
+  final String message;
+  final String timing;
+  final String scheduledAt;
+  final bool isEnabled;
+
+  Map<String, dynamic> toMap() => {
+    'templateLabel': templateLabel,
+    'message': message,
+    'timing': timing,
+    'scheduledAt': scheduledAt,
+    'isEnabled': isEnabled,
+  };
+
+  factory TaskNotification.fromMap(dynamic raw) {
+    final data = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : <String, dynamic>{};
+    return TaskNotification(
+      templateLabel: (data['templateLabel'] ?? '').toString(),
+      message: (data['message'] ?? '').toString(),
+      timing: (data['timing'] ?? '').toString(),
+      scheduledAt: (data['scheduledAt'] ?? '').toString(),
+      isEnabled: data['isEnabled'] != false,
+    );
+  }
+}
+
 class Task {
   String? id; // Firestore document ID
   String title;
@@ -81,6 +118,7 @@ class Task {
 
   List<TaskStep> steps;
   List<TaskFile> files;
+  List<TaskNotification> taskNotifications;
 
   List<String> get monitorNames => (monitor ?? '')
       .split(RegExp(r'[,;\n]'))
@@ -127,9 +165,11 @@ class Task {
     this.completedAt,
     List<TaskStep>? steps,
     List<TaskFile>? files,
+    List<TaskNotification>? taskNotifications,
   }) : createdDate = createdDate ?? _getCurrentDateTime(),
        steps = steps ?? <TaskStep>[],
-       files = files ?? <TaskFile>[];
+       files = files ?? <TaskFile>[],
+       taskNotifications = taskNotifications ?? <TaskNotification>[];
 
   Map<String, dynamic> toMap() {
     return {
@@ -167,6 +207,7 @@ class Task {
       'completedAt': completedAt,
       'steps': steps.map((s) => s.toMap()).toList(),
       'files': files.map((f) => f.toMap()).toList(),
+      'taskNotifications': taskNotifications.map((n) => n.toMap()).toList(),
     };
   }
 
@@ -175,10 +216,14 @@ class Task {
     final title = rawTitle is String ? rawTitle : '';
     final rawSteps = data['steps'];
     final rawFiles = data['files'];
+    final rawTaskNotifications = data['taskNotifications'];
     final rawMonitorNames = data['monitorNames'];
     final rawAssigneeNames = data['assigneeNames'];
     final parsedSteps = rawSteps is List ? rawSteps : const <dynamic>[];
     final parsedFiles = rawFiles is List ? rawFiles : const <dynamic>[];
+    final parsedTaskNotifications = rawTaskNotifications is List
+        ? rawTaskNotifications
+        : const <dynamic>[];
     final parsedMonitorNames = rawMonitorNames is List
         ? rawMonitorNames
               .map((name) => name.toString().trim())
@@ -275,6 +320,14 @@ class Task {
       files: parsedFiles
           .map((e) => TaskFile.fromMap(e))
           .where((file) => file.name.isNotEmpty || file.path != null)
+          .toList(),
+      taskNotifications: parsedTaskNotifications
+          .map(TaskNotification.fromMap)
+          .where(
+            (notification) =>
+                notification.templateLabel.isNotEmpty ||
+                notification.message.isNotEmpty,
+          )
           .toList(),
     );
   }

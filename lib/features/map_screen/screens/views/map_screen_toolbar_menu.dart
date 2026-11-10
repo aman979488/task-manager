@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../services/home_screen_shortcut.dart';
+import '../../../../routes/app_routes.dart';
 import '../../models/task.dart';
 import '../../services/task_share_print_service.dart';
 import '../../viewmodels/map_screen_viewmodel.dart';
@@ -51,7 +53,7 @@ class MapScreenToolbarMenu {
     final action = await showMenu<String>(
       context: context,
       position: position,
-      constraints: const BoxConstraints(maxHeight: 196, maxWidth: 190),
+      constraints: const BoxConstraints(maxHeight: 196, maxWidth: 220),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 8,
       surfaceTintColor: Colors.transparent,
@@ -84,6 +86,11 @@ class MapScreenToolbarMenu {
           value: 'zoom',
         ),
         const PopupMenuDivider(),
+        _PrintActions._menuItem(
+          icon: Icons.call,
+          title: 'Call History',
+          value: 'call-history',
+        ),
         _PrintActions._menuItem(
           icon: Icons.add_to_home_screen,
           title: 'Add shortcut to home screen',
@@ -157,6 +164,9 @@ class MapScreenToolbarMenu {
           currentZoom: viewModel.zoom,
           onZoomChanged: viewModel.setZoom,
         );
+        break;
+      case 'call-history':
+        await context.push<void>(AppRoutes.callHistory);
         break;
       case 'shortcut':
         final added = await installHomeScreenShortcut();

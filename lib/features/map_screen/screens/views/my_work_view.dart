@@ -307,25 +307,13 @@ class _MyWorkViewState extends State<MyWorkView>
         onTap: () {
           setState(() {
             _hasChangedExpandedSections = true;
-            if (name == 'Urgent Works') {
-              _expandedSections.add(name);
-            } else if (isExpanded) {
+            if (isExpanded) {
               _expandedSections.remove(name);
             } else {
               _expandedSections.add(name);
             }
           });
           unawaited(_saveExpandedSections());
-          if (name == 'Urgent Works') {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted || !_scrollController.hasClients) return;
-              _scrollController.animateTo(
-                0,
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOutCubic,
-              );
-            });
-          }
         },
         onDoubleTap: () {
           setState(() {

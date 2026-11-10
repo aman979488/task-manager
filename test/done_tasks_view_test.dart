@@ -19,6 +19,7 @@ void main() {
         priority: 'IMP',
       );
       var timerTapped = false;
+      Task? openedTask;
 
       await tester.pumpWidget(
         MaterialApp(
@@ -31,6 +32,7 @@ void main() {
               onEditTaskTime: (t) async {
                 timerTapped = true;
               },
+              onOpenTask: (opened) => openedTask = opened,
             ),
           ),
         ),
@@ -62,6 +64,10 @@ void main() {
       await tester.tap(find.byIcon(Icons.timer_outlined));
       await tester.pump();
       expect(timerTapped, isTrue);
+      expect(openedTask, isNull);
+      await tester.tap(find.text('IMP'));
+      await tester.pump();
+      expect(openedTask, isNull);
 
       // Excluded action icons (pencil, edit, copy)
       expect(find.byIcon(Icons.edit), findsNothing);
@@ -69,7 +75,9 @@ void main() {
     },
   );
 
-  testWidgets('Done Work task title opens task details', (tester) async {
+  testWidgets('tapping anywhere in a Done Work task opens task details', (
+    tester,
+  ) async {
     final task = Task('Finished report', isDone: true);
     Task? openedTask;
 
@@ -87,16 +95,16 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('Finished report'));
+    await tester.tap(find.byKey(const ValueKey('done-task-Finished report')));
 
     expect(openedTask, same(task));
   });
 
-  testWidgets('groups all completed tasks by assigned date', (tester) async {
+  testWidgets('groups completed tasks by completion date', (tester) async {
     final firstTask = Task(
       'First task',
       isDone: true,
-      createdDate: '29/10/2026 • 9:00',
+      createdDate: '28/10/2026 • 9:00',
       completedAt: DateTime(2026, 10, 29, 10).millisecondsSinceEpoch,
       startTime: '09:00AM',
       endTime: '10:00AM',
@@ -124,6 +132,7 @@ void main() {
     );
 
     expect(find.text('29 -10- 2026 Thu_Dur-3.00Hr_Sco-12'), findsOneWidget);
+    expect(find.text('28 -10- 2026 Wed_Dur-0Hr_Sco-0'), findsNothing);
     expect(find.text('First task'), findsOneWidget);
     expect(find.text('Second task'), findsOneWidget);
   });
