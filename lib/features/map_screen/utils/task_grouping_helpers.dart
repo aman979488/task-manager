@@ -166,26 +166,18 @@ class TaskGroupingHelpers {
           )) {
         return false;
       }
-      final assignedToSomeoneElse = (task.assignee ?? '').trim().isNotEmpty;
       return TaskFilterHelpers.isMonitoredByUser(
-            task,
-            userUid: normalizedUid,
-            userEmail: normalizedEmail,
-            userName: normalizedName,
-          ) ||
-          (assignedToSomeoneElse &&
-              TaskFilterHelpers.isCreatedByUser(
-                task,
-                userUid: normalizedUid,
-                userEmail: normalizedEmail,
-                userName: normalizedName,
-              ));
+        task,
+        userUid: normalizedUid,
+        userEmail: normalizedEmail,
+        userName: normalizedName,
+      );
     }).toList();
 
     for (final sectionTasks in sections.values) {
       sectionTasks.removeWhere(monitoredTasks.contains);
     }
-    sections['Monitor Works'] = monitoredTasks;
+    sections['Free Works']!.addAll(monitoredTasks);
     return sections;
   }
 

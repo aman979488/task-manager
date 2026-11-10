@@ -31,7 +31,6 @@ class TaskConstants {
     'Later',
     'Process',
     'Hold',
-    'Monitor',
     'Free',
   ];
 

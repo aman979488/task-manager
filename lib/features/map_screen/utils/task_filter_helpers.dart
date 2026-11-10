@@ -91,6 +91,32 @@ class TaskFilterHelpers {
         .toList();
   }
 
+  static List<Task> assignTabTasksForUser(
+    Iterable<Task> tasks, {
+    required String userUid,
+    required String userEmail,
+    required String userName,
+  }) {
+    final normalizedUid = userUid.trim().toLowerCase();
+    final normalizedEmail = userEmail.trim().toLowerCase();
+    final normalizedName = userName.trim().toLowerCase();
+    return tasks.where((task) {
+      if ((task.assignee ?? '').trim().isEmpty) return false;
+      return isAssignedToUser(
+            task,
+            userUid: normalizedUid,
+            userEmail: normalizedEmail,
+            userName: normalizedName,
+          ) ||
+          isCreatedByUser(
+            task,
+            userUid: normalizedUid,
+            userEmail: normalizedEmail,
+            userName: normalizedName,
+          );
+    }).toList();
+  }
+
   static List<Task> myTasksForUser(
     Iterable<Task> tasks, {
     required String userUid,
@@ -217,21 +243,23 @@ class TaskFilterHelpers {
 
   static List<Task> upcomingReminders(Iterable<Task> tasks) {
     final now = DateTime.now();
-    final reminders = tasks.where((task) {
-      if (task.isDone) return false;
-      final scheduled = DateTime.tryParse(
-        task.deadline ?? task.reminder ?? '',
-      );
-      return scheduled != null &&
-          scheduled.isAfter(now.subtract(const Duration(days: 1)));
-    }).toList()
-      ..sort((a, b) {
-        final dateA =
-            DateTime.tryParse(a.deadline ?? a.reminder ?? '') ?? DateTime(2100);
-        final dateB =
-            DateTime.tryParse(b.deadline ?? b.reminder ?? '') ?? DateTime(2100);
-        return dateA.compareTo(dateB);
-      });
+    final reminders =
+        tasks.where((task) {
+          if (task.isDone) return false;
+          final scheduled = DateTime.tryParse(
+            task.deadline ?? task.reminder ?? '',
+          );
+          return scheduled != null &&
+              scheduled.isAfter(now.subtract(const Duration(days: 1)));
+        }).toList()..sort((a, b) {
+          final dateA =
+              DateTime.tryParse(a.deadline ?? a.reminder ?? '') ??
+              DateTime(2100);
+          final dateB =
+              DateTime.tryParse(b.deadline ?? b.reminder ?? '') ??
+              DateTime(2100);
+          return dateA.compareTo(dateB);
+        });
     return reminders;
   }
 
