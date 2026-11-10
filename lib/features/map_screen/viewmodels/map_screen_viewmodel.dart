@@ -446,14 +446,13 @@ class MapScreenViewModel extends ChangeNotifier {
     required String userUid,
     required String userEmail,
     required String userName,
-  }) =>
-      TaskFilterHelpers.doneTasksForUser(
-        tasks,
-        canViewAll: canViewAll,
-        userUid: userUid,
-        userEmail: userEmail,
-        userName: userName,
-      );
+  }) => TaskFilterHelpers.doneTasksForUser(
+    tasks,
+    canViewAll: canViewAll,
+    userUid: userUid,
+    userEmail: userEmail,
+    userName: userName,
+  );
 
   List<Task> getVisibleTasks({List<Task>? source}) {
     return visibleTasks(
@@ -496,39 +495,48 @@ class MapScreenViewModel extends ChangeNotifier {
     required String userUid,
     required String userEmail,
     required String userName,
-  }) =>
-      TaskFilterHelpers.assignedTasksForUser(
-        tasks,
-        userUid: userUid,
-        userEmail: userEmail,
-        userName: userName,
-      );
+  }) => TaskFilterHelpers.assignedTasksForUser(
+    tasks,
+    userUid: userUid,
+    userEmail: userEmail,
+    userName: userName,
+  );
+
+  static List<Task> assignTabTasksForUser(
+    Iterable<Task> tasks, {
+    required String userUid,
+    required String userEmail,
+    required String userName,
+  }) => TaskFilterHelpers.assignTabTasksForUser(
+    tasks,
+    userUid: userUid,
+    userEmail: userEmail,
+    userName: userName,
+  );
 
   static List<Task> myTasksForUser(
     Iterable<Task> tasks, {
     required String userUid,
     required String userEmail,
     required String userName,
-  }) =>
-      TaskFilterHelpers.myTasksForUser(
-        tasks,
-        userUid: userUid,
-        userEmail: userEmail,
-        userName: userName,
-      );
+  }) => TaskFilterHelpers.myTasksForUser(
+    tasks,
+    userUid: userUid,
+    userEmail: userEmail,
+    userName: userName,
+  );
 
   Map<String, List<Task>> myWorkSections(
     List<Task> myTasks, {
     String userUid = '',
     String userEmail = '',
     String userName = '',
-  }) =>
-      TaskGroupingHelpers.myWorkSections(
-        myTasks,
-        userUid: userUid,
-        userEmail: userEmail,
-        userName: userName,
-      );
+  }) => TaskGroupingHelpers.myWorkSections(
+    myTasks,
+    userUid: userUid,
+    userEmail: userEmail,
+    userName: userName,
+  );
 
   static Map<String, List<Task>> sectionsForWork(List<Task> myTasks) =>
       TaskGroupingHelpers.sectionsForWork(myTasks);
@@ -537,12 +545,11 @@ class MapScreenViewModel extends ChangeNotifier {
     List<Task>? source,
     required String query,
     required String sortBy,
-  }) =>
-      TaskGroupingHelpers.filterAndSortTasks(
-        source: source ?? _tasks,
-        query: query,
-        sortBy: sortBy,
-      );
+  }) => TaskGroupingHelpers.filterAndSortTasks(
+    source: source ?? _tasks,
+    query: query,
+    sortBy: sortBy,
+  );
 
   Future<bool> _saveNewTask(
     Task task,
@@ -619,8 +626,6 @@ class MapScreenViewModel extends ChangeNotifier {
       debugPrint('Error updating task home widget: $error');
     }
   }
-
-
 
   @override
   void dispose() {

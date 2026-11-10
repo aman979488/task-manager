@@ -18,12 +18,8 @@ void main() {
     expect(TaskConstants.priorityOptions, isNot(contains('Urgent')));
   });
 
-  test('Monitor priority appears immediately above Free', () {
-    final monitorIndex = TaskConstants.priorityOptions.indexOf('Monitor');
-    final freeIndex = TaskConstants.priorityOptions.indexOf('Free');
-
-    expect(monitorIndex, greaterThanOrEqualTo(0));
-    expect(freeIndex, monitorIndex + 1);
+  test('Monitor is not a task priority option', () {
+    expect(TaskConstants.priorityOptions, isNot(contains('Monitor')));
   });
 
   test('metadata options are sorted by usage with stable ties', () async {
@@ -390,39 +386,43 @@ void main() {
     );
   });
 
-  test('My Work separates monitored tasks from priority sections', () {
-    final monitoredTask = Task(
-      'Follow up',
-      priority: 'Today',
-      assignee: 'Priya',
-      monitor: 'Aman Yadav',
-    );
-    final assignedTask = Task(
-      'Assigned today',
-      priority: 'Today',
-      assignee: 'Aman Yadav',
-    );
+  test(
+    'My Work shows monitored tasks in Free Works and assignees by priority',
+    () {
+      final monitoredTask = Task(
+        'Follow up',
+        priority: 'Today',
+        assignee: 'Priya',
+        monitor: 'Aman Yadav',
+      );
+      final assignedTask = Task(
+        'Assigned today',
+        priority: 'Today',
+        assignee: 'Aman Yadav',
+      );
 
-    final viewModel = MapScreenViewModel(
-      repository: _TaskRepositoryStub(),
-      assignmentNotificationService: _AssignmentNotificationServiceStub(),
-    );
-    final monitorSections = viewModel.myWorkSections([
-      monitoredTask,
-    ], userName: 'Aman Yadav');
-    final assigneeSections = viewModel.myWorkSections([
-      monitoredTask,
-      assignedTask,
-    ], userName: 'Priya');
+      final viewModel = MapScreenViewModel(
+        repository: _TaskRepositoryStub(),
+        assignmentNotificationService: _AssignmentNotificationServiceStub(),
+      );
+      final monitorSections = viewModel.myWorkSections([
+        monitoredTask,
+      ], userName: 'Aman Yadav');
+      final assigneeSections = viewModel.myWorkSections([
+        monitoredTask,
+        assignedTask,
+      ], userName: 'Priya');
 
-    expect(monitorSections['Monitor Works'], [monitoredTask]);
-    expect(monitorSections['Today Works'], isEmpty);
-    expect(assigneeSections['Today Works'], [monitoredTask, assignedTask]);
-    expect(monitoredTask.priority, 'Today');
-    viewModel.dispose();
-  });
+      expect(monitorSections['Monitor Works'], isNull);
+      expect(monitorSections['Free Works'], [monitoredTask]);
+      expect(monitorSections['Today Works'], isEmpty);
+      expect(assigneeSections['Today Works'], [monitoredTask, assignedTask]);
+      expect(monitoredTask.priority, 'Today');
+      viewModel.dispose();
+    },
+  );
 
-  test('task assigner sees Monitor while assignee sees priority section', () {
+  test('task creator and assignee see their tasks by priority', () {
     final task = Task(
       'Follow up',
       priority: 'IMP',
@@ -448,12 +448,49 @@ void main() {
       task,
     ], userName: 'Priya');
 
-    expect(assignerSections['Monitor Works'], [task]);
-    expect(assignerSections['IMP Works'], isEmpty);
+    expect(assignerSections['Monitor Works'], isNull);
+    expect(assignerSections['Free Works'], isEmpty);
+    expect(assignerSections['IMP Works'], [task]);
     expect(assigneeSections['Monitor Works'], isEmpty);
     expect(assigneeSections['IMP Works'], [task]);
     viewModel.dispose();
   });
+
+  test(
+    'Assign tab includes tasks created and assigned by the current user',
+    () {
+      final createdAndAssigned = Task(
+        'Assigned by me',
+        assignee: 'Priya',
+        createdBy: {'uid': 'user-1', 'email': 'me@example.com', 'name': 'Me'},
+      );
+      final assignedToMe = Task('Assigned to me', assignee: 'Me');
+      final createdUnassigned = Task(
+        'Not assigned',
+        createdBy: {'uid': 'user-1', 'email': 'me@example.com', 'name': 'Me'},
+      );
+      final anotherUsersTask = Task(
+        'Another user assigned',
+        assignee: 'Priya',
+        createdBy: {'uid': 'user-2', 'email': 'other@example.com'},
+      );
+
+      expect(
+        MapScreenViewModel.assignTabTasksForUser(
+          [
+            createdAndAssigned,
+            assignedToMe,
+            createdUnassigned,
+            anotherUsersTask,
+          ],
+          userUid: 'user-1',
+          userEmail: 'me@example.com',
+          userName: 'Me',
+        ),
+        [createdAndAssigned, assignedToMe],
+      );
+    },
+  );
 
   test('monitor names are serialized for monitor task queries', () {
     final task = Task('Follow up', monitor: 'Aman Yadav, Priya');

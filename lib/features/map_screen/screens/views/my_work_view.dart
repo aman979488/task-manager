@@ -39,7 +39,6 @@ class _MyWorkViewState extends State<MyWorkView>
     'Day Later Works',
     'Process Works',
     'Hold Works',
-    'Monitor Works',
     'Free Works',
   ];
 

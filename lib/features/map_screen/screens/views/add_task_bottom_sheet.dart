@@ -164,7 +164,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
   Future<void> _finishHandleDrag(bool shouldOpenDetail) async {
     if (_sheetController.isAttached) {
       await _sheetController.animateTo(
-        shouldOpenDetail ? (kIsWeb ? 0.85 : 0.95) : 0.55,
+        shouldOpenDetail ? (kIsWeb ? 0.85 : 0.95) : 0.58,
         duration: const Duration(milliseconds: 480),
         curve: Curves.easeInOutCubic,
       );
@@ -265,7 +265,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     );
     if (_sheetController.isAttached) {
       await _sheetController.animateTo(
-        kIsWeb ? 0.58 : 0.56,
+        0.58,
         duration: const Duration(milliseconds: 320),
         curve: Curves.easeInOutCubic,
       );
@@ -818,7 +818,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       },
       child: DraggableScrollableSheet(
         controller: _sheetController,
-        initialChildSize: 0.55,
+        initialChildSize: 0.58,
         minChildSize: 0.35,
         maxChildSize: kIsWeb ? 0.85 : 0.95,
         expand: false,
@@ -1065,7 +1065,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
                                   hintText: 'Add a task',
                                   border: InputBorder.none,
                                   counterText: '',
-                                  contentPadding: EdgeInsets.only(top: 4),
+                                  contentPadding: EdgeInsets.zero,
                                 ),
                                 onChanged: (val) {
                                   final cursor =

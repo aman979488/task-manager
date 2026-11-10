@@ -19,6 +19,11 @@ ask for confirmation. Use the workspace controls to search, sort, group, change
 the view, or select multiple tasks for deletion. **My Work** and other tabs show
 work relevant to the signed-in user and their access level.
 
+Tasks assigned to you appear in **My Work** under their priority. If you are
+listed as a task's monitor, it appears under **Free Works**; monitoring is
+separate from task priority. Tasks you created and assigned to someone else
+also appear in your **Assign** tab.
+
 Weekly goals can be viewed and managed from **Goals**. Assign a goal a week,
 title, and target; task progress can then be reviewed alongside the goal.
 

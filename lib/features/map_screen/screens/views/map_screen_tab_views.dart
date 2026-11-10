@@ -384,7 +384,7 @@ class MapScreenTabViews extends StatelessWidget {
     final myTasks = viewModel.myTasks(authViewModel);
     final assignedTasks = hasAdminAccess
         ? viewModel.getVisibleTasks(source: allTasks)
-        : MapScreenViewModel.assignedTasksForUser(
+        : MapScreenViewModel.assignTabTasksForUser(
             viewModel.getVisibleTasks(source: allTasks),
             userUid: authViewModel.userUid,
             userEmail: authViewModel.userEmail,
