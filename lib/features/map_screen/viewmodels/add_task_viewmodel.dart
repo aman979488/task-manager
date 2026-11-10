@@ -96,7 +96,8 @@ class AddTaskViewModel extends ChangeNotifier {
   bool setValue(FloatingSheetType type, String? value) {
     if (type == FloatingSheetType.priority) {
       final reminder = reminderForPriority(value);
-      if (reminder != null) {
+      if (reminder != null &&
+          (this.reminder == null || this.reminder!.trim().isEmpty)) {
         _setMetadataValue(FloatingSheetType.remind, reminder.toIso8601String());
       }
     }

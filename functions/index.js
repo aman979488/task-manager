@@ -340,3 +340,87 @@ exports.flashPush = onDocumentWritten(
       }
     },
 );
+
+exports.flashReplyPush = onDocumentWritten(
+    "flashMessages/{id}",
+    async (event) => {
+      const before = event.data?.before?.data();
+      const after = event.data?.after?.data();
+      if (!after ||
+          !after.response ||
+          before?.response ||
+          after.status !== "seen") {
+        return;
+      }
+
+      const senderUid = after.senderUid?.toString().trim();
+      if (!senderUid) return;
+
+      try {
+        const [profile, legacyProfiles] = await Promise.all([
+          db.collection("users").doc(senderUid).get(),
+          db.collection("users").where("uid", "==", senderUid).get(),
+        ]);
+        const profiles = [
+          ...(profile.exists ? [profile] : []),
+          ...legacyProfiles.docs,
+        ];
+        const tokens = new Set();
+        for (const userProfile of profiles) {
+          const data = userProfile.data();
+          if (typeof data.fcmToken === "string" && data.fcmToken.trim()) {
+            tokens.add(data.fcmToken.trim());
+          }
+          for (const token of data.fcmTokens || []) {
+            if (typeof token === "string" && token.trim()) {
+              tokens.add(token.trim());
+            }
+          }
+        }
+
+        const tokenList = [...tokens];
+        if (tokenList.length === 0) {
+          logger.warn("No FCM token found for flash reply sender", {
+            flashId: event.params.id,
+            senderUid,
+          });
+          return;
+        }
+
+        const responseText = after.response === "Others"
+          ? after.responseText?.toString().trim()
+          : after.response.toString();
+        const result = await getMessaging().sendEachForMulticast({
+          tokens: tokenList,
+          notification: {
+            title: `${after.recipientName || "Staff"} replied to your flash`,
+            body: responseText || "Replied to your flash message.",
+          },
+          data: {
+            type: "flash_reply",
+            flashId: event.params.id,
+            response: after.response.toString(),
+            responseText: responseText || "",
+          },
+          android: {
+            priority: "high",
+            notification: {channelId: "task_notifications"},
+          },
+          apns: {
+            payload: {aps: {sound: "default"}},
+          },
+        });
+
+        if (result.failureCount > 0 && result.successCount === 0) {
+          throw new Error("FCM rejected all flash-reply recipient tokens.");
+        }
+      } catch (error) {
+        logger.error("Unable to deliver flash reply", {
+          flashId: event.params.id,
+          senderUid,
+          error,
+        });
+        throw error;
+      }
+    },
+);

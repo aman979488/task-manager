@@ -36,6 +36,30 @@ void main() {
     expect(task.reminderSent, isTrue);
   });
 
+  test('task notification settings survive serialization', () {
+    final notification = TaskNotification(
+      templateLabel: 'Work update',
+      message: 'Work update: I am working on it.',
+      timing: '1 hour before',
+      scheduledAt: DateTime(2026, 11, 4, 12).toIso8601String(),
+      isEnabled: false,
+    );
+    final restored = Task.fromMap(
+      'task-with-notification',
+      Task('Notification task', taskNotifications: [notification]).toMap(),
+    );
+
+    expect(restored.taskNotifications, hasLength(1));
+    expect(restored.taskNotifications.single.templateLabel, 'Work update');
+    expect(restored.taskNotifications.single.message, notification.message);
+    expect(restored.taskNotifications.single.timing, '1 hour before');
+    expect(
+      restored.taskNotifications.single.scheduledAt,
+      notification.scheduledAt,
+    );
+    expect(restored.taskNotifications.single.isEnabled, isFalse);
+  });
+
   test('Task.fromMap replaces a malformed title with an empty string', () {
     final task = Task.fromMap('bad-title', {'title': 42});
 

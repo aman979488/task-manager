@@ -49,7 +49,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _tabController = TabController(
       length: _hasAdminAccess ? 8 : 6,
       vsync: this,
-      initialIndex: 1,
+      initialIndex: 2,
     );
   }
 
@@ -244,10 +244,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final myTasks = viewModel.myTasks(authViewModel);
     return switch (_tabController.index) {
       0 => MapScreenViewModel.myDayTasks(myTasks),
-      1 => myTasks,
-      2 => viewModel.doneTasks(),
-      6 when _hasAdminAccess => viewModel.overdueTasks(),
-      4 when !_hasAdminAccess => viewModel.overdueTasks(),
+      2 => myTasks,
+      3 => viewModel.doneTasks(),
+      7 when _hasAdminAccess => viewModel.overdueTasks(),
+      5 when !_hasAdminAccess => viewModel.overdueTasks(),
       _ => viewModel.tasks,
     };
   }
@@ -337,9 +337,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               labelPadding: const EdgeInsets.symmetric(horizontal: 12),
               tabs: [
                 const Tab(text: 'Days'),
+                const Tab(text: 'Goals'),
                 const Tab(text: 'My Work'),
                 const Tab(text: 'Done Work'),
-                const Tab(text: 'Goals'),
                 const Tab(text: 'Assign'),
                 if (_hasAdminAccess) const Tab(text: 'All Work'),
                 if (_hasAdminAccess) Tab(text: 'Group by ${viewModel.groupBy}'),
@@ -382,3 +382,4 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 }
+

@@ -12,6 +12,7 @@ class DoneTasksView extends StatelessWidget {
     required this.refreshable,
     this.onEditTaskTime,
     this.onOpenTask,
+    this.onMarkUndone,
   });
 
   final List<Task> tasks;
@@ -20,6 +21,7 @@ class DoneTasksView extends StatelessWidget {
   final Widget Function(Widget child) refreshable;
   final Future<void> Function(Task task)? onEditTaskTime;
   final ValueChanged<Task>? onOpenTask;
+  final Future<void> Function(Task task)? onMarkUndone;
 
   DateTime? _createdDate(Task task) {
     final dateText = task.createdDate.split(' • ').first;
@@ -73,6 +75,14 @@ class DoneTasksView extends StatelessWidget {
   DateTime? _completedDateTime(Task task) {
     final ms = task.completedAt;
     return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  DateTime? _completionDate(Task task) {
+    final completed = _completedDateTime(task);
+    if (completed != null) {
+      return DateTime(completed.year, completed.month, completed.day);
+    }
+    return _createdDate(task);
   }
 
   String _clock(DateTime dt) {
@@ -174,22 +184,59 @@ class DoneTasksView extends StatelessWidget {
     return '$d -$m- $y ${weekday}_Dur-${durStr}_Sco-$scoStr';
   }
 
-  Widget _taskRow(Task task) {
+  Future<void> _confirmMarkUndone(BuildContext context, Task task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Mark as undone?'),
+        content: const Text('This task will return to your active work.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Mark as undone'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      await onMarkUndone?.call(task);
+    }
+  }
+
+  Widget _taskRow(BuildContext context, Task task) {
     final priority = task.priority?.trim();
     final priorityColor = taskPriorityColor(priority);
 
-    return Column(
-      children: [
-        // Task row: check icon + title, aur right side mein priority + timer badge
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 8, 14, 2),
-          child: Row(
-            children: [
-              Icon(Icons.check_circle, size: 22, color: Colors.green.shade600),
-              const SizedBox(width: 10),
-              Expanded(
-                child: InkWell(
-                  onTap: onOpenTask == null ? null : () => onOpenTask!(task),
+    return InkWell(
+      key: ValueKey('done-task-${task.id ?? task.title}'),
+      onTap: onOpenTask == null ? null : () => onOpenTask!(task),
+      child: Column(
+        children: [
+          // Task row: check icon + title, aur right side mein priority + timer badge
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 2),
+            child: Row(
+              children: [
+                InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: onMarkUndone == null
+                      ? null
+                      : () => _confirmMarkUndone(context, task),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.check_circle,
+                      size: 22,
+                      color: Colors.green.shade600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
                   child: Text(
                     task.title,
                     maxLines: 1,
@@ -203,68 +250,78 @@ class DoneTasksView extends StatelessWidget {
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                width: 60,
-                height: 22,
-                constraints: const BoxConstraints(maxWidth: 60, maxHeight: 22),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: priorityColor.withValues(alpha: 0.07),
-                  border: Border.all(
-                    color: priorityColor.withValues(alpha: 0.42),
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    priority?.isNotEmpty == true ? priority! : 'None',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: priorityColor,
+                const SizedBox(width: 8),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {},
+                  child: Container(
+                    width: 60,
+                    height: 22,
+                    constraints: const BoxConstraints(
+                      maxWidth: 60,
+                      maxHeight: 22,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: priorityColor.withValues(alpha: 0.07),
+                      border: Border.all(
+                        color: priorityColor.withValues(alpha: 0.42),
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        priority?.isNotEmpty == true ? priority! : 'None',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: priorityColor,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              if (onEditTaskTime != null) ...[
-                const SizedBox(width: 6),
-                IconButton(
-                  tooltip: 'Edit task time',
-                  visualDensity: VisualDensity.compact,
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
+                if (onEditTaskTime != null) ...[
+                  const SizedBox(width: 6),
+                  IconButton(
+                    tooltip: 'Edit task time',
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: () => onEditTaskTime!(task),
+                    icon: const Icon(
+                      Icons.timer_outlined,
+                      size: 17,
+                      color: Color(0xFF526D8A),
+                    ),
                   ),
-                  padding: EdgeInsets.zero,
-                  onPressed: () => onEditTaskTime!(task),
-                  icon: const Icon(
-                    Icons.timer_outlined,
-                    size: 17,
-                    color: Color(0xFF526D8A),
-                  ),
-                ),
+                ],
               ],
-            ],
-          ),
-        ),
-        // Time line: date header ke same left edge se start (14)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              _timeLine(task),
-              style: const TextStyle(fontSize: 14, color: Colors.black54),
             ),
           ),
-        ),
-        const Divider(height: 1, indent: 14, endIndent: 14),
-      ],
+          // Time line: date header ke same left edge se start (14)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _timeLine(task),
+                style: const TextStyle(fontSize: 14, color: Colors.black54),
+              ),
+            ),
+          ),
+          const Divider(height: 1, indent: 14, endIndent: 14),
+        ],
+      ),
     );
   }
 
@@ -289,7 +346,7 @@ class DoneTasksView extends StatelessWidget {
 
     final tasksByDate = <DateTime?, List<Task>>{};
     for (final task in tasks) {
-      tasksByDate.putIfAbsent(_createdDate(task), () => []).add(task);
+      tasksByDate.putIfAbsent(_completionDate(task), () => []).add(task);
     }
     final entries = tasksByDate.entries.toList()
       ..sort((a, b) {
@@ -324,7 +381,7 @@ class DoneTasksView extends StatelessWidget {
               totalHours: entry.totalHours,
               totalScore: entry.totalScore,
             ),
-            for (final task in entry.tasks) _taskRow(task),
+            for (final task in entry.tasks) _taskRow(context, task),
           ],
         ],
       ),

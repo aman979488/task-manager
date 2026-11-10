@@ -16,24 +16,37 @@ class Staff {
   final String email;
 }
 
+class FlashTemplate {
+  const FlashTemplate({required this.label, required this.text});
+
+  final String label;
+  final String text;
+}
+
 class FlashDraft {
   const FlashDraft({
     required this.recipient,
     required this.text,
     this.sendAt,
     this.taskId,
+    this.templateLabel,
+    this.notificationTiming,
   });
 
   final Staff recipient;
   final String text;
   final DateTime? sendAt;
   final String? taskId;
+  final String? templateLabel;
+  final String? notificationTiming;
 
   FlashDraft copyWith({String? taskId}) => FlashDraft(
     recipient: recipient,
     text: text,
     sendAt: sendAt,
     taskId: taskId ?? this.taskId,
+    templateLabel: templateLabel,
+    notificationTiming: notificationTiming,
   );
 }
 
@@ -50,8 +63,30 @@ class FlashAlertService {
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
   static const defaultTemplates = [
-    "I'll be there in 5 minutes.",
-    'Have you called the client? Please send me an update.',
+    FlashTemplate(
+      label: 'Flash call',
+      text: 'Please call me when you are free.',
+    ),
+    FlashTemplate(
+      label: 'Work update',
+      text: 'Work update: I am working on it.',
+    ),
+    FlashTemplate(
+      label: 'Finished',
+      text: 'Work update: The task is finished.',
+    ),
+    FlashTemplate(
+      label: 'In process',
+      text: 'Work update: This task is in progress.',
+    ),
+    FlashTemplate(
+      label: 'Will take time',
+      text: 'Work update: This will take more time.',
+    ),
+    FlashTemplate(
+      label: 'Forgot',
+      text: 'I forgot about this. I will follow up shortly.',
+    ),
   ];
 
   static StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
@@ -95,14 +130,25 @@ class FlashAlertService {
     return staff;
   }
 
-  static Future<List<String>> loadTemplates() async {
+  static Future<List<FlashTemplate>> loadTemplates() async {
     try {
       final snapshot = await _db.collection('flashTemplates').get();
-      final templates = snapshot.docs
-          .map((document) => document.data()['text']?.toString().trim() ?? '')
-          .where((text) => text.isNotEmpty)
-          .toList();
-      return templates.isEmpty ? defaultTemplates : templates;
+      final templates = <FlashTemplate>[...defaultTemplates];
+      final existingTexts = defaultTemplates
+          .map((template) => template.text.toLowerCase())
+          .toSet();
+      for (final document in snapshot.docs) {
+        final data = document.data();
+        final text = data['text']?.toString().trim() ?? '';
+        if (text.isEmpty || !existingTexts.add(text.toLowerCase())) continue;
+        final label = (data['label'] ?? data['title'] ?? text)
+            .toString()
+            .trim();
+        templates.add(
+          FlashTemplate(label: label.isEmpty ? text : label, text: text),
+        );
+      }
+      return templates;
     } on FirebaseException catch (error) {
       debugPrint('Could not load flash message templates: $error');
       return defaultTemplates;
@@ -326,19 +372,21 @@ class FlashAlertService {
       builder: (_) => FlashAlertScreen(
         senderName: message.senderName,
         text: message.text,
-        onDismiss: () async {
+        onRespond: ({response, responseText}) async {
+          final update = <String, Object>{
+            'status': 'seen',
+            'seenAt': FieldValue.serverTimestamp(),
+          };
+          if (response != null) {
+            update['response'] = response;
+            update['respondedAt'] = FieldValue.serverTimestamp();
+            if (responseText != null) update['responseText'] = responseText;
+          }
+          await _db.collection('flashMessages').doc(message.id).update(update);
           entry.remove();
           _currentEntry = null;
           _showing = false;
           _currentId = null;
-          try {
-            await _db.collection('flashMessages').doc(message.id).update({
-              'status': 'seen',
-              'seenAt': FieldValue.serverTimestamp(),
-            });
-          } on FirebaseException catch (error) {
-            debugPrint('Could not mark flash message seen: $error');
-          }
           _showNext();
         },
       ),

@@ -35,6 +35,17 @@ void main() {
     viewModel.dispose();
   });
 
+  test('selecting a date-based priority preserves a chosen reminder', () {
+    final viewModel = AddTaskViewModel();
+    const selectedReminder = '2026-11-06T14:30:00.000';
+
+    viewModel.setValue(FloatingSheetType.remind, selectedReminder);
+    viewModel.setValue(FloatingSheetType.priority, 'Tomorrow');
+
+    expect(viewModel.reminder, selectedReminder);
+    viewModel.dispose();
+  });
+
   test('monitor selections stay separate from task priority', () {
     final viewModel = AddTaskViewModel();
 

@@ -1,5 +1,16 @@
 # task_manager
 
+## Guides
+
+- [Tasks and weekly goals](docs/tasks-and-goals.md) — task workspace for users
+  and developers.
+- [Contacts and call history](docs/contacts-and-call-history.md) — contacts,
+  call logs, permissions, and platform integration.
+- [Notifications and flash messages](docs/notifications-and-flash-messages.md)
+  — user flows, Firebase delivery, and setup.
+- [Developer guide](docs/developer-guide.md) — local setup, architecture, and
+  validation.
+
 ## Mobile push notifications
 
 The task screen opens without requiring a staff login. Mobile push notifications are registered for a Firebase-authenticated staff account. To configure staff push on a device:
@@ -24,19 +35,3 @@ The scheduled Cloud Function checks task reminders every minute, including when 
 ## Android home-screen task widget
 
 Install the Android app, then long-press an empty area of the home screen, open **Widgets**, and add **Task Manager**. The widget shows the pending-task count and up to three pending task titles. It refreshes when tasks are loaded, added, completed, edited, or deleted in the app. Tap the widget to open Task Manager.
-
-A new Flutter project.
-
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.

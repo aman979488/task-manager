@@ -29,6 +29,8 @@ service cloud.firestore {
         resource.data.get('assigneeUids', []).hasAny([request.auth.uid]) ||
         resource.data.get('assigneeUid', '') == request.auth.uid ||
         resource.data.get('assignee', '') == myName() ||
+        resource.data.get('assigneeNames', []).hasAny([myName()]) ||
+        resource.data.get('monitorNames', []).hasAny([myName()]) ||
         resource.data.get('monitor', '') == myName()
       );
     }
@@ -63,8 +65,45 @@ service cloud.firestore {
          resource.data.senderUid == request.auth.uid);
       allow update: if signedIn() &&
         resource.data.recipientUid == request.auth.uid &&
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['status', 'seenAt']);
+        (
+          (
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'seenAt']) &&
+            request.resource.data.status == 'seen'
+          ) ||
+          (
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly([
+                'status',
+                'seenAt',
+                'response',
+                'respondedAt',
+                'responseText'
+              ]) &&
+            request.resource.data.status == 'seen' &&
+            !resource.data.keys().hasAny(['response']) &&
+            request.resource.data.response in [
+              'Finished',
+              'In process',
+              'Will take time',
+              'Forgot',
+              'Others'
+            ] &&
+            request.resource.data.respondedAt is timestamp &&
+            (
+              (
+                request.resource.data.response == 'Others' &&
+                request.resource.data.responseText is string &&
+                request.resource.data.responseText.size() > 0 &&
+                request.resource.data.responseText.size() <= 500
+              ) ||
+              (
+                request.resource.data.response != 'Others' &&
+                !request.resource.data.keys().hasAny(['responseText'])
+              )
+            )
+          )
+        );
     }
 
     match /flashTemplates/{id} {

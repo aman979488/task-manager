@@ -3,12 +3,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../../services/task_home_widget_service.dart';
-import '../../../utils/role_permissions.dart';
 import '../../../viewmodels/auth_viewmodel.dart';
 import '../models/task.dart';
 import '../repositories/task_repository.dart';
 import '../services/task_assignment_notification_service.dart';
 import '../utils/priority_reminder.dart';
+import '../utils/task_filter_helpers.dart';
+import '../utils/task_grouping_helpers.dart';
 
 class MapScreenViewModel extends ChangeNotifier {
   MapScreenViewModel({
@@ -168,42 +169,10 @@ class MapScreenViewModel extends ChangeNotifier {
   }
 
   bool _canReadAllTasks(AuthViewModel authViewModel) =>
-      authViewModel.appRole == AppRole.superAdmin ||
-      authViewModel.appRole == AppRole.admin ||
-      authViewModel.appRole == AppRole.officeStaff;
+      TaskFilterHelpers.canReadAllTasks(authViewModel);
 
-  bool isTaskVisibleToUser(Task task, AuthViewModel authViewModel) {
-    if (_canReadAllTasks(authViewModel)) return true;
-    final myUid = authViewModel.userUid.trim().toLowerCase();
-    final myEmail = authViewModel.userEmail.trim().toLowerCase();
-    final myName = authViewModel.userName.trim().toLowerCase();
-    final creator = task.createdBy;
-    if (creator != null) {
-      final creatorUid = (creator['uid'] ?? '').toString().trim().toLowerCase();
-      final creatorEmail = (creator['email'] ?? '')
-          .toString()
-          .trim()
-          .toLowerCase();
-      final creatorName = (creator['name'] ?? '')
-          .toString()
-          .trim()
-          .toLowerCase();
-      if ((creatorUid.isNotEmpty &&
-              (creatorUid == myUid || myUid.contains(creatorUid))) ||
-          (creatorEmail.isNotEmpty &&
-              (creatorEmail == myEmail || myEmail.contains(creatorEmail))) ||
-          (creatorName.isNotEmpty &&
-              (creatorName == myName || myName.contains(creatorName)))) {
-        return true;
-      }
-    }
-
-    final assignee = (task.assignee ?? '').trim().toLowerCase();
-    return assignee.isNotEmpty &&
-        ((myName.isNotEmpty && assignee.contains(myName)) ||
-            (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
-            (myUid.isNotEmpty && assignee.contains(myUid)));
-  }
+  bool isTaskVisibleToUser(Task task, AuthViewModel authViewModel) =>
+      TaskFilterHelpers.isTaskVisibleToUser(task, authViewModel);
 
   Future<bool> addTask({
     required String title,
@@ -355,7 +324,8 @@ class MapScreenViewModel extends ChangeNotifier {
       ..priorityUpdatedByUid = updatedByUid
       ..overdueAcknowledgedAt = updatedAt;
     final reminder = reminderForPriority(priority);
-    if (reminder != null) {
+    if (reminder != null &&
+        (task.reminder == null || task.reminder!.trim().isEmpty)) {
       task
         ..reminder = reminder.toIso8601String()
         ..reminderSent = false;
@@ -456,26 +426,12 @@ class MapScreenViewModel extends ChangeNotifier {
   );
 
   void sortTasks() {
-    _tasks.sort(MapScreenViewModel.compareTasks);
+    _tasks.sort(compareTasks);
     notifyListeners();
   }
 
-  static int compareTasks(Task first, Task second) {
-    if (first.isDone != second.isDone) return first.isDone ? 1 : -1;
-    if (first.isDone && first.completedAt != second.completedAt) {
-      if (first.completedAt == null) return 1;
-      if (second.completedAt == null) return -1;
-      return second.completedAt!.compareTo(first.completedAt!);
-    }
-    final firstPriority = _priorityOrder(first.priority);
-    final secondPriority = _priorityOrder(second.priority);
-    if (firstPriority != secondPriority) {
-      return firstPriority.compareTo(secondPriority);
-    }
-    return (second.priorityUpdatedAt ?? 0).compareTo(
-      first.priorityUpdatedAt ?? 0,
-    );
-  }
+  static int compareTasks(Task first, Task second) =>
+      TaskGroupingHelpers.compareTasks(first, second);
 
   List<Task> overdueTasks() => _tasks.where(isOverdue).toList();
 
@@ -483,6 +439,21 @@ class MapScreenViewModel extends ChangeNotifier {
       _tasks.where((task) => !task.isDone && !isOverdue(task)).toList();
 
   List<Task> doneTasks() => _tasks.where((task) => task.isDone).toList();
+
+  static List<Task> doneTasksForUser(
+    Iterable<Task> tasks, {
+    required bool canViewAll,
+    required String userUid,
+    required String userEmail,
+    required String userName,
+  }) =>
+      TaskFilterHelpers.doneTasksForUser(
+        tasks,
+        canViewAll: canViewAll,
+        userUid: userUid,
+        userEmail: userEmail,
+        userName: userName,
+      );
 
   List<Task> getVisibleTasks({List<Task>? source}) {
     return visibleTasks(
@@ -492,97 +463,24 @@ class MapScreenViewModel extends ChangeNotifier {
     );
   }
 
-  List<Task> upcomingReminders() {
-    final now = DateTime.now();
-    final reminders =
-        _tasks.where((task) {
-          if (task.isDone) return false;
-          final scheduled = DateTime.tryParse(
-            task.deadline ?? task.reminder ?? '',
-          );
-          return scheduled != null &&
-              scheduled.isAfter(now.subtract(const Duration(days: 1)));
-        }).toList()..sort((a, b) {
-          final dateA =
-              DateTime.tryParse(a.deadline ?? a.reminder ?? '') ??
-              DateTime(2100);
-          final dateB =
-              DateTime.tryParse(b.deadline ?? b.reminder ?? '') ??
-              DateTime(2100);
-          return dateA.compareTo(dateB);
-        });
-    return reminders;
-  }
+  List<Task> upcomingReminders() => TaskFilterHelpers.upcomingReminders(_tasks);
 
-  int upcomingNotificationCount() {
-    final now = DateTime.now();
-    return _tasks.where((task) {
-      final scheduled = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
-      return !task.isDone && scheduled != null && scheduled.isAfter(now);
-    }).length;
-  }
+  int upcomingNotificationCount() =>
+      TaskFilterHelpers.upcomingNotificationCount(_tasks);
 
-  static Map<String, List<Task>> groupTasks(List<Task> tasks, String groupBy) {
-    final groups = <String, List<Task>>{};
-    for (final task in tasks) {
-      final value = switch (groupBy) {
-        'Priority' =>
-          task.priority?.trim().isNotEmpty == true
-              ? task.priority!.trim()
-              : 'No priority',
-        'Work type' =>
-          task.workType?.trim().isNotEmpty == true
-              ? task.workType!.trim()
-              : 'No work type',
-        'Status' => task.isDone ? 'Done' : 'Pending',
-        _ =>
-          task.assignee?.trim().isNotEmpty == true
-              ? task.assignee!.trim()
-              : 'Unassigned',
-      };
-      groups.putIfAbsent(value, () => []).add(task);
-    }
-    return groups;
-  }
+  static Map<String, List<Task>> groupTasks(List<Task> tasks, String groupBy) =>
+      TaskGroupingHelpers.groupTasks(tasks, groupBy);
 
-  static Map<String, List<Task>> assignedTasksByName(List<Task> tasks) {
-    final groups = <String, List<Task>>{};
-    for (final task in tasks) {
-      final assignee = task.assignee?.trim();
-      if (assignee == null || assignee.isEmpty) continue;
-      groups.putIfAbsent(assignee, () => []).add(task);
-    }
-    return groups;
-  }
+  static Map<String, List<Task>> assignedTasksByName(List<Task> tasks) =>
+      TaskGroupingHelpers.assignedTasksByName(tasks);
 
-  static List<Task> myDayTasks(List<Task> source, {DateTime? now}) {
-    return source.where((task) {
-      if (task.isDone) return false;
-      if (task.isInMyDay) return true;
-      if (const {
-        'today',
-        'tomorrow',
-        'later',
-        'day later',
-      }.contains(task.priority?.trim().toLowerCase())) {
-        return true;
-      }
-
-      return DateTime.tryParse(task.deadline ?? task.reminder ?? '') != null;
-    }).toList();
-  }
+  static List<Task> myDayTasks(List<Task> source, {DateTime? now}) =>
+      TaskFilterHelpers.myDayTasks(source, now: now);
 
   bool isOverdue(Task task) => isTaskOverdue(task);
 
-  static bool isTaskOverdue(Task task, {DateTime? now}) {
-    if (task.isDone) return false;
-    final date = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
-    final currentTime = now ?? DateTime.now();
-    if (date == null || !date.isBefore(currentTime)) return false;
-    final acknowledgedAt = task.overdueAcknowledgedAt;
-    return acknowledgedAt == null ||
-        acknowledgedAt < date.millisecondsSinceEpoch;
-  }
+  static bool isTaskOverdue(Task task, {DateTime? now}) =>
+      TaskFilterHelpers.isTaskOverdue(task, now: now);
 
   List<Task> myTasks(AuthViewModel authViewModel) {
     return myTasksForUser(
@@ -593,279 +491,58 @@ class MapScreenViewModel extends ChangeNotifier {
     );
   }
 
+  static List<Task> assignedTasksForUser(
+    Iterable<Task> tasks, {
+    required String userUid,
+    required String userEmail,
+    required String userName,
+  }) =>
+      TaskFilterHelpers.assignedTasksForUser(
+        tasks,
+        userUid: userUid,
+        userEmail: userEmail,
+        userName: userName,
+      );
+
   static List<Task> myTasksForUser(
     Iterable<Task> tasks, {
     required String userUid,
     required String userEmail,
     required String userName,
-  }) {
-    final myUid = userUid.trim().toLowerCase();
-    final myEmail = userEmail.trim().toLowerCase();
-    final myName = userName.trim().toLowerCase();
-    return tasks.where((task) {
-      final creator = task.createdBy;
-      var isCreator = false;
-      if (creator != null) {
-        final uid = (creator['uid'] ?? '').toString().trim().toLowerCase();
-        final email = (creator['email'] ?? '').toString().trim().toLowerCase();
-        final name = (creator['name'] ?? '').toString().trim().toLowerCase();
-        isCreator =
-            (uid.isNotEmpty && (uid == myUid || myUid.contains(uid))) ||
-            (email.isNotEmpty &&
-                (email == myEmail || myEmail.contains(email))) ||
-            (name.isNotEmpty && (name == myName || myName.contains(name)));
-      }
-      final isAssignedToMe = _isAssignedToUser(
-        task,
-        userUid: myUid,
-        userEmail: myEmail,
-        userName: myName,
+  }) =>
+      TaskFilterHelpers.myTasksForUser(
+        tasks,
+        userUid: userUid,
+        userEmail: userEmail,
+        userName: userName,
       );
-      final isMonitoredByMe = _isMonitoredByUser(
-        task,
-        userUid: myUid,
-        userEmail: myEmail,
-        userName: myName,
-      );
-      final priorityUpdatedByUid = (task.priorityUpdatedByUid ?? '')
-          .trim()
-          .toLowerCase();
-      final isPriorityUpdatedByMe =
-          myUid.isNotEmpty && priorityUpdatedByUid == myUid;
-      return isCreator ||
-          isAssignedToMe ||
-          isMonitoredByMe ||
-          isPriorityUpdatedByMe;
-    }).toList();
-  }
-
-  static bool _isAssignedToUser(
-    Task task, {
-    required String userUid,
-    required String userEmail,
-    required String userName,
-  }) {
-    final assignee = (task.assignee ?? '').trim().toLowerCase();
-    final assigneeUid = (task.assigneeUid ?? '').trim().toLowerCase();
-    return (userName.isNotEmpty && assignee.contains(userName)) ||
-        (userEmail.isNotEmpty && assignee.contains(userEmail)) ||
-        (userUid.isNotEmpty &&
-            (assignee.contains(userUid) || assigneeUid.contains(userUid)));
-  }
-
-  static bool _isCreatedByUser(
-    Task task, {
-    required String userUid,
-    required String userEmail,
-    required String userName,
-  }) {
-    final creator = task.createdBy;
-    if (creator == null) return false;
-    final creatorUid = (creator['uid'] ?? '').toString().trim().toLowerCase();
-    final creatorEmail = (creator['email'] ?? '')
-        .toString()
-        .trim()
-        .toLowerCase();
-    final creatorName = (creator['name'] ?? '')
-        .toString()
-        .trim()
-        .toLowerCase();
-    return (userUid.isNotEmpty &&
-            creatorUid.isNotEmpty &&
-            (creatorUid == userUid || userUid.contains(creatorUid))) ||
-        (userEmail.isNotEmpty && creatorEmail == userEmail) ||
-        (userName.isNotEmpty && creatorName == userName);
-  }
-
-  static bool _isMonitoredByUser(
-    Task task, {
-    required String userUid,
-    required String userEmail,
-    required String userName,
-  }) {
-    final monitorPeople = (task.monitor ?? '')
-        .split(RegExp(r'[,;\n]'))
-        .map((person) => person.trim().toLowerCase())
-        .where((person) => person.isNotEmpty);
-    return monitorPeople.any(
-      (person) => [userName, userEmail, userUid].any((identity) {
-        if (identity.isEmpty) return false;
-        final personParts = person
-            .split(RegExp(r'[^a-z0-9@._-]+'))
-            .where((part) => part.isNotEmpty);
-        return person == identity || personParts.contains(identity);
-      }),
-    );
-  }
 
   Map<String, List<Task>> myWorkSections(
     List<Task> myTasks, {
     String userUid = '',
     String userEmail = '',
     String userName = '',
-  }) {
-    final sections = sectionsForWork(myTasks);
-    final normalizedUid = userUid.trim().toLowerCase();
-    final normalizedEmail = userEmail.trim().toLowerCase();
-    final normalizedName = userName.trim().toLowerCase();
-    if (normalizedUid.isEmpty &&
-        normalizedEmail.isEmpty &&
-        normalizedName.isEmpty) {
-      return sections;
-    }
+  }) =>
+      TaskGroupingHelpers.myWorkSections(
+        myTasks,
+        userUid: userUid,
+        userEmail: userEmail,
+        userName: userName,
+      );
 
-    final monitoredTasks = myTasks
-        .where(
-          (task) {
-            if (task.isDone ||
-                _isAssignedToUser(
-                  task,
-                  userUid: normalizedUid,
-                  userEmail: normalizedEmail,
-                  userName: normalizedName,
-                )) {
-              return false;
-            }
-            final assignedToSomeoneElse =
-                (task.assignee ?? '').trim().isNotEmpty;
-            return _isMonitoredByUser(
-                  task,
-                  userUid: normalizedUid,
-                  userEmail: normalizedEmail,
-                  userName: normalizedName,
-                ) ||
-                (assignedToSomeoneElse &&
-                    _isCreatedByUser(
-                      task,
-                      userUid: normalizedUid,
-                      userEmail: normalizedEmail,
-                      userName: normalizedName,
-                    ));
-          },
-        )
-        .toList();
-
-    for (final sectionTasks in sections.values) {
-      sectionTasks.removeWhere(monitoredTasks.contains);
-    }
-    sections['Monitor Works'] = monitoredTasks;
-    return sections;
-  }
-
-  static Map<String, List<Task>> sectionsForWork(List<Task> myTasks) {
-    final now = DateTime.now();
-    final pending = myTasks.where((task) => !task.isDone);
-    List<Task> withPriority(String priority) => pending
-        .where((task) => task.priority?.trim().toLowerCase() == priority)
-        .toList();
-    final urgentWorks = pending
-        .where(
-          (task) => const {
-            'u1',
-            'u2',
-            'u3',
-            'urgent',
-          }.contains(task.priority?.trim().toLowerCase()),
-        )
-        .toList();
-    final freeWorks = pending.where((task) {
-      final priority = task.priority?.trim().toLowerCase();
-      return priority == null ||
-          priority.isEmpty ||
-          priority == 'free' ||
-          priority == 'monitor';
-    }).toList();
-    final todayWorks = withPriority('today');
-    final overdueWorks = pending.where((task) {
-      final priority = task.priority?.trim().toLowerCase();
-      if (priority == null ||
-          priority.isEmpty ||
-          priority == 'free' ||
-          priority == 'monitor') {
-        return false;
-      }
-      return isTaskOverdue(task, now: now) &&
-          !urgentWorks.contains(task) &&
-          !todayWorks.contains(task);
-    }).toList();
-    bool isOverdue(Task task) => overdueWorks.contains(task);
-    final tomorrowWorks = withPriority('tomorrow')
-        .where((task) => !isOverdue(task))
-        .toList();
-    return {
-      'Urgent Works': urgentWorks,
-      'Today Works': todayWorks,
-      'Overdue Works': overdueWorks,
-      'IMP Works': withPriority('imp')
-          .where((task) => !isOverdue(task))
-          .toList(),
-      'Tomorrow Works': tomorrowWorks,
-      'Later Works': withPriority('later')
-          .where((task) => !isOverdue(task))
-          .toList(),
-      'Day Later Works': withPriority('day later')
-          .where((task) => !isOverdue(task))
-          .toList(),
-      'Process Works': withPriority('process')
-          .where((task) => !isOverdue(task))
-          .toList(),
-      'Hold Works': withPriority('hold')
-          .where((task) => !isOverdue(task))
-          .toList(),
-
-      'Free Works': freeWorks,
-    };
-  }
+  static Map<String, List<Task>> sectionsForWork(List<Task> myTasks) =>
+      TaskGroupingHelpers.sectionsForWork(myTasks);
 
   List<Task> visibleTasks({
     List<Task>? source,
     required String query,
     required String sortBy,
-  }) {
-    final normalizedQuery = query.trim().toLowerCase();
-    final result = (source ?? _tasks)
-        .where(
-          (task) =>
-              normalizedQuery.isEmpty ||
-              task.title.toLowerCase().contains(normalizedQuery) ||
-              task.note.toLowerCase().contains(normalizedQuery) ||
-              (task.assignee ?? '').toLowerCase().contains(normalizedQuery) ||
-              (task.workType ?? '').toLowerCase().contains(normalizedQuery) ||
-              (task.priority ?? '').toLowerCase().contains(normalizedQuery),
-        )
-        .toList();
-    int compareDates(String? first, String? second) {
-      final firstDate = DateTime.tryParse(first ?? '');
-      final secondDate = DateTime.tryParse(second ?? '');
-      if (firstDate == null) return secondDate == null ? 0 : 1;
-      if (secondDate == null) return -1;
-      return firstDate.compareTo(secondDate);
-    }
-
-    switch (sortBy) {
-      case 'Title':
-        result.sort(
-          (first, second) =>
-              first.title.toLowerCase().compareTo(second.title.toLowerCase()),
-        );
-      case 'Due date':
-        result.sort(
-          (first, second) => compareDates(
-            first.deadline ?? first.reminder,
-            second.deadline ?? second.reminder,
-          ),
-        );
-      case 'Status':
-        result.sort(
-          (first, second) => first.isDone == second.isDone
-              ? first.title.toLowerCase().compareTo(second.title.toLowerCase())
-              : (first.isDone ? 1 : -1),
-        );
-      default:
-        result.sort(MapScreenViewModel.compareTasks);
-    }
-    return result;
-  }
+  }) =>
+      TaskGroupingHelpers.filterAndSortTasks(
+        source: source ?? _tasks,
+        query: query,
+        sortBy: sortBy,
+      );
 
   Future<bool> _saveNewTask(
     Task task,
@@ -943,27 +620,7 @@ class MapScreenViewModel extends ChangeNotifier {
     }
   }
 
-  static int _priorityOrder(String? priority) {
-    final normalized = priority?.trim();
-    if (normalized == null || normalized.isEmpty) return 100;
 
-    return switch (normalized.toLowerCase()) {
-      'u1' => 1,
-      'u2' => 2,
-      'u3' => 3,
-      'urgent' => 4,
-      'monitor' => 5,
-      'imp' => 6,
-      'today' => 7,
-      'tomorrow' => 8,
-      'day later' => 9,
-      'later' => 10,
-      'process' => 11,
-      'hold' => 12,
-      'free' => 13,
-      _ => 100,
-    };
-  }
 
   @override
   void dispose() {

@@ -99,7 +99,6 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
   };
 
   bool _initialFocusScheduled = false;
-  double _lastKeyboardInset = 0;
   bool _detailRouteOpen = false;
   double _dragHandleDistance = 0;
   bool _isDragHandleActive = false;
@@ -118,22 +117,6 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final addVm = Provider.of<AddTaskViewModel>(context, listen: false);
       addVm.loadButtonOrder();
-    });
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    if (keyboardInset == _lastKeyboardInset) return;
-    _lastKeyboardInset = keyboardInset;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_sheetController.isAttached) return;
-      _sheetController.animateTo(
-        keyboardInset > 0 ? (kIsWeb ? 0.85 : 0.95) : 0.55,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-      );
     });
   }
 
@@ -835,12 +818,12 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       },
       child: DraggableScrollableSheet(
         controller: _sheetController,
-        initialChildSize: keyboardInset > 0 ? (kIsWeb ? 0.85 : 0.95) : 0.55,
+        initialChildSize: 0.55,
         minChildSize: 0.35,
         maxChildSize: kIsWeb ? 0.85 : 0.95,
         expand: false,
         builder: (context, sheetScrollController) => AddTaskSheet(
-          bottomPadding: bottomPadding,
+          bottomPadding: bottomPadding + keyboardInset + 24.0,
           scrollController: sheetScrollController,
           child: Column(
             mainAxisSize: MainAxisSize.min,

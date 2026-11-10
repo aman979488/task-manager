@@ -88,6 +88,14 @@ void main() {
 
       expect(task.isDone, isTrue);
       expect(task.completedAt, isNotNull);
+      final completionDate = DateTime.fromMillisecondsSinceEpoch(
+        task.completedAt!,
+      );
+      final today = DateTime.now();
+      expect(
+        DateTime(completionDate.year, completionDate.month, completionDate.day),
+        DateTime(today.year, today.month, today.day),
+      );
       expect(notified, isTrue);
 
       repository.updateCompleter.complete();
@@ -156,6 +164,30 @@ void main() {
       final restored = Task.fromMap('overdue-task', task.toMap());
       expect(restored.priorityUpdatedByUid, 'user-1');
       expect(restored.overdueAcknowledgedAt, task.overdueAcknowledgedAt);
+      viewModel.dispose();
+    },
+  );
+
+  test(
+    'changing to a date priority preserves an existing task reminder',
+    () async {
+      final repository = _TaskRepositoryStub();
+      final viewModel = MapScreenViewModel(
+        repository: repository,
+        assignmentNotificationService: _AssignmentNotificationServiceStub(),
+      );
+      const selectedReminder = '2026-11-06T14:30:00.000';
+      final task = Task('Scheduled task', reminder: selectedReminder);
+
+      final save = viewModel.updateTaskPriority(
+        task,
+        'Tomorrow',
+        updatedByUid: 'user-1',
+      );
+
+      expect(task.reminder, selectedReminder);
+      repository.updateCompleter.complete();
+      await save;
       viewModel.dispose();
     },
   );
@@ -514,6 +546,61 @@ void main() {
       );
     },
   );
+
+  test('assigned task list only includes tasks assigned to this user', () {
+    final assignedByName = Task('Assigned by name', assignee: 'Priya, Aman');
+    final assignedByEmail = Task(
+      'Assigned by email',
+      assignee: 'aman@example.com',
+    );
+    final assignedByUid = Task('Assigned by uid', assigneeUid: 'user-1');
+    final similarName = Task('Assigned to someone else', assignee: 'Amana');
+    final unassigned = Task('Unassigned');
+
+    expect(
+      MapScreenViewModel.assignedTasksForUser(
+        [
+          assignedByName,
+          assignedByEmail,
+          assignedByUid,
+          similarName,
+          unassigned,
+        ],
+        userUid: 'user-1',
+        userEmail: 'aman@example.com',
+        userName: 'Aman',
+      ),
+      [assignedByName, assignedByEmail, assignedByUid],
+    );
+  });
+
+  test('only admins see all users completed tasks', () {
+    final amanTask = Task('Aman completed', isDone: true, assignee: 'Aman');
+    final riyaTask = Task('Riya completed', isDone: true, assignee: 'Riya');
+    final pendingTask = Task('Aman pending', assignee: 'Aman');
+    final tasks = [amanTask, riyaTask, pendingTask];
+
+    expect(
+      MapScreenViewModel.doneTasksForUser(
+        tasks,
+        canViewAll: true,
+        userUid: 'aman-uid',
+        userEmail: 'aman@example.com',
+        userName: 'Aman',
+      ),
+      [amanTask, riyaTask],
+    );
+    expect(
+      MapScreenViewModel.doneTasksForUser(
+        tasks,
+        canViewAll: false,
+        userUid: 'aman-uid',
+        userEmail: 'aman@example.com',
+        userName: 'Aman',
+      ),
+      [amanTask],
+    );
+  });
 
   test('assignee work sections group pending tasks by priority', () {
     final urgent = Task('Urgent task', priority: 'Urgent', assignee: 'Aman');

@@ -9,17 +9,30 @@ Future<FlashDraft?> showFlashComposeSheet(
   String? senderUid,
   Future<DateTime?> Function()? pickTime,
 }) {
-  return showModalBottomSheet<FlashDraft>(
+  return showDialog<FlashDraft>(
     context: context,
-    isScrollControlled: true,
-    useRootNavigator: true,
-    showDragHandle: true,
-    backgroundColor: Colors.white,
-    builder: (_) => _ComposeSheet(
-      reminderAt: reminderAt,
-      senderUid: senderUid,
-      pickTime: pickTime,
-    ),
+    builder: (dialogContext) {
+      final mediaQuery = MediaQuery.of(dialogContext);
+      final maxDialogHeight =
+          (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 48)
+              .clamp(120.0, mediaQuery.size.height)
+              .toDouble();
+      return Dialog(
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 440,
+            maxHeight: maxDialogHeight,
+          ),
+          child: _ComposeSheet(
+            reminderAt: reminderAt,
+            senderUid: senderUid,
+            pickTime: pickTime,
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -36,13 +49,15 @@ class _ComposeSheet extends StatefulWidget {
 
 class _ComposeSheetState extends State<_ComposeSheet> {
   final _textController = TextEditingController();
+  final _messageFocusNode = FocusNode();
   List<Staff> _staff = [];
-  List<String> _templates = FlashAlertService.defaultTemplates;
+  List<FlashTemplate> _templates = FlashAlertService.defaultTemplates;
   Staff? _recipient;
   bool _sendNow = true;
   bool _isLoadingStaff = true;
   String? _loadError;
   DateTime? _when;
+  String? _selectedTemplateLabel;
 
   @override
   void initState() {
@@ -57,6 +72,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
     _textController
       ..removeListener(_refresh)
       ..dispose();
+    _messageFocusNode.dispose();
     super.dispose();
   }
 
@@ -88,7 +104,9 @@ class _ComposeSheetState extends State<_ComposeSheet> {
 
   Future<void> _pickWhen() async {
     final selected = await widget.pickTime?.call();
-    if (selected != null && mounted) setState(() => _when = selected);
+    if (selected != null && mounted) {
+      setState(() => _when = selected);
+    }
   }
 
   String _formatDateTime(DateTime value) {
@@ -96,6 +114,46 @@ class _ComposeSheetState extends State<_ComposeSheet> {
     final minute = value.minute.toString().padLeft(2, '0');
     final amPm = value.hour >= 12 ? 'PM' : 'AM';
     return '${value.day}/${value.month} $hour:$minute $amPm';
+  }
+
+  Widget _buildTemplateOption(FlashTemplate template) {
+    final selected = _textController.text == template.text;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () {
+        setState(() {
+          _selectedTemplateLabel = template.label;
+          _textController.text = template.text;
+        });
+      },
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? Colors.amber.withValues(alpha: 0.12) : Colors.white,
+          border: Border.all(
+            color: selected ? Colors.amber.shade800 : Colors.black12,
+            width: selected ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              template.label,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              template.text,
+              style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -107,12 +165,13 @@ class _ComposeSheetState extends State<_ComposeSheet> {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
+        20,
         16,
-        0,
-        16,
+        20,
         16 + MediaQuery.of(context).viewInsets.bottom,
       ),
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -121,7 +180,30 @@ class _ComposeSheetState extends State<_ComposeSheet> {
               '⚡ Flash message',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(
+                  value: true,
+                  label: Text('Send now'),
+                  icon: Icon(Icons.bolt),
+                ),
+                ButtonSegment(
+                  value: false,
+                  label: Text('Schedule'),
+                  icon: Icon(Icons.alarm),
+                ),
+              ],
+              selected: {_sendNow},
+              onSelectionChanged: (selection) async {
+                setState(() => _sendNow = selection.first);
+                if (!_sendNow && _when == null) await _pickWhen();
+                if (!_sendNow && _when == null && mounted) {
+                  setState(() => _sendNow = true);
+                }
+              },
+            ),
+            const SizedBox(height: 12),
             if (_isLoadingStaff)
               const Center(child: CircularProgressIndicator()),
             if (!_isLoadingStaff && _loadError != null)
@@ -151,28 +233,48 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                 child: Text('No other staff accounts found.'),
               ),
             const SizedBox(height: 16),
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(
-                  value: true,
-                  label: Text('Send now'),
-                  icon: Icon(Icons.bolt),
-                ),
-                ButtonSegment(
-                  value: false,
-                  label: Text('Schedule'),
-                  icon: Icon(Icons.alarm),
-                ),
-              ],
-              selected: {_sendNow},
-              onSelectionChanged: (selection) async {
-                setState(() => _sendNow = selection.first);
-                if (!_sendNow && _when == null) await _pickWhen();
-                if (!_sendNow && _when == null && mounted) {
-                  setState(() => _sendNow = true);
-                }
-              },
+            const Text(
+              'Templates',
+              style: TextStyle(fontWeight: FontWeight.w600),
             ),
+            const SizedBox(height: 8),
+            for (final template in _templates) _buildTemplateOption(template),
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () {
+                setState(() {
+                  _selectedTemplateLabel = 'Others';
+                  _textController.clear();
+                });
+                _messageFocusNode.requestFocus();
+              },
+              child: Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.black12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Others - write your own message',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+            TextField(
+              controller: _textController,
+              focusNode: _messageFocusNode,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                hintText: 'Selected message (you can edit it)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
             if (!_sendNow && _when != null) ...[
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -188,33 +290,6 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                 ),
             ],
             const SizedBox(height: 12),
-            const Text(
-              'Templates',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _templates
-                  .map(
-                    (template) => ActionChip(
-                      label: Text(template),
-                      onPressed: () => _textController.text = template,
-                    ),
-                  )
-                  .toList(),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _textController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Or write your own message',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -225,6 +300,8 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                           recipient: _recipient!,
                           text: _textController.text.trim(),
                           sendAt: _sendNow ? null : _when,
+                          templateLabel:
+                              _selectedTemplateLabel ?? 'Custom message',
                         ),
                       )
                     : null,
