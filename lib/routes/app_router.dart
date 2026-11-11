@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../features/auth/login_page.dart';
+import '../features/auth/signup_page.dart';
 import '../features/call_history/screens/all_calls_view.dart';
 import '../features/call_history/viewmodels/call_log_controller.dart';
 import '../features/map_screen/models/task.dart';
@@ -28,9 +29,13 @@ class AppRouter {
         return location == AppRoutes.splash ? null : AppRoutes.splash;
       }
       if (!auth.loggedIn) {
-        return location == AppRoutes.login ? null : AppRoutes.login;
+        return location == AppRoutes.login || location == AppRoutes.signup
+            ? null
+            : AppRoutes.login;
       }
-      if (location == AppRoutes.login || location == AppRoutes.splash) {
+      if (location == AppRoutes.login ||
+          location == AppRoutes.signup ||
+          location == AppRoutes.splash) {
         return AppRoutes.home;
       }
       return null;
@@ -42,6 +47,7 @@ class AppRouter {
             const Scaffold(body: Center(child: CircularProgressIndicator())),
       ),
       GoRoute(path: AppRoutes.login, builder: (_, _) => const LoginPage()),
+      GoRoute(path: AppRoutes.signup, builder: (_, _) => const SignupPage()),
       GoRoute(
         path: AppRoutes.callHistory,
         builder: (_, _) => ChangeNotifierProvider<CallLogController>(

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../routes/app_routes.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 
 class LoginPage extends StatefulWidget {
@@ -51,6 +53,29 @@ class _LoginPageState extends State<LoginPage> {
     }
     if (!mounted) return;
     setState(() => _error = error);
+  }
+
+  Future<void> _google() async {
+    if (_isBusy) return;
+    setState(() {
+      _isBusy = true;
+      _error = null;
+    });
+
+    final authViewModel = context.read<AuthViewModel>();
+    try {
+      final success = await authViewModel.signInWithGoogle();
+      if (!success && mounted) {
+        final message = AuthViewModel.message(authViewModel.googleSignInError);
+        if (message.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+          );
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
   }
 
   @override
@@ -137,6 +162,19 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ),
                   ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _isBusy ? null : _google,
+                  icon: const Icon(Icons.g_mobiledata, size: 28),
+                  label: const Text('Continue with Google'),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: _isBusy
+                      ? null
+                      : () => context.go(AppRoutes.signup),
+                  child: const Text('Create an account'),
                 ),
               ],
             ),

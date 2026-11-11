@@ -46,6 +46,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '279055630253',
     projectId: 'task-14733',
     authDomain: 'task-14733.firebaseapp.com',
+    databaseURL: 'https://task-14733-default-rtdb.firebaseio.com',
     storageBucket: 'task-14733.firebasestorage.app',
     measurementId: 'G-D0XFK3Z2ZP',
   );
@@ -55,6 +56,7 @@ class DefaultFirebaseOptions {
     appId: '1:279055630253:android:35b87c7c0fffc446ea2b24',
     messagingSenderId: '279055630253',
     projectId: 'task-14733',
+    databaseURL: 'https://task-14733-default-rtdb.firebaseio.com',
     storageBucket: 'task-14733.firebasestorage.app',
   );
   static const FirebaseOptions ios = FirebaseOptions(
@@ -62,7 +64,10 @@ class DefaultFirebaseOptions {
     appId: '1:279055630253:ios:d3abca32b1c4a680ea2b24',
     messagingSenderId: '279055630253',
     projectId: 'task-14733',
+    databaseURL: 'https://task-14733-default-rtdb.firebaseio.com',
     storageBucket: 'task-14733.firebasestorage.app',
+    androidClientId: '279055630253-kqc94d0489u3u5dmqu685cldfdvk0g7h.apps.googleusercontent.com',
+    iosClientId: '279055630253-2o7hu1ckge6i2cmtojhfihhuqtbohkel.apps.googleusercontent.com',
     iosBundleId: 'com.example.taskManager',
   );
   static const FirebaseOptions macos = FirebaseOptions(
@@ -70,7 +75,10 @@ class DefaultFirebaseOptions {
     appId: '1:279055630253:ios:d3abca32b1c4a680ea2b24',
     messagingSenderId: '279055630253',
     projectId: 'task-14733',
+    databaseURL: 'https://task-14733-default-rtdb.firebaseio.com',
     storageBucket: 'task-14733.firebasestorage.app',
+    androidClientId: '279055630253-kqc94d0489u3u5dmqu685cldfdvk0g7h.apps.googleusercontent.com',
+    iosClientId: '279055630253-2o7hu1ckge6i2cmtojhfihhuqtbohkel.apps.googleusercontent.com',
     iosBundleId: 'com.example.taskManager',
   );
 
@@ -80,6 +88,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '279055630253',
     projectId: 'task-14733',
     authDomain: 'task-14733.firebaseapp.com',
+    databaseURL: 'https://task-14733-default-rtdb.firebaseio.com',
     storageBucket: 'task-14733.firebasestorage.app',
     measurementId: 'G-S863BCDKN4',
   );

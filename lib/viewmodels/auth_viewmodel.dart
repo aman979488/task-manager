@@ -3,14 +3,17 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../features/flash/flash_alert_service.dart';
+import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../utils/role_permissions.dart';
 
 class AuthViewModel extends ChangeNotifier {
-  AuthViewModel({required this._notificationService}) {
-    _authSubscription = FirebaseAuth.instance.authStateChanges().listen(
+  AuthViewModel({required this._notificationService, AuthService? authService})
+    : _authService = authService ?? AuthService() {
+    _authSubscription = _authService.authStateChanges.listen(
       _loadCurrentUser,
       onError: (Object error) {
         debugPrint('Authentication state error: $error');
@@ -22,6 +25,7 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   final NotificationService _notificationService;
+  final AuthService _authService;
   late final StreamSubscription<User?> _authSubscription;
 
   AppRole _appRole = AppRole.user;
@@ -32,6 +36,7 @@ class AuthViewModel extends ChangeNotifier {
   bool _isLoadingProfile = false;
   bool _ready = false;
   String? _profileLoadError;
+  String? _googleSignInError;
   int _authEventId = 0;
 
   AppRole get appRole => _appRole;
@@ -43,6 +48,7 @@ class AuthViewModel extends ChangeNotifier {
   bool get ready => _ready;
   bool get loggedIn => _userUid.isNotEmpty;
   String? get profileLoadError => _profileLoadError;
+  String? get googleSignInError => _googleSignInError;
 
   Map<String, dynamic> get actorMetadata => {
     'uid': _userUid,
@@ -55,7 +61,7 @@ class AuthViewModel extends ChangeNotifier {
     required String password,
   }) async {
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      await _authService.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
@@ -74,17 +80,73 @@ class AuthViewModel extends ChangeNotifier {
     }
   }
 
+  Future<bool> signInWithGoogle() async {
+    _googleSignInError = null;
+    try {
+      final credential = await _authService.signInWithGoogle();
+      final user = credential.user;
+      if (user == null) {
+        throw FirebaseAuthException(
+          code: 'google-sign-in-failed',
+          message: 'Firebase did not return the signed-in user.',
+        );
+      }
+
+      final profileRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid);
+      if (!(await profileRef.get()).exists) {
+        await profileRef.set({
+          'uid': user.uid,
+          'name': user.displayName ?? '',
+          'email': user.email ?? '',
+          'contactNo': user.phoneNumber ?? '',
+          'photoUrl': user.photoURL,
+          'role': 'employee',
+        });
+      }
+      await _applyProfile(user, profileRef);
+      return true;
+    } on Object catch (error) {
+      _googleSignInError = message(error);
+      if (_googleSignInError!.isNotEmpty) {
+        debugPrint('Google sign-in failed: $error');
+      }
+      return false;
+    }
+  }
+
+  static String message(Object? error) {
+    if (error is GoogleSignInException) {
+      return error.code == GoogleSignInExceptionCode.canceled
+          ? ''
+          : 'Google sign-in failed';
+    }
+    if (error is FirebaseAuthException) {
+      return switch (error.code) {
+        'network-request-failed' => 'Check your internet connection.',
+        'account-exists-with-different-credential' =>
+          'This email is already registered with another sign-in method.',
+        _ => 'Google sign-in failed',
+      };
+    }
+    if (error is FirebaseException) {
+      return 'Could not save your account profile. Please try again.';
+    }
+    return 'Google sign-in failed';
+  }
+
   Future<void> createAccount({
     required String name,
     required String email,
     required String password,
     required String contactNo,
   }) async {
-    final credential = await FirebaseAuth.instance
-        .createUserWithEmailAndPassword(
-          email: email.trim(),
-          password: password,
-        );
+    final credential = await _authService.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+      displayName: name.trim(),
+    );
 
     final user = credential.user;
     if (user == null) {
@@ -94,7 +156,6 @@ class AuthViewModel extends ChangeNotifier {
       );
     }
 
-    await user.updateDisplayName(name.trim());
     final profileRef = await _findOrCreateProfile(
       uid: user.uid,
       email: email.trim(),
@@ -104,7 +165,7 @@ class AuthViewModel extends ChangeNotifier {
     await _applyProfile(user, profileRef);
   }
 
-  Future<void> signOut() => FirebaseAuth.instance.signOut();
+  Future<void> signOut() => _authService.signOut();
 
   Future<void> _loadCurrentUser(User? user) async {
     final authEventId = ++_authEventId;
@@ -200,6 +261,7 @@ class AuthViewModel extends ChangeNotifier {
       'name': name.isEmpty ? email.split('@').first : name,
       'email': email,
       'contactNo': contactNo,
+      'photoUrl': null,
       'role': 'employee',
     });
     return profileRef;
