@@ -10,8 +10,37 @@ service cloud.firestore {
         .data.role;
     }
 
+    function isAdmin() {
+      return signedIn() && myRole() in ['admin', 'Admin', 'ADMIN'];
+    }
+
+    function isSuperAdmin() {
+      return signedIn() && myRole() in [
+        'superAdmin',
+        'superadmin',
+        'super_admin',
+        'Super Admin',
+        'SuperAdmin',
+        'SUPERADMIN'
+      ];
+    }
+
     function isManager() {
-      return signedIn() && myRole() in ['superAdmin', 'admin', 'officeStaff'];
+      return isAdmin() || isSuperAdmin() || (
+        signedIn() &&
+        myRole() in [
+          'officeStaff',
+          'office_staff',
+          'Office Staff',
+          'OfficeStaff'
+        ]
+      );
+    }
+
+    function canAssignStaffRole(role) {
+      return role in ['superAdmin', 'admin', 'user'] &&
+        (isSuperAdmin() ||
+         (isAdmin() && role in ['admin', 'user']));
     }
 
     function isSelfRegistration(uid) {
@@ -65,9 +94,21 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if signedIn();
-      allow create: if isSelfRegistration(uid) || isManager();
+      allow create: if isSelfRegistration(uid) ||
+        (isManager() && canAssignStaffRole(request.resource.data.role));
       allow delete: if isManager();
-      allow update: if isManager() ||
+      allow update: if (isManager() &&
+        (request.resource.data.role == resource.data.role ||
+         (canAssignStaffRole(request.resource.data.role) &&
+          !(isAdmin() &&
+            resource.data.role in [
+              'superAdmin',
+              'superadmin',
+              'super_admin',
+              'Super Admin',
+              'SuperAdmin',
+              'SUPERADMIN'
+            ])))) ||
         (request.auth.uid == uid &&
          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
     }
