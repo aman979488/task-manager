@@ -5,12 +5,14 @@ const {
   Timestamp,
 } = require("firebase-admin/firestore");
 const {getMessaging} = require("firebase-admin/messaging");
+const {getAuth} = require("firebase-admin/auth");
 const {setGlobalOptions} = require("firebase-functions/v2");
 const {
   onDocumentCreated,
   onDocumentWritten,
 } = require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {logger} = require("firebase-functions");
 
 setGlobalOptions({region: "asia-south1"});
@@ -20,6 +22,108 @@ initializeApp();
 const db = getFirestore();
 const leaseDurationMs = 5 * 60 * 1000;
 const deadlineWindowMs = 3 * 60 * 60 * 1000;
+
+exports.updateStaffProfile = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in to manage staff.");
+  }
+
+  const callerSnapshot = await db.collection("users")
+      .doc(request.auth.uid)
+      .get();
+  const callerRole = callerSnapshot.data()?.role;
+  if (!["admin", "superAdmin"].includes(callerRole)) {
+    throw new HttpsError("permission-denied", "You cannot manage staff.");
+  }
+
+  const {uid, name, contactNo, email, role} = request.data || {};
+  const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  const normalizedName = typeof name === "string" ? name.trim() : "";
+  const normalizedContact = typeof contactNo === "string" ? contactNo.trim() : "";
+  const allowedRoles = ["admin", "superAdmin", "user"];
+  if (typeof uid !== "string" || !uid.trim() ||
+      !normalizedName || !normalizedContact ||
+      !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail) ||
+      !allowedRoles.includes(role)) {
+    throw new HttpsError("invalid-argument", "Staff details are invalid.");
+  }
+
+  let staffRef = db.collection("users").doc(uid);
+  let staffSnapshot = await staffRef.get();
+  if (!staffSnapshot.exists) {
+    const profileQuery = await db.collection("users")
+        .where("uid", "==", uid)
+        .limit(1)
+        .get();
+    if (!profileQuery.empty) {
+      staffRef = profileQuery.docs[0].ref;
+      staffSnapshot = profileQuery.docs[0];
+    }
+  }
+  if (!staffSnapshot.exists) {
+    throw new HttpsError("not-found", "Staff profile was not found.");
+  }
+  const currentProfile = staffSnapshot.data();
+  if (callerRole === "admin" &&
+      ((currentProfile.role === "superAdmin" &&
+        role !== currentProfile.role) ||
+       (role === "superAdmin" && currentProfile.role !== "superAdmin"))) {
+    throw new HttpsError(
+        "permission-denied",
+        "Only a Super Admin can assign the Super Admin role.",
+    );
+  }
+
+  const auth = getAuth();
+  let previousAuthUser;
+  try {
+    previousAuthUser = await auth.getUser(uid);
+    await auth.updateUser(uid, {
+      displayName: normalizedName,
+      email: normalizedEmail,
+      emailVerified: normalizedEmail === previousAuthUser.email ?
+        previousAuthUser.emailVerified : false,
+    });
+  } catch (error) {
+    if (error.code === "auth/email-already-exists") {
+      throw new HttpsError("already-exists", "This email is already in use.");
+    }
+    if (error.code === "auth/invalid-email") {
+      throw new HttpsError("invalid-argument", "Enter a valid email address.");
+    }
+    logger.error("Could not update staff authentication account", {
+      uid,
+      error,
+    });
+    throw new HttpsError("internal", "Could not update the staff account.");
+  }
+
+  try {
+    await staffRef.update({
+      name: normalizedName,
+      contactNo: normalizedContact,
+      email: normalizedEmail,
+      role,
+    });
+  } catch (error) {
+    try {
+      await auth.updateUser(uid, {
+        displayName: previousAuthUser.displayName,
+        email: previousAuthUser.email,
+        emailVerified: previousAuthUser.emailVerified,
+      });
+    } catch (rollbackError) {
+      logger.error("Could not roll back staff authentication update", {
+        uid,
+        error: rollbackError,
+      });
+    }
+    logger.error("Could not update staff profile", {uid, error});
+    throw new HttpsError("internal", "Could not save staff details.");
+  }
+
+  return {success: true};
+});
 
 function parseTaskDate(timestampValue, stringValue) {
   if (timestampValue && typeof timestampValue.toDate === "function") {

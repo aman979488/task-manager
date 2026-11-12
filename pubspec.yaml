@@ -49,6 +49,7 @@ dependencies:
   pdf: ^3.13.1
   home_widget: ^0.10.0
   flutter_contacts: ^2.6.0
+  cloud_functions: ^6.5.1
 
 dev_dependencies:
   flutter_test:

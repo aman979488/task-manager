@@ -16,9 +16,9 @@
 The task screen opens without requiring a staff login. Mobile push notifications are registered for a Firebase-authenticated staff account. To configure staff push on a device:
 
 1. In Firebase Console for `task-14733`, enable **Authentication > Sign-in method > Email/Password**.
-2. Staff accounts must be created and managed through Firebase Authentication and the `users` collection.
+2. Staff accounts must be created and managed through Firebase Authentication and the `users` collection. The app's **Staff Detail** screen lists staff and supports separate add, detail, and edit screens. Gmail edits update both Firebase Authentication and the staff profile through the `updateStaffProfile` callable function.
 3. On the staff phone, allow notifications when prompted. The app saves the FCM token to that staff's `users` document.
-4. Install and sign in to the Firebase CLI (`npm install -g firebase-tools`, then `firebase login`) and deploy the notification sender from the repository root:
+4. Install and sign in to the Firebase CLI (`npm install -g firebase-tools`, then `firebase login`) and deploy the Firebase Functions (including notifications and staff profile updates) from the repository root:
 
    ```powershell
    cd functions
