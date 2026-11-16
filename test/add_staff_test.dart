@@ -76,14 +76,14 @@ void main() {
     expect(find.widgetWithText(TextFormField, 'Gmail'), findsOneWidget);
     expect(find.widgetWithText(TextFormField, 'Password'), findsOneWidget);
 
-    await tester.tap(find.byType(DropdownButtonFormField<AppRole>));
+    await tester.tap(find.byKey(const ValueKey('staff-role-menu')));
     await tester.pumpAndSettle();
     expect(find.text('Admin'), findsOneWidget);
     expect(find.text('Super Admin'), findsOneWidget);
     expect(find.text('User'), findsWidgets);
     expect(find.text('Office Staff'), findsNothing);
     expect(find.text('Employee'), findsNothing);
-    await tester.tap(find.text('Admin').first);
+    await tester.tap(find.text('Admin').last);
     await tester.pumpAndSettle();
 
     final passwordField = find.widgetWithText(TextFormField, 'Password');
@@ -121,7 +121,7 @@ void main() {
     await _openStaffDirectory(tester);
     await tester.tap(find.widgetWithText(FloatingActionButton, 'Add Staff'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButtonFormField<AppRole>));
+    await tester.tap(find.byKey(const ValueKey('staff-role-menu')));
     await tester.pumpAndSettle();
 
     expect(find.text('Admin'), findsOneWidget);

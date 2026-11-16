@@ -43,6 +43,19 @@ class TaskGroupingHelpers {
     );
   }
 
+  static int compareDueDates(Task first, Task second) {
+    final firstDate = TaskFilterHelpers.scheduledDateTime(first);
+    final secondDate = TaskFilterHelpers.scheduledDateTime(second);
+    if (firstDate == null) return secondDate == null ? 0 : 1;
+    if (secondDate == null) return -1;
+    final dateOrder = firstDate.compareTo(secondDate);
+    if (dateOrder != 0) return dateOrder;
+    return first.title.toLowerCase().compareTo(second.title.toLowerCase());
+  }
+
+  static int compareOverdueTasks(Task first, Task second) =>
+      compareDueDates(second, first);
+
   static Map<String, List<Task>> groupTasks(List<Task> tasks, String groupBy) {
     final groups = <String, List<Task>>{};
     for (final task in tasks) {
@@ -79,40 +92,37 @@ class TaskGroupingHelpers {
   static Map<String, List<Task>> sectionsForWork(List<Task> myTasks) {
     final now = DateTime.now();
     final pending = myTasks.where((task) => !task.isDone);
+    bool isOverdue(Task task) =>
+        TaskFilterHelpers.isTaskOverdue(task, now: now);
+    final overdueWorks = pending.where(isOverdue).toList();
     List<Task> withPriority(String priority) => pending
-        .where((task) => task.priority?.trim().toLowerCase() == priority)
+        .where(
+          (task) =>
+              task.priority?.trim().toLowerCase() == priority &&
+              !isOverdue(task),
+        )
         .toList();
     final urgentWorks = pending
         .where(
-          (task) => const {
-            'u1',
-            'u2',
-            'u3',
-            'urgent',
-          }.contains(task.priority?.trim().toLowerCase()),
+          (task) =>
+              const {
+                'u1',
+                'u2',
+                'u3',
+                'urgent',
+              }.contains(task.priority?.trim().toLowerCase()) &&
+              !isOverdue(task),
         )
         .toList();
     final freeWorks = pending.where((task) {
       final priority = task.priority?.trim().toLowerCase();
-      return priority == null ||
-          priority.isEmpty ||
-          priority == 'free' ||
-          priority == 'monitor';
+      return (priority == null ||
+              priority.isEmpty ||
+              priority == 'free' ||
+              priority == 'monitor') &&
+          !isOverdue(task);
     }).toList();
     final todayWorks = withPriority('today');
-    final overdueWorks = pending.where((task) {
-      final priority = task.priority?.trim().toLowerCase();
-      if (priority == null ||
-          priority.isEmpty ||
-          priority == 'free' ||
-          priority == 'monitor') {
-        return false;
-      }
-      return TaskFilterHelpers.isTaskOverdue(task, now: now) &&
-          !urgentWorks.contains(task) &&
-          !todayWorks.contains(task);
-    }).toList();
-    bool isOverdue(Task task) => overdueWorks.contains(task);
     final tomorrowWorks = withPriority('tomorrow')
         .where((task) => !isOverdue(task))
         .toList();
@@ -199,14 +209,6 @@ class TaskGroupingHelpers {
         )
         .toList();
 
-    int compareDates(String? first, String? second) {
-      final firstDate = DateTime.tryParse(first ?? '');
-      final secondDate = DateTime.tryParse(second ?? '');
-      if (firstDate == null) return secondDate == null ? 0 : 1;
-      if (secondDate == null) return -1;
-      return firstDate.compareTo(secondDate);
-    }
-
     switch (sortBy) {
       case 'Title':
         result.sort(
@@ -214,12 +216,9 @@ class TaskGroupingHelpers {
               first.title.toLowerCase().compareTo(second.title.toLowerCase()),
         );
       case 'Due date':
-        result.sort(
-          (first, second) => compareDates(
-            first.deadline ?? first.reminder,
-            second.deadline ?? second.reminder,
-          ),
-        );
+        result.sort(compareDueDates);
+      case 'Overdue':
+        result.sort(compareOverdueTasks);
       case 'Status':
         result.sort(
           (first, second) => first.isDone == second.isDone

@@ -354,6 +354,8 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     required String label,
     required FloatingSheetType type,
     String? fieldKey,
+    Widget? trailingAction,
+    bool valueBelowLabel = false,
   }) {
     return _animatedBorderedTile(
       isSelected: _isSelected(value),
@@ -362,12 +364,37 @@ class _TaskDetailPageState extends State<TaskDetailPage>
         child: ListTile(
           leading: Icon(icon, color: secondaryColor),
           title: Text(label),
-          trailing: _infoTrailing(value),
+          subtitle: valueBelowLabel ? _infoTrailing(value) : null,
+          trailing: valueBelowLabel
+              ? null
+              : trailingAction == null
+              ? _infoTrailing(value)
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [_infoTrailing(value), trailingAction],
+                ),
           onTap: () =>
               _showOverlayFromAnchor(anchorKey, type, fieldKey: fieldKey),
         ),
       ),
     );
+  }
+
+  Future<void> _extendDeadline() async {
+    final previousDeadline = task.deadline;
+    final picked = await showDateTimePickerWithTabs(
+      context,
+      initial: DateTime.tryParse(previousDeadline ?? ''),
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() => task.deadline = picked.toIso8601String());
+    widget.onChanged();
+    final saved = await _saveTask(automatic: true);
+    if (!saved && mounted) {
+      setState(() => task.deadline = previousDeadline);
+      widget.onChanged();
+    }
   }
 
   void _showOverlayFromAnchor(
@@ -886,6 +913,12 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           icon: Icons.alarm,
                           label: 'Deadline',
                           type: FloatingSheetType.deadline,
+                          trailingAction: IconButton(
+                            tooltip: 'Extend deadline',
+                            onPressed: _extendDeadline,
+                            icon: const Icon(Icons.event_repeat),
+                            color: secondaryColor,
+                          ),
                         ),
                         Align(
                           alignment: Alignment.center,
@@ -943,6 +976,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                             icon: Icons.flag_outlined,
                             label: 'Goal (week)',
                             type: FloatingSheetType.goal,
+                            valueBelowLabel: true,
                           ),
                           SwitchListTile(
                             contentPadding: const EdgeInsets.symmetric(

@@ -113,6 +113,75 @@ void main() {
     expect(saveCalled, isTrue);
   });
 
+  testWidgets('Extend deadline opens picker and saves the selected deadline', (
+    tester,
+  ) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.physicalSize = const Size(800, 1000);
+    tester.view.devicePixelRatio = 1;
+    final initialDeadline = DateTime(2026, 10, 27, 9);
+    final task = Task(
+      'Prepare report',
+      deadline: initialDeadline.toIso8601String(),
+    );
+    var saveCalled = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(task: task, onSave: () async => saveCalled = true),
+      ),
+    );
+
+    final extendButton = find.byIcon(Icons.event_repeat);
+    await tester.ensureVisible(extendButton);
+    await tester.tap(extendButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('DATE'), findsOneWidget);
+    await tester.tap(find.text('SAVE'));
+    await tester.pumpAndSettle();
+
+    expect(saveCalled, isTrue);
+    expect(task.deadline, initialDeadline.toIso8601String());
+  });
+
+  testWidgets('goal week label and value use separate lines', (tester) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    final task = Task('Weekly goal', weekKey: '2026-11-W2');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(task: task, onChanged: () {}, onSave: () async {}),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('View more'));
+    await tester.tap(find.text('View more'));
+    await tester.pumpAndSettle();
+    expect(find.text('View less'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Goal (week)'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    final goalTileFinder = find.ancestor(
+      of: find.text('Goal (week)'),
+      matching: find.byType(ListTile),
+    );
+    final goalTile = tester.widget<ListTile>(goalTileFinder.first);
+
+    expect(goalTile.title, isA<Text>());
+    expect(goalTile.subtitle, isA<Text>());
+    expect(goalTile.trailing, isNull);
+    expect(find.text('November Week 2 (11/8-11/14, 2026)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('done toggle saves and marks the task done', (tester) async {
     final task = Task(
       'Finish report',

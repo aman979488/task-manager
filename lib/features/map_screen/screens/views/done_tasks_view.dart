@@ -221,18 +221,21 @@ class DoneTasksView extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 2),
             child: Row(
               children: [
-                InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: onMarkUndone == null
+                IconButton(
+                  tooltip: 'Mark as undone',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(
+                    minWidth: 28,
+                    minHeight: 28,
+                  ),
+                  padding: EdgeInsets.zero,
+                  onPressed: onMarkUndone == null
                       ? null
                       : () => _confirmMarkUndone(context, task),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.check_circle,
-                      size: 22,
-                      color: Colors.green.shade600,
-                    ),
+                  icon: Icon(
+                    Icons.check_circle,
+                    size: 22,
+                    color: Colors.green.shade600,
                   ),
                 ),
                 const SizedBox(width: 10),

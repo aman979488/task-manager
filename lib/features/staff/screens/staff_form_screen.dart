@@ -273,29 +273,38 @@ class _StaffFormScreenState extends State<StaffFormScreen> {
               },
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<AppRole>(
-              initialValue: _selectedRole,
-              decoration: const InputDecoration(
-                labelText: 'Role',
-                prefixIcon: Icon(Icons.badge_outlined),
-                border: OutlineInputBorder(),
-              ),
-              items: [
+            MenuAnchor(
+              key: const ValueKey('staff-role-menu'),
+              style: const MenuStyle(alignment: AlignmentDirectional.bottomEnd),
+              menuChildren: [
                 for (final role in _formRoles)
-                  DropdownMenuItem(
-                    value: role,
-                    enabled:
-                        role != AppRole.superAdmin ||
-                        context.read<AuthViewModel>().appRole ==
-                            AppRole.superAdmin,
-                    child: Text(_roleLabel(role)),
+                  MenuItemButton(
+                    leadingIcon: role == _selectedRole
+                        ? const Icon(Icons.check)
+                        : const SizedBox(width: 24),
+                    onPressed: _isSaving
+                        ? null
+                        : () => setState(() => _selectedRole = role),
+                    child: SizedBox(width: 200, child: Text(_roleLabel(role))),
                   ),
               ],
-              onChanged: _isSaving
-                  ? null
-                  : (role) {
-                      if (role != null) setState(() => _selectedRole = role);
-                    },
+              builder: (context, controller, _) => InkWell(
+                onTap: _isSaving
+                    ? null
+                    : () => controller.isOpen
+                          ? controller.close()
+                          : controller.open(),
+                borderRadius: BorderRadius.circular(4),
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Role',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                    suffixIcon: Icon(Icons.arrow_drop_down),
+                    border: OutlineInputBorder(),
+                  ),
+                  child: Text(_roleLabel(_selectedRole)),
+                ),
+              ),
             ),
             if (!_isEditing) ...[
               const SizedBox(height: 16),

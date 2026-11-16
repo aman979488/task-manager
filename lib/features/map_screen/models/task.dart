@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class TaskStep {
   String title;
   bool isDone;
@@ -113,6 +115,7 @@ class Task {
 
   int? priorityUpdatedAt;
   String? priorityUpdatedByUid;
+  String? lastUndoneByUid;
   int? overdueAcknowledgedAt;
   int? completedAt;
 
@@ -161,6 +164,7 @@ class Task {
     this.assigneeUid,
     this.priorityUpdatedAt,
     this.priorityUpdatedByUid,
+    this.lastUndoneByUid,
     this.overdueAcknowledgedAt,
     this.completedAt,
     List<TaskStep>? steps,
@@ -203,6 +207,7 @@ class Task {
       'assigneeUid': assigneeUid,
       'priorityUpdatedAt': priorityUpdatedAt,
       'priorityUpdatedByUid': priorityUpdatedByUid,
+      'lastUndoneByUid': lastUndoneByUid,
       'overdueAcknowledgedAt': overdueAcknowledgedAt,
       'completedAt': completedAt,
       'steps': steps.map((s) => s.toMap()).toList(),
@@ -238,6 +243,12 @@ class Task {
         : const <String>[];
     final rawMonitor = data['monitor']?.toString();
     final rawAssignee = data['assignee']?.toString();
+    String? parseScheduledDate(Object? value) {
+      if (value is Timestamp) return value.toDate().toIso8601String();
+      if (value is DateTime) return value.toIso8601String();
+      final stringValue = value?.toString();
+      return DateTime.tryParse(stringValue ?? '') == null ? null : stringValue;
+    }
 
     final dynamic priorityUpdatedAtValue = data['priorityUpdatedAt'];
     int? parsedPriorityUpdatedAt;
@@ -276,7 +287,10 @@ class Task {
       note: data['note'] ?? '',
       createdDate: data['createdDate']?.toString(),
       priority: data['priority']?.toString(),
-      reminder: data['reminder']?.toString(),
+      reminder:
+          parseScheduledDate(data['reminder']) ??
+          parseScheduledDate(data['reminderAt']) ??
+          data['reminder']?.toString(),
       followUp: data['followUp']?.toString(),
       reminderSent: data['reminderSent'] ?? false,
       deadlineReminderSent: data['deadlineReminderSent'] ?? false,
@@ -286,7 +300,10 @@ class Task {
           : parsedAssigneeNames.isEmpty
           ? rawAssignee
           : parsedAssigneeNames.join(', '),
-      deadline: data['deadline']?.toString(),
+      deadline:
+          parseScheduledDate(data['deadline']) ??
+          parseScheduledDate(data['deadlineAt']) ??
+          data['deadline']?.toString(),
       workType: data['workType']?.toString(),
       folder: data['folder']?.toString(),
       clientName: data['clientName']?.toString(),
@@ -311,6 +328,7 @@ class Task {
       assigneeUid: data['assigneeUid']?.toString(),
       priorityUpdatedAt: parsedPriorityUpdatedAt,
       priorityUpdatedByUid: data['priorityUpdatedByUid']?.toString(),
+      lastUndoneByUid: data['lastUndoneByUid']?.toString(),
       overdueAcknowledgedAt: parsedOverdueAcknowledgedAt,
       completedAt: parsedCompletedAt,
       steps: parsedSteps

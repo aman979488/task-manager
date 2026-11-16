@@ -402,7 +402,10 @@ class MapScreenTabViews extends StatelessWidget {
     final visibleAllTasks = viewModel.getVisibleTasks(source: allTasks);
     final visibleMyDayTasks = viewModel.getVisibleTasks(source: myDayTasks);
     final visibleDoneTasks = viewModel.getVisibleTasks(source: doneTasks);
-    final visibleOverdueTasks = viewModel.getVisibleTasks(source: overdueTasks);
+    final visibleOverdueTasks = viewModel.getVisibleTasks(
+      source: overdueTasks,
+      sortBy: 'Overdue',
+    );
 
     return MediaQuery(
       data: MediaQuery.of(context)

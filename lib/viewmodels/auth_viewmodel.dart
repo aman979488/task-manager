@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../features/auth/models/app_user.dart';
 import '../features/flash/flash_alert_service.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
@@ -96,14 +97,15 @@ class AuthViewModel extends ChangeNotifier {
           .collection('users')
           .doc(user.uid);
       if (!(await profileRef.get()).exists) {
-        await profileRef.set({
-          'uid': user.uid,
-          'name': user.displayName ?? '',
-          'email': user.email ?? '',
-          'contactNo': user.phoneNumber ?? '',
-          'photoUrl': user.photoURL,
-          'role': 'employee',
-        });
+        await profileRef.set(
+          AppUser(
+            uid: user.uid,
+            name: user.displayName ?? '',
+            email: user.email ?? '',
+            contactNo: user.phoneNumber ?? '',
+            photoUrl: user.photoURL,
+          ).toMap(),
+        );
       }
       await _applyProfile(user, profileRef);
       return true;
@@ -262,7 +264,7 @@ class AuthViewModel extends ChangeNotifier {
       'email': email,
       'contactNo': contactNo,
       'photoUrl': null,
-      'role': 'employee',
+      'role': 'user',
     });
     return profileRef;
   }

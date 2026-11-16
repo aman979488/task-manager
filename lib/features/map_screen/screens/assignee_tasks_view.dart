@@ -97,13 +97,10 @@ class _AssigneeTasksViewState extends State<AssigneeTasksView> {
     if (!_tasksBeingToggled.add(task)) return;
 
     try {
-      if (!task.isDone) {
-        final confirmed = await showTaskCompletionConfirmation(
-          context,
-          task.title,
-        );
-        if (!confirmed || !mounted) return;
-      }
+      final confirmed = task.isDone
+          ? await showTaskUndoConfirmation(context, task.title)
+          : await showTaskCompletionConfirmation(context, task.title);
+      if (!confirmed || !mounted) return;
 
       await widget.onToggleTaskDone(
         task,

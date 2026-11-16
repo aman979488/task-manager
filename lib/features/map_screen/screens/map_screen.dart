@@ -220,8 +220,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
     if (!mounted) return;
     final vm = Provider.of<MapScreenViewModel>(context, listen: false);
+    final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
     if (keepInMyDay) task.isInMyDay = true;
-    await vm.toggleTaskDone(task);
+    await vm.toggleTaskDone(task, actorUid: authViewModel.userUid);
   }
 
   void _onEditPriority(BuildContext badgeContext, Task task) {
@@ -288,6 +289,36 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       drawer: viewModel.isSelectionMode ? null : const AppDrawer(),
       body: Column(
         children: [
+          if (viewModel.isOffline)
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFE65100),
+              padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.cloud_off_rounded,
+                    size: 15,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      viewModel.hasPendingSync
+                          ? 'Offline mode — changes saved locally & will sync when online'
+                          : 'You are offline — viewing cached tasks',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (viewModel.isSearchVisible)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),

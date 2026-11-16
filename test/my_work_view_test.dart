@@ -5,6 +5,41 @@ import 'package:task_manager/features/map_screen/models/task.dart';
 import 'package:task_manager/features/map_screen/screens/views/my_work_view.dart';
 
 void main() {
+  testWidgets('Urgent section can be collapsed after it is expanded', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MyWorkView(
+            sections: {
+              'Urgent Works': [Task('Urgent task')],
+            },
+            taskResultsBuilder: (tasks) =>
+                Column(children: [for (final task in tasks) Text(task.title)]),
+          ),
+        ),
+      ),
+    );
+
+    Future<void> tapUrgentHeader() async {
+      final header = find.ancestor(
+        of: find.text('URGENT').first,
+        matching: find.byType(InkWell),
+      );
+      tester.widget<InkWell>(header.first).onTap!();
+      await tester.pumpAndSettle();
+    }
+
+    if (find.text('Urgent task').evaluate().isEmpty) await tapUrgentHeader();
+    expect(find.text('Urgent task'), findsOneWidget);
+
+    await tapUrgentHeader();
+    expect(find.text('Urgent task'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('restores expanded work sections after app restart', (
     tester,
   ) async {

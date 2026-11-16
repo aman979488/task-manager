@@ -35,14 +35,43 @@ class TaskConstants {
   ];
 
   static const List<String> defaultWorkTypes = [
+    'Work',
     'Call',
-    'Message',
-    'WhatsApp',
-    '1st Visit',
-    'Revisit',
-    'Follow Up Call',
+    'Msg',
+    'Meet',
+    'Demo',
     'Others',
+    'Travel',
+    'Report',
+    'Update',
+    'Discuss',
+    'Complain',
+    'Timepass',
   ];
+
+  static List<String> orderWorkTypes(Iterable<String> workTypes) {
+    final preferredOrder = {
+      for (var index = 0; index < defaultWorkTypes.length; index++)
+        defaultWorkTypes[index].toLowerCase(): index,
+      'message': defaultWorkTypes.indexOf('Msg'),
+    };
+    final indexedWorkTypes = workTypes.indexed.toList()
+      ..sort((first, second) {
+        final firstOrder =
+            preferredOrder[first.$2.trim().toLowerCase()] ??
+            defaultWorkTypes.length;
+        final secondOrder =
+            preferredOrder[second.$2.trim().toLowerCase()] ??
+            defaultWorkTypes.length;
+        final orderDifference = firstOrder.compareTo(secondOrder);
+        if (orderDifference != 0) return orderDifference;
+        final firstIsMsg = first.$2.trim().toLowerCase() == 'msg';
+        final secondIsMsg = second.$2.trim().toLowerCase() == 'msg';
+        if (firstIsMsg != secondIsMsg) return firstIsMsg ? -1 : 1;
+        return first.$1.compareTo(second.$1);
+      });
+    return indexedWorkTypes.map((entry) => entry.$2).toList();
+  }
 
   static const List<String> folderOptions = [
     'Personal',
