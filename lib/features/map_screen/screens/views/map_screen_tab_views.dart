@@ -472,7 +472,7 @@ class MapScreenTabViews extends StatelessWidget {
             key: const PageStorageKey('my-work-tab'),
             builder: (_) => _buildMyWorkSections(
               viewModel.myWorkSections(
-                myTasks,
+                viewModel.myWorkTasks(authViewModel),
                 userUid: authViewModel.userUid,
                 userEmail: authViewModel.userEmail,
                 userName: authViewModel.userName,

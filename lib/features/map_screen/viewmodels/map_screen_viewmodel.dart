@@ -22,8 +22,14 @@ class MapScreenViewModel extends ChangeNotifier {
        _assignmentNotificationService =
            assignmentNotificationService ?? TaskAssignmentNotificationService(),
        _networkStatusService = networkStatusService ?? NetworkStatusService() {
-    _networkSubscription = _networkStatusService.onStatusChanged.listen((_) {
+    _networkSubscription = _networkStatusService.onStatusChanged.listen((
+      isOnline,
+    ) {
       notifyListeners();
+      final authViewModel = _authViewModel;
+      if (isOnline && authViewModel != null) {
+        unawaited(refreshTasks(authViewModel));
+      }
     });
   }
 
@@ -38,6 +44,7 @@ class MapScreenViewModel extends ChangeNotifier {
 
   StreamSubscription<List<Task>>? _tasksSubscription;
   Timer? _overdueRefreshTimer;
+  AuthViewModel? _authViewModel;
   bool _isAddingTask = false;
   String? _lastErrorMessage;
 
@@ -147,6 +154,7 @@ class MapScreenViewModel extends ChangeNotifier {
 
   void listenForTasks(AuthViewModel authViewModel) {
     _tasksSubscription?.cancel();
+    _authViewModel = authViewModel;
     _overdueRefreshTimer ??= Timer.periodic(
       const Duration(minutes: 1),
       (_) => notifyListeners(),
@@ -521,6 +529,13 @@ class MapScreenViewModel extends ChangeNotifier {
       userEmail: authViewModel.userEmail,
       userName: authViewModel.userName,
     );
+  }
+
+  List<Task> myWorkTasks(AuthViewModel authViewModel) {
+    if (_canReadAllTasks(authViewModel)) {
+      return List.unmodifiable(_tasks);
+    }
+    return myTasks(authViewModel);
   }
 
   static List<Task> assignedTasksForUser(
