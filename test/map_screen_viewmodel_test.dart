@@ -9,6 +9,7 @@ import 'package:task_manager/features/map_screen/repositories/task_repository.da
 import 'package:task_manager/features/map_screen/services/task_assignment_notification_service.dart';
 import 'package:task_manager/features/map_screen/utils/task_constants.dart';
 import 'package:task_manager/features/map_screen/viewmodels/map_screen_viewmodel.dart';
+import 'package:task_manager/services/network_status_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -519,6 +520,64 @@ void main() {
       ),
       [createdUnassigned, createdAssigned, assignedToMe, assignedByUidOnly],
     );
+  });
+
+  test('admin My Work includes tasks created by other users', () async {
+    final ownTask = Task('My task', createdBy: {'uid': 'user-1'});
+    final otherUserTask = Task(
+      'Other user task',
+      priority: 'Today',
+      createdBy: {'uid': 'user-2'},
+    );
+    final viewModel = MapScreenViewModel(
+      repository: _TaskRepositoryStub()
+        ..tasksToFetch = [ownTask, otherUserTask],
+      assignmentNotificationService: _AssignmentNotificationServiceStub(),
+    );
+    final admin = _AuthViewModelStub(role: AppRole.admin);
+
+    await viewModel.refreshTasks(admin);
+
+    expect(
+      viewModel.myWorkTasks(admin),
+      unorderedEquals([ownTask, otherUserTask]),
+    );
+    viewModel.dispose();
+  });
+
+  test('refreshes assigned tasks when the network reconnects', () async {
+    var online = true;
+    final networkStatusService = NetworkStatusService(
+      autoStart: false,
+      connectionChecker: () async => online,
+    );
+    final repository = _TaskRepositoryStub();
+    final viewModel = MapScreenViewModel(
+      repository: repository,
+      assignmentNotificationService: _AssignmentNotificationServiceStub(),
+      networkStatusService: networkStatusService,
+    );
+    final authViewModel = _AuthViewModelStub(role: AppRole.admin);
+    viewModel.listenForTasks(authViewModel);
+    final taskCreatedByOtherUser = Task(
+      'Task created while offline',
+      priority: 'Today',
+      createdBy: {'uid': 'user-2'},
+    );
+    repository.tasksToFetch = [taskCreatedByOtherUser];
+
+    online = false;
+    await networkStatusService.checkNow();
+    online = true;
+    await networkStatusService.checkNow();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      viewModel.myWorkTasks(authViewModel),
+      contains(taskCreatedByOtherUser),
+    );
+
+    viewModel.dispose();
   });
 
   test('My Work recognizes a person in a multi-select monitor value', () {
@@ -1065,8 +1124,12 @@ class _AssignmentNotificationServiceStub
 }
 
 class _AuthViewModelStub implements AuthViewModel {
+  _AuthViewModelStub({this.role = AppRole.user});
+
+  final AppRole role;
+
   @override
-  AppRole get appRole => AppRole.user;
+  AppRole get appRole => role;
 
   @override
   String get userEmail => 'user@example.com';
