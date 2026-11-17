@@ -13,6 +13,7 @@ class DoneTasksView extends StatelessWidget {
     this.onEditTaskTime,
     this.onOpenTask,
     this.onMarkUndone,
+    this.onOpenReport,
   });
 
   final List<Task> tasks;
@@ -22,6 +23,34 @@ class DoneTasksView extends StatelessWidget {
   final Future<void> Function(Task task)? onEditTaskTime;
   final ValueChanged<Task>? onOpenTask;
   final Future<void> Function(Task task)? onMarkUndone;
+  final VoidCallback? onOpenReport;
+
+  Widget _reportButton({bool inDateHeader = false}) {
+    if (onOpenReport == null) return const SizedBox.shrink();
+    if (inDateHeader) {
+      return FilledButton(
+        key: const ValueKey('done-work-daily-report'),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(0, 32),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          visualDensity: VisualDensity.compact,
+        ),
+        onPressed: onOpenReport,
+        child: const Text('Daily Report', style: TextStyle(fontSize: 11)),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: FilledButton(
+          key: const ValueKey('done-work-daily-report'),
+          onPressed: onOpenReport,
+          child: const Text('Daily Report'),
+        ),
+      ),
+    );
+  }
 
   DateTime? _createdDate(Task task) {
     final dateText = task.createdDate.split(' • ').first;
@@ -331,13 +360,19 @@ class DoneTasksView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (viewType == 'Calendar') {
-      return calendarBuilder(tasks);
+      return Column(
+        children: [
+          _reportButton(),
+          Expanded(child: calendarBuilder(tasks)),
+        ],
+      );
     }
     if (tasks.isEmpty) {
       return refreshable(
         ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
+          children: [
+            _reportButton(),
             SizedBox(
               height: 240,
               child: Center(child: Text('No tasks found in this category.')),
@@ -371,20 +406,21 @@ class DoneTasksView extends StatelessWidget {
         totalHours: roundedHours,
         totalScore: double.parse((roundedHours * 4).toStringAsFixed(2)),
       );
-    });
+    }).toList();
 
     return refreshable(
       ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 100),
         children: [
-          for (final entry in groupedRows) ...[
+          for (final indexedEntry in groupedRows.indexed) ...[
             _dateHeader(
-              entry.date,
-              totalHours: entry.totalHours,
-              totalScore: entry.totalScore,
+              indexedEntry.$2.date,
+              totalHours: indexedEntry.$2.totalHours,
+              totalScore: indexedEntry.$2.totalScore,
+              showReportButton: indexedEntry.$1 == 0,
             ),
-            for (final task in entry.tasks) _taskRow(context, task),
+            for (final task in indexedEntry.$2.tasks) _taskRow(context, task),
           ],
         ],
       ),
@@ -395,6 +431,7 @@ class DoneTasksView extends StatelessWidget {
     DateTime? date, {
     required double totalHours,
     required double totalScore,
+    bool showReportButton = false,
   }) {
     final headerText = date == null
         ? 'Date not set'
@@ -404,14 +441,26 @@ class DoneTasksView extends StatelessWidget {
       width: double.infinity,
       color: const Color(0xFFF1F2F4),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-      child: Text(
-        headerText,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF265492),
-          letterSpacing: 0.1,
-        ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              headerText,
+              maxLines: showReportButton ? 2 : null,
+              overflow: showReportButton ? TextOverflow.ellipsis : null,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF265492),
+                letterSpacing: 0.1,
+              ),
+            ),
+          ),
+          if (showReportButton) ...[
+            const SizedBox(width: 8),
+            _reportButton(inDateHeader: true),
+          ],
+        ],
       ),
     );
   }

@@ -34,6 +34,7 @@ class MapScreenTabViews extends StatelessWidget {
     required this.onAddSubstep,
     required this.onSetTaskTime,
     required this.onEditPriority,
+    required this.onOpenDailyReport,
   });
 
   final TabController tabController;
@@ -51,6 +52,7 @@ class MapScreenTabViews extends StatelessWidget {
   final void Function(Task task) onAddSubstep;
   final Future<void> Function(Task task) onSetTaskTime;
   final void Function(BuildContext badgeContext, Task task) onEditPriority;
+  final ValueChanged<List<Task>> onOpenDailyReport;
 
   Widget _refreshableScrollView(Widget child) {
     return NotificationListener<ScrollNotification>(
@@ -487,6 +489,7 @@ class MapScreenTabViews extends StatelessWidget {
               onEditTaskTime: onSetTaskTime,
               onOpenTask: onOpenTask,
               onMarkUndone: (task) => onToggleTaskDone(task),
+              onOpenReport: () => onOpenDailyReport(doneTasks),
               calendarBuilder: (tasks) => _buildCalendarView(
                 tasks,
                 readOnly: true,

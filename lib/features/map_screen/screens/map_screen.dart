@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../utils/role_permissions.dart';
 import '../../../viewmodels/auth_viewmodel.dart';
 import '../../../widgets/app_drawer.dart';
+import '../../../routes/app_routes.dart';
 import '../models/floating_sheet_type.dart';
 import '../models/task.dart';
 import '../utils/task_constants.dart';
@@ -397,6 +398,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 onAddSubstep: _promptAddSubstep,
                 onSetTaskTime: _promptSetTaskTime,
                 onEditPriority: _onEditPriority,
+                onOpenDailyReport: (tasks) =>
+                    context.push<void>(AppRoutes.dailyReport, extra: tasks),
               ),
             ),
           ),
@@ -413,4 +416,3 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 }
-

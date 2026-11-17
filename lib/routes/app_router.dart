@@ -12,6 +12,7 @@ import '../features/map_screen/screens/assignee_tasks_view.dart';
 import '../features/map_screen/viewmodels/map_screen_viewmodel.dart';
 import '../features/map_screen/viewmodels/add_task_viewmodel.dart';
 import '../features/map_screen/viewmodels/weekly_goals_viewmodel.dart';
+import '../features/reports/screens/daily_report_screen.dart';
 import '../viewmodels/auth_viewmodel.dart';
 import 'app_routes.dart';
 
@@ -47,6 +48,13 @@ class AppRouter {
         builder: (_, _) => ChangeNotifierProvider<CallLogController>(
           create: (_) => CallLogController(),
           child: const AllCallsView(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.dailyReport,
+        builder: (_, state) => ChangeNotifierProvider<CallLogController>(
+          create: (_) => CallLogController(),
+          child: DailyReportScreen(tasks: state.extra as List<Task>),
         ),
       ),
       GoRoute(

@@ -126,6 +126,64 @@ void main() {
     expect(undoneTask, same(task));
   });
 
+  testWidgets('Done Work daily report button invokes its callback', (
+    tester,
+  ) async {
+    var reportOpened = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DoneTasksView(
+            tasks: const [],
+            viewType: 'Detailed list',
+            calendarBuilder: (_) => const SizedBox.shrink(),
+            refreshable: (child) => child,
+            onOpenReport: () => reportOpened = true,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('done-work-daily-report')));
+
+    expect(reportOpened, isTrue);
+  });
+
+  testWidgets('places daily report button beside the newest date header', (
+    tester,
+  ) async {
+    final task = Task(
+      'Finished report',
+      isDone: true,
+      completedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DoneTasksView(
+            tasks: [task],
+            viewType: 'Detailed list',
+            calendarBuilder: (_) => const SizedBox.shrink(),
+            refreshable: (child) => child,
+            onOpenReport: () {},
+          ),
+        ),
+      ),
+    );
+
+    final header = find.textContaining('_Dur-0Hr_Sco-0');
+    final reportButton = find.byKey(const ValueKey('done-work-daily-report'));
+    expect(header, findsOneWidget);
+    expect(reportButton, findsOneWidget);
+    expect(find.byIcon(Icons.assessment_outlined), findsNothing);
+    expect(
+      tester.getCenter(reportButton).dx,
+      greaterThan(tester.getCenter(header).dx),
+    );
+  });
+
   testWidgets('groups completed tasks by completion date', (tester) async {
     final firstTask = Task(
       'First task',
