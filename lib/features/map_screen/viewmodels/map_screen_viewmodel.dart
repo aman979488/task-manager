@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../services/network_status_service.dart';
 import '../../../services/task_home_widget_service.dart';
 import '../../../viewmodels/auth_viewmodel.dart';
 import '../models/task.dart';
@@ -10,23 +11,33 @@ import '../services/task_assignment_notification_service.dart';
 import '../utils/priority_reminder.dart';
 import '../utils/task_filter_helpers.dart';
 import '../utils/task_grouping_helpers.dart';
+import '../utils/task_constants.dart';
 
 class MapScreenViewModel extends ChangeNotifier {
   MapScreenViewModel({
     TaskRepository? repository,
     TaskAssignmentNotificationService? assignmentNotificationService,
+    NetworkStatusService? networkStatusService,
   }) : _repository = repository ?? TaskRepository(),
        _assignmentNotificationService =
-           assignmentNotificationService ?? TaskAssignmentNotificationService();
+           assignmentNotificationService ?? TaskAssignmentNotificationService(),
+       _networkStatusService = networkStatusService ?? NetworkStatusService() {
+    _networkSubscription = _networkStatusService.onStatusChanged.listen((_) {
+      notifyListeners();
+    });
+  }
 
   final TaskRepository _repository;
   final TaskAssignmentNotificationService _assignmentNotificationService;
+  final NetworkStatusService _networkStatusService;
+  StreamSubscription<bool>? _networkSubscription;
   final List<Task> _tasks = [];
   final Set<Task> _pendingTasks = {};
   final Set<Task> _selectedTasks = {};
   final Map<Task, Future<bool>> _pendingTaskSaves = {};
 
   StreamSubscription<List<Task>>? _tasksSubscription;
+  Timer? _overdueRefreshTimer;
   bool _isAddingTask = false;
   String? _lastErrorMessage;
 
@@ -42,6 +53,9 @@ class MapScreenViewModel extends ChangeNotifier {
 
   List<Task> get tasks => List.unmodifiable(_tasks);
   bool get isAddingTask => _isAddingTask;
+  bool get isOffline => _networkStatusService.isOffline;
+  bool get isOnline => _networkStatusService.isOnline;
+  bool get hasPendingSync => _pendingTaskSaves.isNotEmpty;
 
   // Selection state
   Set<Task> get selectedTasks => Set.unmodifiable(_selectedTasks);
@@ -133,6 +147,10 @@ class MapScreenViewModel extends ChangeNotifier {
 
   void listenForTasks(AuthViewModel authViewModel) {
     _tasksSubscription?.cancel();
+    _overdueRefreshTimer ??= Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => notifyListeners(),
+    );
     _tasksSubscription = _repository
         .watchTasks(
           canReadAll: _canReadAllTasks(authViewModel),
@@ -157,15 +175,24 @@ class MapScreenViewModel extends ChangeNotifier {
   }
 
   Future<void> refreshTasks(AuthViewModel authViewModel) async {
-    final loaded = await _repository.fetchTasks(
-      canReadAll: _canReadAllTasks(authViewModel),
-      userUid: authViewModel.userUid,
-      userName: authViewModel.userName,
-    );
-    _replaceTasks(
-      loaded.where((task) => isTaskVisibleToUser(task, authViewModel)).toList(),
-    );
-    await _updateHomeWidgetSafely();
+    unawaited(_networkStatusService.checkNow());
+    try {
+      final loaded = await _repository.fetchTasks(
+        canReadAll: _canReadAllTasks(authViewModel),
+        userUid: authViewModel.userUid,
+        userName: authViewModel.userName,
+      );
+      _replaceTasks(
+        loaded.where((task) => isTaskVisibleToUser(task, authViewModel)).toList(),
+      );
+      await _updateHomeWidgetSafely();
+    } catch (e) {
+      debugPrint('Error refreshing tasks: $e');
+      if (!_networkStatusService.isOffline) {
+        _lastErrorMessage = 'Could not sync tasks. Operating in offline mode.';
+      }
+      notifyListeners();
+    }
   }
 
   bool _canReadAllTasks(AuthViewModel authViewModel) =>
@@ -286,20 +313,23 @@ class MapScreenViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> toggleTaskDone(Task task) async {
+  Future<void> toggleTaskDone(Task task, {String? actorUid}) async {
     final wasDone = task.isDone;
     final previousCompletedAt = task.completedAt;
+    final previousLastUndoneByUid = task.lastUndoneByUid;
     task.isDone = !task.isDone;
     task.completedAt = task.isDone
         ? DateTime.now().millisecondsSinceEpoch
         : null;
+    task.lastUndoneByUid = wasDone ? actorUid : null;
     sortTasks();
     try {
       await updateTask(task);
     } catch (error) {
       task
         ..isDone = wasDone
-        ..completedAt = previousCompletedAt;
+        ..completedAt = previousCompletedAt
+        ..lastUndoneByUid = previousLastUndoneByUid;
       _lastErrorMessage = 'Could not update "${task.title}". Please try again.';
       debugPrint('Error updating task completion for "${task.title}": $error');
       sortTasks();
@@ -314,15 +344,13 @@ class MapScreenViewModel extends ChangeNotifier {
     final previousPriority = task.priority;
     final previousPriorityUpdatedAt = task.priorityUpdatedAt;
     final previousPriorityUpdatedByUid = task.priorityUpdatedByUid;
-    final previousOverdueAcknowledgedAt = task.overdueAcknowledgedAt;
     final previousReminder = task.reminder;
     final previousReminderSent = task.reminderSent;
     final updatedAt = DateTime.now().millisecondsSinceEpoch;
     task.priority = priority;
     task
       ..priorityUpdatedAt = updatedAt
-      ..priorityUpdatedByUid = updatedByUid
-      ..overdueAcknowledgedAt = updatedAt;
+      ..priorityUpdatedByUid = updatedByUid;
     final reminder = reminderForPriority(priority);
     if (reminder != null &&
         (task.reminder == null || task.reminder!.trim().isEmpty)) {
@@ -338,7 +366,6 @@ class MapScreenViewModel extends ChangeNotifier {
         ..priority = previousPriority
         ..priorityUpdatedAt = previousPriorityUpdatedAt
         ..priorityUpdatedByUid = previousPriorityUpdatedByUid
-        ..overdueAcknowledgedAt = previousOverdueAcknowledgedAt
         ..reminder = previousReminder
         ..reminderSent = previousReminderSent;
       _lastErrorMessage =
@@ -415,9 +442,11 @@ class MapScreenViewModel extends ChangeNotifier {
     (task) => (task.assignee ?? '').split(','),
   );
 
-  Future<List<String>> loadWorkTypes() async => _sortByUsage(
-    await _repository.loadWorkTypes(),
-    (task) => [task.workType ?? ''],
+  Future<List<String>> loadWorkTypes() async => TaskConstants.orderWorkTypes(
+    _sortByUsage(
+      await _repository.loadWorkTypes(),
+      (task) => [task.workType ?? ''],
+    ),
   );
 
   Future<List<String>> loadProjects() async => _sortByUsage(
@@ -433,7 +462,11 @@ class MapScreenViewModel extends ChangeNotifier {
   static int compareTasks(Task first, Task second) =>
       TaskGroupingHelpers.compareTasks(first, second);
 
-  List<Task> overdueTasks() => _tasks.where(isOverdue).toList();
+  List<Task> overdueTasks() {
+    final tasks = _tasks.where(isOverdue).toList()
+      ..sort(TaskGroupingHelpers.compareOverdueTasks);
+    return tasks;
+  }
 
   List<Task> pendingTasks() =>
       _tasks.where((task) => !task.isDone && !isOverdue(task)).toList();
@@ -454,11 +487,11 @@ class MapScreenViewModel extends ChangeNotifier {
     userName: userName,
   );
 
-  List<Task> getVisibleTasks({List<Task>? source}) {
+  List<Task> getVisibleTasks({List<Task>? source, String? sortBy}) {
     return visibleTasks(
       source: source ?? _tasks,
       query: _taskSearchQuery,
-      sortBy: _sortBy,
+      sortBy: sortBy ?? _sortBy,
     );
   }
 
@@ -501,7 +534,6 @@ class MapScreenViewModel extends ChangeNotifier {
     userEmail: userEmail,
     userName: userName,
   );
-
   static List<Task> assignTabTasksForUser(
     Iterable<Task> tasks, {
     required String userUid,
@@ -629,6 +661,9 @@ class MapScreenViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _overdueRefreshTimer?.cancel();
+    _networkSubscription?.cancel();
+    _networkStatusService.dispose();
     _tasksSubscription?.cancel();
     super.dispose();
   }

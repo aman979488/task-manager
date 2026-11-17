@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/task.dart';
+import '../services/metadata_cache_service.dart';
+import '../utils/task_constants.dart';
 
 class TaskRepository {
   TaskRepository({FirebaseFirestore? firestore})
@@ -84,6 +86,7 @@ class TaskRepository {
       _tasks.where('createdBy.uid', isEqualTo: uid),
       _tasks.where('assigneeUids', arrayContains: uid),
       _tasks.where('assigneeUid', isEqualTo: uid),
+      _tasks.where('lastUndoneByUid', isEqualTo: uid),
     ];
     final name = userName.trim();
     if (name.isNotEmpty) {
@@ -125,69 +128,110 @@ class TaskRepository {
   }
 
   Future<List<String>> loadClients() async {
-    if (_clientsCache != null) return _clientsCache!;
-    final snapshot = await _firestore.collection('leads').get();
-    _clientsCache = snapshot.docs
-        .map((doc) {
-          final data = doc.data();
-          final name = data['name']?.toString().trim() ?? '';
-          final surname = data['surname']?.toString().trim() ?? '';
-          return surname.isNotEmpty ? '$name $surname' : name;
-        })
-        .where((name) => name.isNotEmpty)
-        .toList();
-    return _clientsCache!;
+    if (_clientsCache != null && _clientsCache!.isNotEmpty) return _clientsCache!;
+    final local = await MetadataCacheService.loadStringList(MetadataCacheService.keyClients);
+    if (local != null && local.isNotEmpty) {
+      _clientsCache = local;
+    }
+    try {
+      final snapshot = await _firestore.collection('leads').get();
+      final clients = snapshot.docs
+          .map((doc) {
+            final data = doc.data();
+            final name = data['name']?.toString().trim() ?? '';
+            final surname = data['surname']?.toString().trim() ?? '';
+            return surname.isNotEmpty ? '$name $surname' : name;
+          })
+          .where((name) => name.isNotEmpty)
+          .toList();
+      if (clients.isNotEmpty) {
+        _clientsCache = clients;
+        await MetadataCacheService.saveStringList(MetadataCacheService.keyClients, clients);
+      }
+    } catch (_) {}
+    return _clientsCache ?? const [];
   }
 
   Future<List<String>> loadWorkTypes() async {
-    if (_workTypesCache != null) return _workTypesCache!;
-    final snapshot = await _firestore.collection('WorkType').get();
-    _workTypesCache = snapshot.docs
-        .map((doc) => doc.data()['workType']?.toString() ?? '')
-        .where((value) => value.isNotEmpty)
-        .toList();
-    return _workTypesCache!;
+    if (_workTypesCache != null && _workTypesCache!.isNotEmpty) return _workTypesCache!;
+    final local = await MetadataCacheService.loadStringList(MetadataCacheService.keyWorkTypes);
+    if (local != null && local.isNotEmpty) {
+      _workTypesCache = local;
+    }
+    try {
+      final snapshot = await _firestore.collection('WorkType').get();
+      final workTypes = TaskConstants.orderWorkTypes(
+        snapshot.docs
+            .map((doc) => doc.data()['workType']?.toString() ?? '')
+            .where((value) => value.isNotEmpty),
+      );
+      if (workTypes.isNotEmpty) {
+        _workTypesCache = workTypes;
+        await MetadataCacheService.saveStringList(MetadataCacheService.keyWorkTypes, workTypes);
+      }
+    } catch (_) {}
+    return _workTypesCache ?? const [];
   }
 
   Future<List<String>> loadProjects() async {
-    if (_projectsCache != null) return _projectsCache!;
-    final snapshot = await _firestore.collection('projects').get();
-    _projectsCache = snapshot.docs
-        .map((doc) => doc.data()['projectName']?.toString() ?? '')
-        .where((value) => value.isNotEmpty)
-        .toList();
-    return _projectsCache!;
+    if (_projectsCache != null && _projectsCache!.isNotEmpty) return _projectsCache!;
+    final local = await MetadataCacheService.loadStringList(MetadataCacheService.keyProjects);
+    if (local != null && local.isNotEmpty) {
+      _projectsCache = local;
+    }
+    try {
+      final snapshot = await _firestore.collection('projects').get();
+      final projects = snapshot.docs
+          .map((doc) => doc.data()['projectName']?.toString() ?? '')
+          .where((value) => value.isNotEmpty)
+          .toList();
+      if (projects.isNotEmpty) {
+        _projectsCache = projects;
+        await MetadataCacheService.saveStringList(MetadataCacheService.keyProjects, projects);
+      }
+    } catch (_) {}
+    return _projectsCache ?? const [];
   }
 
   Future<List<String>> loadAssignees() async {
-    if (_assigneesCache != null) return _assigneesCache!;
-    final snapshots = await Future.wait([
-      _firestore.collection('users').get(),
-      _firestore.collection('cps').get(),
-    ]);
-    final valuesByName = <String, String>{};
+    if (_assigneesCache != null && _assigneesCache!.isNotEmpty) return _assigneesCache!;
+    final local = await MetadataCacheService.loadStringList(MetadataCacheService.keyAssignees);
+    if (local != null && local.isNotEmpty) {
+      _assigneesCache = local;
+    }
+    try {
+      final snapshots = await Future.wait([
+        _firestore.collection('users').get(),
+        _firestore.collection('cps').get(),
+      ]);
+      final valuesByName = <String, String>{};
 
-    void addName(Object? value) {
-      final name = value?.toString().trim() ?? '';
-      if (name.isNotEmpty) {
-        valuesByName.putIfAbsent(name.toLowerCase(), () => name);
+      void addName(Object? value) {
+        final name = value?.toString().trim() ?? '';
+        if (name.isNotEmpty) {
+          valuesByName.putIfAbsent(name.toLowerCase(), () => name);
+        }
       }
-    }
 
-    for (final doc in snapshots[0].docs) {
-      final data = doc.data();
-      addName(data['name'] ?? data['fullName'] ?? data['email']);
-    }
-    for (final doc in snapshots[1].docs) {
-      final data = doc.data();
-      addName(
-        data['cpName'] ?? data['name'] ?? data['fullName'] ?? data['email'],
-      );
-    }
+      for (final doc in snapshots[0].docs) {
+        final data = doc.data();
+        addName(data['name'] ?? data['fullName'] ?? data['email']);
+      }
+      for (final doc in snapshots[1].docs) {
+        final data = doc.data();
+        addName(
+          data['cpName'] ?? data['name'] ?? data['fullName'] ?? data['email'],
+        );
+      }
 
-    _assigneesCache = valuesByName.values.toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    return _assigneesCache!;
+      final assignees = valuesByName.values.toList()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      if (assignees.isNotEmpty) {
+        _assigneesCache = assignees;
+        await MetadataCacheService.saveStringList(MetadataCacheService.keyAssignees, assignees);
+      }
+    } catch (_) {}
+    return _assigneesCache ?? const [];
   }
 
   Map<String, dynamic> _taskData(Task task) {

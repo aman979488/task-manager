@@ -9,6 +9,21 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test('work types use the preferred order and keep custom types after it', () {
+    expect(
+      TaskConstants.orderWorkTypes([
+        'Timepass',
+        'Custom',
+        'Call',
+        'Work',
+        'Message',
+        'Msg',
+        'Travel',
+      ]),
+      ['Work', 'Call', 'Msg', 'Message', 'Travel', 'Timepass', 'Custom'],
+    );
+  });
+
   testWidgets(
     'single-select dropdown restores, replaces and clears selection',
     (tester) async {

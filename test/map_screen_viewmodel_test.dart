@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:task_manager/utils/role_permissions.dart';
 import 'package:task_manager/viewmodels/auth_viewmodel.dart';
@@ -122,6 +123,41 @@ void main() {
   );
 
   test(
+    'undoing a task records the user and makes it visible in My Work',
+    () async {
+      final repository = _TaskRepositoryStub();
+      final viewModel = MapScreenViewModel(
+        repository: repository,
+        assignmentNotificationService: _AssignmentNotificationServiceStub(),
+      );
+      final task = Task(
+        'Someone else task',
+        id: 'task-1',
+        isDone: true,
+        assignee: 'Someone else',
+      );
+
+      final undo = viewModel.toggleTaskDone(task, actorUid: 'user-1');
+      expect(task.isDone, isFalse);
+      expect(task.lastUndoneByUid, 'user-1');
+      expect(
+        MapScreenViewModel.myTasksForUser(
+          [task],
+          userUid: 'user-1',
+          userEmail: 'user@example.com',
+          userName: 'Me',
+        ),
+        contains(task),
+      );
+      expect(Task.fromMap('task-1', task.toMap()).lastUndoneByUid, 'user-1');
+
+      repository.updateCompleter.complete();
+      await undo;
+      viewModel.dispose();
+    },
+  );
+
+  test(
     'changing a task priority updates it before persistence finishes',
     () async {
       final repository = _TaskRepositoryStub();
@@ -135,6 +171,7 @@ void main() {
         deadline: DateTime.now()
             .subtract(const Duration(days: 1))
             .toIso8601String(),
+        createdBy: {'uid': 'user-1'},
       );
       repository.tasksToFetch = [task];
       await viewModel.refreshTasks(_AuthViewModelStub());
@@ -150,9 +187,9 @@ void main() {
       expect(task.priority, 'IMP');
       expect(task.priorityUpdatedAt, isNotNull);
       expect(task.priorityUpdatedByUid, 'user-1');
-      expect(task.overdueAcknowledgedAt, task.priorityUpdatedAt);
-      expect(viewModel.overdueTasks(), isEmpty);
-      expect(viewModel.myWorkSections([task])['IMP Works'], [task]);
+      expect(task.overdueAcknowledgedAt, isNull);
+      expect(viewModel.overdueTasks(), [task]);
+      expect(viewModel.myWorkSections([task])['Overdue Works'], [task]);
       expect(notified, isTrue);
 
       repository.updateCompleter.complete();
@@ -225,7 +262,7 @@ void main() {
     },
   );
 
-  test('reprioritized overdue tasks leave Overdue for every priority', () {
+  test('reprioritized overdue tasks remain Overdue for every priority', () {
     final acknowledgedAt = DateTime.now().millisecondsSinceEpoch;
     for (final priority in TaskConstants.priorityOptions) {
       final task = Task(
@@ -237,9 +274,9 @@ void main() {
         overdueAcknowledgedAt: acknowledgedAt,
       );
 
-      expect(MapScreenViewModel.isTaskOverdue(task), isFalse, reason: priority);
+      expect(MapScreenViewModel.isTaskOverdue(task), isTrue, reason: priority);
       final sections = MapScreenViewModel.sectionsForWork([task]);
-      expect(sections['Overdue Works'], isEmpty, reason: priority);
+      expect(sections['Overdue Works'], [task], reason: priority);
       expect(
         sections.values.expand((tasks) => tasks),
         contains(task),
@@ -247,6 +284,126 @@ void main() {
       );
     }
   });
+
+  test('Today task with a passed time moves to Overdue when unfinished', () {
+    final dueTime = DateTime.now().subtract(const Duration(minutes: 2));
+    final hour = dueTime.hour % 12 == 0 ? 12 : dueTime.hour % 12;
+    final endTime =
+        '${hour.toString().padLeft(2, '0')}:'
+        '${dueTime.minute.toString().padLeft(2, '0')} '
+        '${dueTime.hour >= 12 ? 'PM' : 'AM'}';
+    final task = Task(
+      'Hello',
+      priority: 'Today',
+      endTime: endTime,
+      priorityUpdatedAt: DateTime.now().millisecondsSinceEpoch,
+      overdueAcknowledgedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+
+    expect(MapScreenViewModel.isTaskOverdue(task), isTrue);
+    final sections = MapScreenViewModel.sectionsForWork([task]);
+    expect(sections['Overdue Works'], [task]);
+    expect(sections['Today Works'], isEmpty);
+  });
+
+  testWidgets('overdue status refreshes locally each minute', (tester) async {
+    final viewModel = MapScreenViewModel(
+      repository: _TaskRepositoryStub(),
+      assignmentNotificationService: _AssignmentNotificationServiceStub(),
+    );
+    var notified = false;
+    viewModel.addListener(() => notified = true);
+    viewModel.listenForTasks(_AuthViewModelStub());
+    notified = false;
+
+    await tester.pump(const Duration(minutes: 1));
+
+    expect(notified, isTrue);
+    viewModel.dispose();
+  });
+
+  test('newly overdue tasks appear above older overdue tasks', () async {
+    final now = DateTime.now();
+    final oldest = Task(
+      'Oldest due',
+      priority: 'U1',
+      deadline: now.subtract(const Duration(hours: 4)).toIso8601String(),
+      createdBy: {'uid': 'user-1'},
+    );
+    final middle = Task(
+      'Middle due',
+      deadline: now.subtract(const Duration(hours: 2)).toIso8601String(),
+      createdBy: {'uid': 'user-1'},
+    );
+    final newest = Task(
+      'Newest due',
+      priority: 'Today',
+      deadline: now.subtract(const Duration(hours: 1)).toIso8601String(),
+      createdBy: {'uid': 'user-1'},
+    );
+    final repository = _TaskRepositoryStub()
+      ..tasksToFetch = [newest, oldest, middle];
+    final viewModel = MapScreenViewModel(
+      repository: repository,
+      assignmentNotificationService: _AssignmentNotificationServiceStub(),
+    );
+    await viewModel.refreshTasks(_AuthViewModelStub());
+    viewModel.setSortBy('Title');
+
+    expect(viewModel.overdueTasks(), [newest, middle, oldest]);
+    expect(
+      viewModel.getVisibleTasks(
+        source: viewModel.overdueTasks(),
+        sortBy: 'Overdue',
+      ),
+      [newest, middle, oldest],
+    );
+    viewModel.dispose();
+  });
+
+  test(
+    'map overdue tasks read Firestore deadline and reminder timestamps',
+    () async {
+      final pastDate = DateTime.now().subtract(const Duration(days: 1));
+      final deadlineTask = Task.fromMap('deadline-task', {
+        'title': 'Past deadline',
+        'deadline': 'not-a-date',
+        'deadlineAt': Timestamp.fromDate(pastDate),
+        'createdBy': {'uid': 'user-1'},
+      });
+      final reminderTask = Task.fromMap('reminder-task', {
+        'title': 'Past reminder',
+        'reminderAt': Timestamp.fromDate(pastDate),
+        'createdBy': {'uid': 'user-1'},
+      });
+      final reminderFallbackTask = Task(
+        'Past reminder with invalid deadline',
+        deadline: 'not-a-date',
+        reminder: pastDate.toIso8601String(),
+        createdBy: {'uid': 'user-1'},
+      );
+      final repository = _TaskRepositoryStub()
+        ..tasksToFetch = [deadlineTask, reminderTask, reminderFallbackTask];
+      final viewModel = MapScreenViewModel(
+        repository: repository,
+        assignmentNotificationService: _AssignmentNotificationServiceStub(),
+      );
+
+      await viewModel.refreshTasks(_AuthViewModelStub());
+
+      expect(deadlineTask.deadline, isNotNull);
+      expect(reminderTask.reminder, isNotNull);
+      expect(
+        viewModel.overdueTasks().map((task) => task.title),
+        containsAll([
+          'Past deadline',
+          'Past reminder',
+          'Past reminder with invalid deadline',
+        ]),
+      );
+      viewModel.dispose();
+    },
+  );
 
   test('My Day includes today-priority and overdue scheduled tasks', () {
     final todayByPriority = Task('Today priority', priority: ' TODAY ');
@@ -451,7 +608,7 @@ void main() {
     expect(assignerSections['Monitor Works'], isNull);
     expect(assignerSections['Free Works'], isEmpty);
     expect(assignerSections['IMP Works'], [task]);
-    expect(assigneeSections['Monitor Works'], isEmpty);
+    expect(assigneeSections['Monitor Works'], isNull);
     expect(assigneeSections['IMP Works'], [task]);
     viewModel.dispose();
   });
@@ -520,6 +677,52 @@ void main() {
       ),
       [reprioritizedByMe],
     );
+  });
+
+  test('My Work includes tasks undone by the current user only', () {
+    final undoneByMe = Task(
+      'Undone by me',
+      isDone: false,
+      lastUndoneByUid: 'user-1',
+    );
+    final undoneBySomeoneElse = Task(
+      'Undone by someone else',
+      isDone: false,
+      lastUndoneByUid: 'user-2',
+    );
+
+    expect(
+      MapScreenViewModel.myTasksForUser(
+        [undoneByMe, undoneBySomeoneElse],
+        userUid: 'user-1',
+        userEmail: 'user@example.com',
+        userName: 'Me',
+      ),
+      [undoneByMe],
+    );
+  });
+
+  test('refresh keeps a task undone by me visible in My Work', () async {
+    final task = Task(
+      'Undone task',
+      isDone: false,
+      priority: 'U1',
+      assignee: 'Someone else',
+      lastUndoneByUid: 'user-1',
+    );
+    final repository = _TaskRepositoryStub()..tasksToFetch = [task];
+    final viewModel = MapScreenViewModel(
+      repository: repository,
+      assignmentNotificationService: _AssignmentNotificationServiceStub(),
+    );
+    final authViewModel = _AuthViewModelStub();
+
+    await viewModel.refreshTasks(authViewModel);
+
+    final myTasks = viewModel.myTasks(authViewModel);
+    expect(myTasks, contains(task));
+    expect(viewModel.myWorkSections(myTasks)['Urgent Works'], [task]);
+    viewModel.dispose();
   });
 
   test('Done tasks are ordered by most recently completed', () {
@@ -765,9 +968,9 @@ void main() {
       'Hold Works',
       'Free Works',
     ]);
-    expect(sections['Overdue Works'], [overdueImp]);
+    expect(sections['Overdue Works'], [unprioritizedOverdue, overdueImp]);
     expect(sections['IMP Works'], [imp]);
-    expect(sections['Free Works'], [unprioritizedOverdue]);
+    expect(sections['Free Works'], isEmpty);
   });
 
   test(
@@ -787,19 +990,19 @@ void main() {
 
       overdue.priority = 'Monitor';
       sections = MapScreenViewModel.sectionsForWork([overdue]);
-      expect(sections['Overdue Works'], isEmpty);
+      expect(sections['Overdue Works'], [overdue]);
       expect(sections['Monitor Works'], isNull);
-      expect(sections['Free Works'], [overdue]);
+      expect(sections['Free Works'], isEmpty);
 
       overdue.priority = 'Free';
       sections = MapScreenViewModel.sectionsForWork([overdue]);
-      expect(sections['Overdue Works'], isEmpty);
-      expect(sections['Free Works'], [overdue]);
+      expect(sections['Overdue Works'], [overdue]);
+      expect(sections['Free Works'], isEmpty);
 
       overdue.priority = 'Today';
       sections = MapScreenViewModel.sectionsForWork([overdue]);
-      expect(sections['Overdue Works'], isEmpty);
-      expect(sections['Today Works'], [overdue]);
+      expect(sections['Overdue Works'], [overdue]);
+      expect(sections['Today Works'], isEmpty);
     },
   );
 }

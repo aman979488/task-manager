@@ -100,6 +100,32 @@ void main() {
     expect(openedTask, same(task));
   });
 
+  testWidgets('Done Work check button invokes undo callback', (tester) async {
+    final task = Task('Finished report', isDone: true);
+    Task? undoneTask;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DoneTasksView(
+            tasks: [task],
+            viewType: 'Detailed list',
+            calendarBuilder: (_) => const SizedBox.shrink(),
+            refreshable: (child) => child,
+            onMarkUndone: (undone) async => undoneTask = undone,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('Mark as undone'));
+    await tester.pump();
+    await tester.tap(find.text('Mark as undone').last);
+    await tester.pumpAndSettle();
+
+    expect(undoneTask, same(task));
+  });
+
   testWidgets('groups completed tasks by completion date', (tester) async {
     final firstTask = Task(
       'First task',

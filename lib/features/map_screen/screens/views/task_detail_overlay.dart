@@ -146,7 +146,7 @@ class TaskDetailOverlay {
           }
           return assignees.map((v) => ListTile(title: Text(v))).toList();
         case 'workType':
-          return (workTypes ?? [])
+          return TaskConstants.orderWorkTypes(workTypes ?? [])
               .map((v) => ListTile(title: Text(v)))
               .toList();
         case 'clientName':

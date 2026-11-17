@@ -37,20 +37,106 @@ class TaskFilterHelpers {
     }
 
     final assignee = (task.assignee ?? '').trim().toLowerCase();
-    return assignee.isNotEmpty &&
-        ((myName.isNotEmpty && assignee.contains(myName)) ||
-            (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
-            (myUid.isNotEmpty && assignee.contains(myUid)));
+    final lastUndoneByUid = (task.lastUndoneByUid ?? '').trim().toLowerCase();
+    return (myUid.isNotEmpty && lastUndoneByUid == myUid) ||
+        (assignee.isNotEmpty &&
+            ((myName.isNotEmpty && assignee.contains(myName)) ||
+                (myEmail.isNotEmpty && assignee.contains(myEmail)) ||
+                (myUid.isNotEmpty && assignee.contains(myUid))));
   }
 
   static bool isTaskOverdue(Task task, {DateTime? now}) {
     if (task.isDone) return false;
-    final date = DateTime.tryParse(task.deadline ?? task.reminder ?? '');
     final currentTime = now ?? DateTime.now();
+    final date = scheduledDateTime(task, now: currentTime);
     if (date == null || !date.isBefore(currentTime)) return false;
-    final acknowledgedAt = task.overdueAcknowledgedAt;
-    return acknowledgedAt == null ||
-        acknowledgedAt < date.millisecondsSinceEpoch;
+    return true;
+  }
+
+  static DateTime? scheduledDateTime(Task task, {DateTime? now}) {
+    final currentTime = now ?? DateTime.now();
+    final deadline = DateTime.tryParse(task.deadline ?? '');
+    final reminder = DateTime.tryParse(task.reminder ?? '');
+    final manualTime =
+        _minutesOfDay(task.endTime) ?? _minutesOfDay(task.startTime);
+    final scheduledDate = deadline ?? reminder;
+    return _scheduledDateTime(
+      task,
+      deadline: deadline,
+      scheduledDate: scheduledDate,
+      manualTime: manualTime,
+      now: currentTime,
+    );
+  }
+
+  static DateTime? _scheduledDateTime(
+    Task task, {
+    required DateTime? deadline,
+    required DateTime? scheduledDate,
+    required int? manualTime,
+    required DateTime now,
+  }) {
+    if (scheduledDate == null) {
+      return _dateForPriorityTime(task, manualTime, now);
+    }
+    if (manualTime == null ||
+        (deadline != null && (deadline.hour != 0 || deadline.minute != 0))) {
+      return scheduledDate;
+    }
+    return DateTime(
+      scheduledDate.year,
+      scheduledDate.month,
+      scheduledDate.day,
+      manualTime ~/ 60,
+      manualTime % 60,
+    );
+  }
+
+  static DateTime? _dateForPriorityTime(
+    Task task,
+    int? manualTime,
+    DateTime now,
+  ) {
+    if (manualTime == null) return null;
+    final offset = switch (task.priority?.trim().toLowerCase()) {
+      'today' => 0,
+      'tomorrow' => 1,
+      'day later' => 2,
+      'later' => 3,
+      _ => task.isInMyDay ? 0 : null,
+    };
+    if (offset == null) return null;
+    final baseDate = task.priorityUpdatedAt == null
+        ? now
+        : DateTime.fromMillisecondsSinceEpoch(task.priorityUpdatedAt!);
+    final date = DateTime(baseDate.year, baseDate.month, baseDate.day + offset);
+    return DateTime(
+      date.year,
+      date.month,
+      date.day,
+      manualTime ~/ 60,
+      manualTime % 60,
+    );
+  }
+
+  static int? _minutesOfDay(String? value) {
+    final match = RegExp(
+      r'^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$',
+      caseSensitive: false,
+    ).firstMatch(value?.trim() ?? '');
+    if (match == null) return null;
+    var hour = int.parse(match.group(1)!);
+    final minute = int.parse(match.group(2)!);
+    final meridiem = match.group(3)?.toUpperCase();
+    if (minute > 59) return null;
+    if (meridiem != null) {
+      if (hour < 1 || hour > 12) return null;
+      hour %= 12;
+      if (meridiem == 'PM') hour += 12;
+    } else if (hour > 23) {
+      return null;
+    }
+    return hour * 60 + minute;
   }
 
   static List<Task> myDayTasks(List<Task> source, {DateTime? now}) {
@@ -156,10 +242,13 @@ class TaskFilterHelpers {
           .toLowerCase();
       final isPriorityUpdatedByMe =
           myUid.isNotEmpty && priorityUpdatedByUid == myUid;
+      final lastUndoneByUid = (task.lastUndoneByUid ?? '').trim().toLowerCase();
+      final isUndoneByMe = myUid.isNotEmpty && lastUndoneByUid == myUid;
       return isCreator ||
           isAssignedToMe ||
           isMonitoredByMe ||
-          isPriorityUpdatedByMe;
+          isPriorityUpdatedByMe ||
+          isUndoneByMe;
     }).toList();
   }
 

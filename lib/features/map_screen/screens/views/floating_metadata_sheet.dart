@@ -108,7 +108,9 @@ class FloatingMetadataSheet {
         case FloatingSheetType.monitor:
           return assignees ?? [];
         case FloatingSheetType.workType:
-          return workTypes ?? TaskConstants.defaultWorkTypes;
+          return TaskConstants.orderWorkTypes(
+            workTypes ?? TaskConstants.defaultWorkTypes,
+          );
         case FloatingSheetType.folder:
           return folders ?? TaskConstants.folderOptions;
         case FloatingSheetType.clientName:
@@ -124,11 +126,15 @@ class FloatingMetadataSheet {
       }
     }
 
-    final rankedOptions = await FrequentOptionUsage.orderOptions(
+    final options = optionsForType();
+    final usageRankedOptions = await FrequentOptionUsage.orderOptions(
       type.name,
-      optionsForType(),
+      options,
       selectedValues: initiallySelectedValues,
     );
+    final rankedOptions = type == FloatingSheetType.workType
+        ? TaskConstants.orderWorkTypes(usageRankedOptions)
+        : usageRankedOptions;
     if (!buttonContext.mounted || !context.mounted) return;
     if (shouldShow != null && !shouldShow()) return;
 

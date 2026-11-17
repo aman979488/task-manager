@@ -66,6 +66,11 @@ class MapScreenToolbarMenu {
           value: 'sort',
         ),
         _PrintActions._menuItem(
+          icon: Icons.history,
+          title: 'Call History',
+          value: 'call_history',
+        ),
+        _PrintActions._menuItem(
           icon: Icons.group_work_outlined,
           title: 'Group by',
           subtitle: viewModel.groupBy,
@@ -134,6 +139,9 @@ class MapScreenToolbarMenu {
             }
           },
         );
+        break;
+      case 'call_history':
+        await context.push<void>(AppRoutes.callHistory);
         break;
       case 'view':
         final isMyDay = tabController.index == 0;

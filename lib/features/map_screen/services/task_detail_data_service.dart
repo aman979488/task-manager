@@ -1,5 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../utils/task_constants.dart';
+import 'metadata_cache_service.dart';
+
 class TaskDetailDataService {
   List<String>? _workTypesCache;
   List<String>? _assigneesCache;
@@ -8,83 +11,127 @@ class TaskDetailDataService {
   List<String>? _projectsCache;
 
   Future<List<String>> loadWorkTypes() async {
-    if (_workTypesCache != null) return _workTypesCache!;
-    final snap = await FirebaseFirestore.instance.collection('WorkType').get();
-    final values = snap.docs
-        .map((d) => (d.data()['workType'] ?? '').toString())
-        .where((e) => e.isNotEmpty)
-        .toList();
-    _workTypesCache = values;
-    return values;
+    if (_workTypesCache != null && _workTypesCache!.isNotEmpty) return _workTypesCache!;
+    final local = await MetadataCacheService.loadStringList(MetadataCacheService.keyWorkTypes);
+    if (local != null && local.isNotEmpty) {
+      _workTypesCache = local;
+    }
+    try {
+      final snap = await FirebaseFirestore.instance.collection('WorkType').get();
+      final values = TaskConstants.orderWorkTypes(
+        snap.docs
+            .map((d) => (d.data()['workType'] ?? '').toString())
+            .where((e) => e.isNotEmpty),
+      );
+      if (values.isNotEmpty) {
+        _workTypesCache = values;
+        await MetadataCacheService.saveStringList(MetadataCacheService.keyWorkTypes, values);
+      }
+    } catch (_) {}
+    return _workTypesCache ?? const [];
   }
 
   Future<List<String>> loadAssignees() async {
-    if (_assigneesCache != null) return _assigneesCache!;
-    final snapshots = await Future.wait([
-      FirebaseFirestore.instance.collection('users').get(),
-      FirebaseFirestore.instance.collection('cps').get(),
-    ]);
-    final valuesByName = <String, String>{};
+    if (_assigneesCache != null && _assigneesCache!.isNotEmpty) return _assigneesCache!;
+    final local = await MetadataCacheService.loadStringList(MetadataCacheService.keyAssignees);
+    if (local != null && local.isNotEmpty) {
+      _assigneesCache = local;
+    }
+    try {
+      final snapshots = await Future.wait([
+        FirebaseFirestore.instance.collection('users').get(),
+        FirebaseFirestore.instance.collection('cps').get(),
+      ]);
+      final valuesByName = <String, String>{};
 
-    void addName(Object? value) {
-      final name = value?.toString().trim() ?? '';
-      if (name.isNotEmpty) {
-        valuesByName.putIfAbsent(name.toLowerCase(), () => name);
+      void addName(Object? value) {
+        final name = value?.toString().trim() ?? '';
+        if (name.isNotEmpty) {
+          valuesByName.putIfAbsent(name.toLowerCase(), () => name);
+        }
       }
-    }
 
-    for (final doc in snapshots[0].docs) {
-      final data = doc.data();
-      addName(data['name'] ?? data['fullName'] ?? data['email'] ?? doc.id);
-    }
-    for (final doc in snapshots[1].docs) {
-      final data = doc.data();
-      addName(
-        data['cpName'] ??
-            data['name'] ??
-            data['fullName'] ??
-            data['email'] ??
-            doc.id,
-      );
-    }
+      for (final doc in snapshots[0].docs) {
+        final data = doc.data();
+        addName(data['name'] ?? data['fullName'] ?? data['email'] ?? doc.id);
+      }
+      for (final doc in snapshots[1].docs) {
+        final data = doc.data();
+        addName(
+          data['cpName'] ??
+              data['name'] ??
+              data['fullName'] ??
+              data['email'] ??
+              doc.id,
+        );
+      }
 
-    final values = valuesByName.values.toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    _assigneesCache = values;
-    return values;
+      final values = valuesByName.values.toList()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      if (values.isNotEmpty) {
+        _assigneesCache = values;
+        await MetadataCacheService.saveStringList(MetadataCacheService.keyAssignees, values);
+      }
+    } catch (_) {}
+    return _assigneesCache ?? const [];
   }
 
   Future<List<String>> loadClients() async {
-    if (_clientsCache != null) return _clientsCache!;
-    final snap = await FirebaseFirestore.instance.collection('leads').get();
-    final values = snap.docs
-        .map((d) {
-          final data = d.data();
-          final name = data['name']?.toString().trim() ?? '';
-          final surname = data['surname']?.toString().trim() ?? '';
-          return surname.isNotEmpty ? '$name $surname' : name;
-        })
-        .where((e) => e.isNotEmpty)
-        .toList();
-    _clientsCache = values;
-    return values;
+    if (_clientsCache != null && _clientsCache!.isNotEmpty) return _clientsCache!;
+    final local = await MetadataCacheService.loadStringList(MetadataCacheService.keyClients);
+    if (local != null && local.isNotEmpty) {
+      _clientsCache = local;
+    }
+    try {
+      final snap = await FirebaseFirestore.instance.collection('leads').get();
+      final values = snap.docs
+          .map((d) {
+            final data = d.data();
+            final name = data['name']?.toString().trim() ?? '';
+            final surname = data['surname']?.toString().trim() ?? '';
+            return surname.isNotEmpty ? '$name $surname' : name;
+          })
+          .where((e) => e.isNotEmpty)
+          .toList();
+      if (values.isNotEmpty) {
+        _clientsCache = values;
+        await MetadataCacheService.saveStringList(MetadataCacheService.keyClients, values);
+      }
+    } catch (_) {}
+    return _clientsCache ?? const [];
   }
 
   Future<List<String>> loadFolders() async {
-    if (_foldersCache != null) return _foldersCache!;
+    if (_foldersCache != null && _foldersCache!.isNotEmpty) return _foldersCache!;
+    final local = await MetadataCacheService.loadStringList(MetadataCacheService.keyFolders);
+    if (local != null && local.isNotEmpty) {
+      _foldersCache = local;
+      return _foldersCache!;
+    }
     _foldersCache = ['Personal', 'Office', 'Freelance'];
+    await MetadataCacheService.saveStringList(MetadataCacheService.keyFolders, _foldersCache!);
     return _foldersCache!;
   }
 
   Future<List<String>> loadProjects() async {
-    if (_projectsCache != null) return _projectsCache!;
-    final snap =
-        await FirebaseFirestore.instance.collection('projects').get();
-    _projectsCache = snap.docs
-        .map((d) => d['projectName']?.toString() ?? '')
-        .where((e) => e.isNotEmpty)
-        .toList();
-    return _projectsCache!;
+    if (_projectsCache != null && _projectsCache!.isNotEmpty) return _projectsCache!;
+    final local = await MetadataCacheService.loadStringList(MetadataCacheService.keyProjects);
+    if (local != null && local.isNotEmpty) {
+      _projectsCache = local;
+    }
+    try {
+      final snap =
+          await FirebaseFirestore.instance.collection('projects').get();
+      final values = snap.docs
+          .map((d) => d['projectName']?.toString() ?? '')
+          .where((e) => e.isNotEmpty)
+          .toList();
+      if (values.isNotEmpty) {
+        _projectsCache = values;
+        await MetadataCacheService.saveStringList(MetadataCacheService.keyProjects, values);
+      }
+    } catch (_) {}
+    return _projectsCache ?? const [];
   }
 
   String? metadataCreatorName(Map<String, dynamic>? createdBy) {
