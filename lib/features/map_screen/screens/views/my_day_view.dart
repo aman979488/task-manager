@@ -1,8 +1,7 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
+import 'task_suggestions_sheet.dart';
 
 class MyDayView extends StatefulWidget {
   const MyDayView({
@@ -35,37 +34,8 @@ class MyDayView extends StatefulWidget {
 }
 
 class _MyDayViewState extends State<MyDayView> {
-  final Set<String> _addedInSuggestionsSheet = {};
-
   String _taskKey(Task task) =>
       task.id ?? '${task.title}\u0000${task.createdDate}';
-
-  String _dateLabel(DateTime date) {
-    const weekdays = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${weekdays[date.weekday - 1]} ${date.day} ${months[date.month - 1]}';
-  }
 
   List<Task> get _dayTasks => widget.tasks;
 
@@ -380,180 +350,19 @@ class _MyDayViewState extends State<MyDayView> {
         .toList();
   }
 
-  DateTime? _createdAt(Task task) {
-    final parts = task.createdDate.split(' • ');
-    if (parts.isEmpty) return null;
-    final dateParts = parts.first.split('/');
-    if (dateParts.length != 3) return null;
-    final day = int.tryParse(dateParts[0]);
-    final month = int.tryParse(dateParts[1]);
-    final year = int.tryParse(dateParts[2]);
-    if (day == null || month == null || year == null) return null;
-    return DateTime(year, month, day);
-  }
-
-  Map<String, List<Task>> _suggestionGroups(List<Task> suggestions) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final recentCutoff = today.subtract(const Duration(days: 6));
-    final datedGroups = <DateTime, List<Task>>{};
-    final earlier = <Task>[];
-    final recent = <Task>[];
-
-    for (final task in suggestions) {
-      final createdAt = _createdAt(task);
-      if (createdAt == null || !createdAt.isBefore(today)) {
-        recent.add(task);
-      } else if (!createdAt.isBefore(recentCutoff)) {
-        final date = DateTime(createdAt.year, createdAt.month, createdAt.day);
-        datedGroups.putIfAbsent(date, () => []).add(task);
-      } else {
-        earlier.add(task);
-      }
-    }
-
-    final groups = <String, List<Task>>{
-      for (final date
-          in datedGroups.keys.toList()..sort((a, b) => b.compareTo(a)))
-        'From ${_dateLabel(date)}': datedGroups[date]!,
-      if (earlier.isNotEmpty) 'From earlier': earlier,
-      if (recent.isNotEmpty) 'Recently added': recent,
-    };
-    return groups;
-  }
-
-  Future<void> _showSuggestions(List<Task> suggestions) {
-    _addedInSuggestionsSheet.clear();
-    return showModalBottomSheet<void>(
+  Future<void> _showSuggestions(List<Task> suggestions) =>
+      TaskSuggestionsSheet.show(
       context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => DraggableScrollableSheet(
-        initialChildSize: 0.48,
-        minChildSize: 0.38,
-        maxChildSize: 0.94,
-        snap: true,
-        snapSizes: const [0.48, 0.94],
-        expand: false,
-        builder: (context, scrollController) {
-          final groups = _suggestionGroups(suggestions);
-          return Material(
-            color: Colors.white,
-            clipBehavior: Clip.antiAlias,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-            child: StatefulBuilder(
-              builder: (context, setSheetState) => CustomScrollView(
-                controller: scrollController,
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 9),
-                        Container(
-                          width: 38,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade400,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 8, 16, 8),
-                          child: Row(
-                            children: [
-                              IconButton(
-                                tooltip: 'Close suggestions',
-                                onPressed: () =>
-                                    Navigator.of(sheetContext).pop(),
-                                icon: const Icon(Icons.close),
-                              ),
-                              const Expanded(
-                                child: Text(
-                                  'Suggestions',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                '${suggestions.length - _addedInSuggestionsSheet.length}',
-                                style: TextStyle(color: Colors.grey.shade600),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Divider(height: 1),
-                      ],
-                    ),
-                  ),
-                  if (groups.isEmpty)
-                    const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(child: Text('No suggestions available.')),
-                    )
-                  else
-                    for (final entry in groups.entries.where(
-                      (entry) => entry.value.any(
-                        (task) =>
-                            !_addedInSuggestionsSheet.contains(_taskKey(task)),
-                      ),
-                    )) ...[
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 16, 16, 4),
-                          child: Text(
-                            entry.key,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                      SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final visibleTasks = entry.value
-                                .where(
-                                  (task) => !_addedInSuggestionsSheet.contains(
-                                    _taskKey(task),
-                                  ),
-                                )
-                                .toList();
-                            final task = visibleTasks[index];
-                            final key = _taskKey(task);
-                            return widget.suggestionBuilder(task, () {
-                              unawaited(widget.onAddToMyDay(task));
-                              setSheetState(
-                                () => _addedInSuggestionsSheet.add(key),
-                              );
-                            });
-                          },
-                          childCount: entry.value
-                              .where(
-                                (task) => !_addedInSuggestionsSheet.contains(
-                                  _taskKey(task),
-                                ),
-                              )
-                              .length,
-                        ),
-                      ),
-                    ],
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: MediaQuery.paddingOf(context).bottom + 24,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+      suggestions: suggestions,
+      suggestionBuilder: widget.suggestionBuilder,
+      onAddTask: widget.onAddToMyDay,
+      onError: (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not add task to My Day: $error')),
+        );
+      },
     );
-  }
 
   @override
   Widget build(BuildContext context) {

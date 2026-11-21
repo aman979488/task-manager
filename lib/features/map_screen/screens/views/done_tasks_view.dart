@@ -1,9 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
 import '../../utils/task_priority_color.dart';
+import 'daily_report_sheet.dart';
 
-class DoneTasksView extends StatelessWidget {
+typedef _GroupedDoneDate = ({
+  DateTime? date,
+  List<Task> tasks,
+  double totalHours,
+  double totalScore,
+});
+
+class DoneTasksView extends StatefulWidget {
   const DoneTasksView({
     super.key,
     required this.tasks,
@@ -13,7 +23,6 @@ class DoneTasksView extends StatelessWidget {
     this.onEditTaskTime,
     this.onOpenTask,
     this.onMarkUndone,
-    this.onOpenReport,
   });
 
   final List<Task> tasks;
@@ -23,33 +32,46 @@ class DoneTasksView extends StatelessWidget {
   final Future<void> Function(Task task)? onEditTaskTime;
   final ValueChanged<Task>? onOpenTask;
   final Future<void> Function(Task task)? onMarkUndone;
-  final VoidCallback? onOpenReport;
 
-  Widget _reportButton({bool inDateHeader = false}) {
-    if (onOpenReport == null) return const SizedBox.shrink();
-    if (inDateHeader) {
-      return FilledButton(
-        key: const ValueKey('done-work-daily-report'),
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(0, 32),
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          visualDensity: VisualDensity.compact,
-        ),
-        onPressed: onOpenReport,
-        child: const Text('Daily Report', style: TextStyle(fontSize: 11)),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: FilledButton(
-          key: const ValueKey('done-work-daily-report'),
-          onPressed: onOpenReport,
-          child: const Text('Daily Report'),
-        ),
-      ),
-    );
+  @override
+  State<DoneTasksView> createState() => _DoneTasksViewState();
+}
+
+class _DoneTasksViewState extends State<DoneTasksView>
+    with AutomaticKeepAliveClientMixin<DoneTasksView> {
+  final Set<String> _expandedDates = {};
+    Timer? _blankTapTimer;
+    int _blankTapCount = 0;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  String _dateKey(DateTime? date) => date?.toIso8601String() ?? 'unknown';
+
+  @override
+  void dispose() {
+    _blankTapTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleBlankTap(List<String> dateKeys) {
+    _blankTapCount++;
+    _blankTapTimer?.cancel();
+    _blankTapTimer = Timer(const Duration(milliseconds: 350), () {
+      final tapCount = _blankTapCount;
+      _blankTapCount = 0;
+      if (!mounted || dateKeys.isEmpty || tapCount < 2) return;
+
+      final targetKeys = dateKeys.take(tapCount >= 3 ? 2 : 1).toList();
+      final allExpanded = targetKeys.every(_expandedDates.contains);
+      setState(() {
+        if (allExpanded) {
+          _expandedDates.removeAll(targetKeys);
+        } else {
+          _expandedDates.addAll(targetKeys);
+        }
+      });
+    });
   }
 
   DateTime? _createdDate(Task task) {
@@ -91,14 +113,16 @@ class DoneTasksView extends StatelessWidget {
     final date = _createdDate(task);
     if (date == null) return null;
     final parts = task.createdDate.split(' • ');
-    var hour = 0;
-    var minute = 0;
-    if (parts.length > 1) {
-      final time = parts[1].trim().split(':');
-      hour = int.tryParse(time.first) ?? 0;
-      minute = time.length > 1 ? int.tryParse(time[1]) ?? 0 : 0;
-    }
-    return DateTime(date.year, date.month, date.day, hour, minute);
+    final minutesSinceMidnight = parts.length > 1
+        ? _minutes(parts[1].trim()) ?? 0
+        : 0;
+    return DateTime(
+      date.year,
+      date.month,
+      date.day,
+      minutesSinceMidnight ~/ 60,
+      minutesSinceMidnight % 60,
+    );
   }
 
   DateTime? _completedDateTime(Task task) {
@@ -200,18 +224,12 @@ class DoneTasksView extends StatelessWidget {
         '${client.isEmpty ? '' : '_$client'}';
   }
 
-  String _dateHeaderLabel(DateTime date, double totalHours, double totalScore) {
-    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final weekday = weekdays[date.weekday - 1];
-    final y = date.year.toString();
-    final m = date.month.toString().padLeft(2, '0');
-    final d = date.day.toString().padLeft(2, '0');
+  String _weekday(DateTime date) =>
+      const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][date.weekday - 1];
 
-    final durStr = '${_formatDuration(totalHours)}Hr';
-    final scoStr = _formatScore(totalScore);
-
-    return '$d -$m- $y ${weekday}_Dur-${durStr}_Sco-$scoStr';
-  }
+  String _dateText(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-${date.year}';
 
   Future<void> _confirmMarkUndone(BuildContext context, Task task) async {
     final confirmed = await showDialog<bool>(
@@ -232,7 +250,7 @@ class DoneTasksView extends StatelessWidget {
       ),
     );
     if (confirmed == true && context.mounted) {
-      await onMarkUndone?.call(task);
+      await widget.onMarkUndone?.call(task);
     }
   }
 
@@ -242,7 +260,7 @@ class DoneTasksView extends StatelessWidget {
 
     return InkWell(
       key: ValueKey('done-task-${task.id ?? task.title}'),
-      onTap: onOpenTask == null ? null : () => onOpenTask!(task),
+      onTap: widget.onOpenTask == null ? null : () => widget.onOpenTask!(task),
       child: Column(
         children: [
           // Task row: check icon + title, aur right side mein priority + timer badge
@@ -258,7 +276,7 @@ class DoneTasksView extends StatelessWidget {
                     minHeight: 28,
                   ),
                   padding: EdgeInsets.zero,
-                  onPressed: onMarkUndone == null
+                  onPressed: widget.onMarkUndone == null
                       ? null
                       : () => _confirmMarkUndone(context, task),
                   icon: Icon(
@@ -319,7 +337,7 @@ class DoneTasksView extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (onEditTaskTime != null) ...[
+                if (widget.onEditTaskTime != null) ...[
                   const SizedBox(width: 6),
                   IconButton(
                     tooltip: 'Edit task time',
@@ -329,7 +347,7 @@ class DoneTasksView extends StatelessWidget {
                       minHeight: 32,
                     ),
                     padding: EdgeInsets.zero,
-                    onPressed: () => onEditTaskTime!(task),
+                    onPressed: () => widget.onEditTaskTime!(task),
                     icon: const Icon(
                       Icons.timer_outlined,
                       size: 17,
@@ -359,22 +377,17 @@ class DoneTasksView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (viewType == 'Calendar') {
-      return Column(
-        children: [
-          _reportButton(),
-          Expanded(child: calendarBuilder(tasks)),
-        ],
-      );
+    super.build(context);
+    if (widget.viewType == 'Calendar') {
+      return widget.calendarBuilder(widget.tasks);
     }
-    if (tasks.isEmpty) {
-      return refreshable(
-        ListView(
+    if (widget.tasks.isEmpty) {
+      return widget.refreshable(
+        CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            _reportButton(),
-            SizedBox(
-              height: 240,
+          slivers: const [
+            SliverFillRemaining(
+              hasScrollBody: false,
               child: Center(child: Text('No tasks found in this category.')),
             ),
           ],
@@ -383,7 +396,7 @@ class DoneTasksView extends StatelessWidget {
     }
 
     final tasksByDate = <DateTime?, List<Task>>{};
-    for (final task in tasks) {
+    for (final task in widget.tasks) {
       tasksByDate.putIfAbsent(_completionDate(task), () => []).add(task);
     }
     final entries = tasksByDate.entries.toList()
@@ -392,7 +405,7 @@ class DoneTasksView extends StatelessWidget {
         if (b.key == null) return -1;
         return b.key!.compareTo(a.key!);
       });
-    final groupedRows = entries.map((entry) {
+    final groupedRows = entries.map<_GroupedDoneDate>((entry) {
       final totalHours =
           entry.value.fold<int>(
             0,
@@ -408,58 +421,257 @@ class DoneTasksView extends StatelessWidget {
       );
     }).toList();
 
-    return refreshable(
-      ListView(
+    final allDateKeys = groupedRows.map((row) => _dateKey(row.date)).toSet();
+    Widget bottomBlankArea({Key? key, double? height}) => GestureDetector(
+      key: key,
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _handleBlankTap(allDateKeys.toList()),
+      child: SizedBox(height: height, width: double.infinity),
+    );
+
+    return widget.refreshable(
+      CustomScrollView(
+        key: const PageStorageKey('done-work-scroll'),
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 100),
-        children: [
-          for (final indexedEntry in groupedRows.indexed) ...[
-            _dateHeader(
-              indexedEntry.$2.date,
-              totalHours: indexedEntry.$2.totalHours,
-              totalScore: indexedEntry.$2.totalScore,
-              showReportButton: indexedEntry.$1 == 0,
+        slivers: [
+          for (final row in groupedRows)
+            SliverMainAxisGroup(
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _DoneWorkDateHeaderDelegate(
+                    height: row.date == null ? 48 : 78,
+                    child: _dateHeader(
+                      context,
+                      row,
+                      expanded: _expandedDates.contains(_dateKey(row.date)),
+                      onTap: () {
+                        setState(() {
+                          final key = _dateKey(row.date);
+                          if (!_expandedDates.add(key)) {
+                            _expandedDates.remove(key);
+                          }
+                        });
+                      },
+                      onDoubleTap: () {
+                        setState(() {
+                          final allExpanded = allDateKeys.every(
+                            _expandedDates.contains,
+                          );
+                          _expandedDates
+                            ..clear()
+                            ..addAll(
+                              allExpanded ? const <String>{} : allDateKeys,
+                            );
+                        });
+                      },
+                    ),
+                  ),
+                ),
+                if (_expandedDates.contains(_dateKey(row.date)))
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _taskRow(context, row.tasks[index]),
+                      childCount: row.tasks.length,
+                    ),
+                  ),
+                const SliverToBoxAdapter(child: SizedBox(height: 6)),
+              ],
             ),
-            for (final task in indexedEntry.$2.tasks) _taskRow(context, task),
-          ],
+          SliverToBoxAdapter(child: bottomBlankArea(height: 100)),
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: bottomBlankArea(
+              key: const ValueKey('done-work-bottom-blank-area'),
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _dateHeader(
-    DateTime? date, {
-    required double totalHours,
-    required double totalScore,
-    bool showReportButton = false,
+    BuildContext context,
+    _GroupedDoneDate row, {
+    required bool expanded,
+    required VoidCallback onTap,
+    required VoidCallback onDoubleTap,
   }) {
-    final headerText = date == null
-        ? 'Date not set'
-        : _dateHeaderLabel(date, totalHours, totalScore);
-
-    return Container(
-      width: double.infinity,
-      color: const Color(0xFFF1F2F4),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              headerText,
-              maxLines: showReportButton ? 2 : null,
-              overflow: showReportButton ? TextOverflow.ellipsis : null,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF265492),
-                letterSpacing: 0.1,
+    final date = row.date;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      onDoubleTap: onDoubleTap,
+      child: Material(
+        key: ValueKey('done-work-date-${_dateKey(date)}'),
+        color: const Color(0xFFF1F2F4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (date == null)
+                      const Text(
+                        'Date not set',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF265492),
+                        ),
+                      )
+                    else ...[
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: _dateText(date),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF265492),
+                              ),
+                            ),
+                            TextSpan(
+                              text: '  ${_weekday(date)}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.black54,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                _MetaChip(
+                                  icon: Icons.timer_outlined,
+                                  text: '${_formatDuration(row.totalHours)} Hr',
+                                ),
+                                _MetaChip(
+                                  icon: Icons.star_outline_rounded,
+                                  text: 'Score ${_formatScore(row.totalScore)}',
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            key: ValueKey(
+                              'done-work-daily-report-${date.toIso8601String()}',
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFFFBE64E),
+                              foregroundColor: const Color(0xFF6B5800),
+                              minimumSize: const Size(0, 34),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              shape: const StadiumBorder(),
+                            ),
+                            onPressed: () => DailyReportSheet.show(
+                              context,
+                              date: date,
+                              entries: row.tasks
+                                  .map(DailyReportEntry.fromTask)
+                                  .toList(),
+                            ),
+                            icon: const Icon(
+                              Icons.assignment_outlined,
+                              size: 16,
+                            ),
+                            label: const Text(
+                              'Daily Report',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
+              Icon(
+                expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                color: const Color(0xFF265492),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DoneWorkDateHeaderDelegate extends SliverPersistentHeaderDelegate {
+  const _DoneWorkDateHeaderDelegate({
+    required this.height,
+    required this.child,
+  });
+
+  final double height;
+  final Widget child;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) => child;
+
+  @override
+  bool shouldRebuild(_DoneWorkDateHeaderDelegate oldDelegate) =>
+      height != oldDelegate.height || child != oldDelegate.child;
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFF265492)),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF265492),
             ),
           ),
-          if (showReportButton) ...[
-            const SizedBox(width: 8),
-            _reportButton(inDateHeader: true),
-          ],
         ],
       ),
     );

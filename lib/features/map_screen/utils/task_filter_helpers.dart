@@ -7,8 +7,7 @@ class TaskFilterHelpers {
 
   static bool canReadAllTasks(AuthViewModel authViewModel) =>
       authViewModel.appRole == AppRole.superAdmin ||
-      authViewModel.appRole == AppRole.admin ||
-      authViewModel.appRole == AppRole.officeStaff;
+      authViewModel.appRole == AppRole.admin;
 
   static bool isTaskVisibleToUser(Task task, AuthViewModel authViewModel) {
     if (canReadAllTasks(authViewModel)) return true;
@@ -183,24 +182,12 @@ class TaskFilterHelpers {
     required String userEmail,
     required String userName,
   }) {
-    final normalizedUid = userUid.trim().toLowerCase();
-    final normalizedEmail = userEmail.trim().toLowerCase();
-    final normalizedName = userName.trim().toLowerCase();
-    return tasks.where((task) {
-      if ((task.assignee ?? '').trim().isEmpty) return false;
-      return isAssignedToUser(
-            task,
-            userUid: normalizedUid,
-            userEmail: normalizedEmail,
-            userName: normalizedName,
-          ) ||
-          isCreatedByUser(
-            task,
-            userUid: normalizedUid,
-            userEmail: normalizedEmail,
-            userName: normalizedName,
-          );
-    }).toList();
+    return assignedTasksForUser(
+      tasks,
+      userUid: userUid,
+      userEmail: userEmail,
+      userName: userName,
+    );
   }
 
   static List<Task> myTasksForUser(

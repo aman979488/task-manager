@@ -45,7 +45,7 @@ class StaffDetailScreen extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'Staff detail load nahi hua: ${snapshot.error}',
+                  'Could not load staff details: ${snapshot.error}',
                   textAlign: TextAlign.center,
                 ),
               ),

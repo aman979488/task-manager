@@ -1,4 +1,4 @@
-package com.example.task_manager
+package com.atech.map
 
 import android.appwidget.AppWidgetManager
 import android.content.Context

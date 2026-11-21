@@ -1,4 +1,4 @@
-package com.example.task_manager
+package com.atech.map
 
 import android.Manifest
 import android.content.ContentResolver

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform;
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 
 import 'firebase_options.dart';
@@ -19,6 +20,11 @@ void main() async {
     persistenceEnabled: true,
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
+  if (!kIsWeb) {
+    await GoogleSignIn.instance.initialize(
+      serverClientId: '279055630253-jcq7na8k26q8acmiumd7j49on0tst0p7.apps.googleusercontent.com',
+    );
+  }
   if (defaultTargetPlatform == TargetPlatform.android ||
       defaultTargetPlatform == TargetPlatform.iOS) {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);

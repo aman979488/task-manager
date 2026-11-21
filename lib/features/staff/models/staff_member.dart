@@ -32,8 +32,5 @@ class StaffMember {
     AppRole.superAdmin => 'Super Admin',
     AppRole.admin => 'Admin',
     AppRole.user => 'User',
-    AppRole.officeStaff => 'Office Staff',
-    AppRole.employee => 'Employee',
-    AppRole.fieldUser => 'Field User',
   };
 }

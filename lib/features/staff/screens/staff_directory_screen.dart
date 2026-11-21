@@ -85,7 +85,7 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen> {
                 if (snapshot.hasError) {
                   return _MessageState(
                     icon: Icons.error_outline,
-                    message: 'Staff list load nahi hui.',
+                    message: 'Could not load the staff list.',
                     detail: snapshot.error.toString(),
                   );
                 }
@@ -93,7 +93,7 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen> {
                   if (snapshot.connectionState == ConnectionState.done) {
                     return const _MessageState(
                       icon: Icons.people_outline,
-                      message: 'Abhi koi staff nahi hai.',
+                      message: 'No staff members yet.',
                     );
                   }
                   return const Center(child: CircularProgressIndicator());
@@ -122,8 +122,8 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen> {
                   return _MessageState(
                     icon: Icons.people_outline,
                     message: _query.isEmpty
-                        ? 'Abhi koi staff nahi hai.'
-                        : 'Is search ke liye koi staff nahi mila.',
+                        ? 'No staff members yet.'
+                        : 'No staff members match your search.',
                   );
                 }
 

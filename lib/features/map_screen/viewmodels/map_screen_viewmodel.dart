@@ -12,6 +12,7 @@ import '../utils/priority_reminder.dart';
 import '../utils/task_filter_helpers.dart';
 import '../utils/task_grouping_helpers.dart';
 import '../utils/task_constants.dart';
+import '../utils/task_week_helpers.dart';
 
 class MapScreenViewModel extends ChangeNotifier {
   MapScreenViewModel({
@@ -63,6 +64,64 @@ class MapScreenViewModel extends ChangeNotifier {
   bool get isOffline => _networkStatusService.isOffline;
   bool get isOnline => _networkStatusService.isOnline;
   bool get hasPendingSync => _pendingTaskSaves.isNotEmpty;
+
+  List<Task> unassignedTasks({Iterable<Task>? source}) {
+    final tasks = (source ?? _tasks)
+        .where(
+          (task) =>
+              task.id != null && (task.weekKey?.trim().isNotEmpty != true),
+        )
+        .toList();
+    tasks.sort(
+      (left, right) =>
+          left.title.toLowerCase().compareTo(right.title.toLowerCase()),
+    );
+    return tasks;
+  }
+
+  List<Task> tasksAvailableForWeek({
+    required Iterable<Task> source,
+    required String weekKey,
+  }) {
+    final tasks = source
+        .where(
+          (task) =>
+              task.id != null &&
+              !task.isDone &&
+              (task.weekKey ?? weekKeyForCreatedDate(task.createdDate)) !=
+                  weekKey,
+        )
+        .toList();
+    tasks.sort(
+      (left, right) =>
+          left.title.toLowerCase().compareTo(right.title.toLowerCase()),
+    );
+    return tasks;
+  }
+
+  Future<void> assignTaskToWeek(Task task, String weekKey) async {
+    if (task.id == null || !_tasks.contains(task)) {
+      throw StateError('Only a saved task can be added to a week.');
+    }
+    if (weekKey.trim().isEmpty) {
+      throw ArgumentError.value(weekKey, 'weekKey', 'Must not be empty.');
+    }
+    if (task.weekKey == weekKey) {
+      throw StateError('This task is already assigned to a week.');
+    }
+
+    final previousWeekKey = task.weekKey;
+    task.weekKey = weekKey;
+    try {
+      await updateTask(task);
+    } catch (error) {
+      task.weekKey = previousWeekKey;
+      _lastErrorMessage =
+          'Could not add "${task.title}" to the selected week. Please try again.';
+      notifyListeners();
+      rethrow;
+    }
+  }
 
   // Selection state
   Set<Task> get selectedTasks => Set.unmodifiable(_selectedTasks);
@@ -191,7 +250,9 @@ class MapScreenViewModel extends ChangeNotifier {
         userName: authViewModel.userName,
       );
       _replaceTasks(
-        loaded.where((task) => isTaskVisibleToUser(task, authViewModel)).toList(),
+        loaded
+            .where((task) => isTaskVisibleToUser(task, authViewModel))
+            .toList(),
       );
       await _updateHomeWidgetSafely();
     } catch (e) {

@@ -8,9 +8,9 @@ typedef ConnectionChecker = Future<bool> Function();
 class NetworkStatusService {
   NetworkStatusService({
     this.checkInterval = const Duration(seconds: 6),
-    this._connectionChecker,
+    ConnectionChecker? connectionChecker,
     bool? autoStart,
-  }) {
+  }) : _connectionChecker = connectionChecker {
     final shouldStart = autoStart ?? !_isTestEnvironment;
     if (shouldStart) {
       _startMonitoring();
