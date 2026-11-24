@@ -15,4 +15,10 @@
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
+
+    <style name="FlashAlertTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/flash_bg</item>
+        <item name="android:statusBarColor">@color/flash_bg</item>
+        <item name="android:navigationBarColor">@color/flash_bg</item>
+    </style>
 </resources>

@@ -1,18 +1,15 @@
 const {initializeApp} = require("firebase-admin/app");
-const {
-  getFirestore,
-  FieldValue,
-  Timestamp,
-} = require("firebase-admin/firestore");
-const {getMessaging} = require("firebase-admin/messaging");
+const {createHash} = require("node:crypto");
+const {FieldValue, getFirestore} = require("firebase-admin/firestore");
 const {getAuth} = require("firebase-admin/auth");
 const {setGlobalOptions} = require("firebase-functions/v2");
+const {getMessaging} = require("firebase-admin/messaging");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {
   onDocumentCreated,
   onDocumentWritten,
 } = require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {logger} = require("firebase-functions");
 
 setGlobalOptions({region: "asia-south1"});
@@ -20,8 +17,6 @@ setGlobalOptions({region: "asia-south1"});
 initializeApp();
 
 const db = getFirestore();
-const leaseDurationMs = 5 * 60 * 1000;
-const deadlineWindowMs = 3 * 60 * 60 * 1000;
 
 exports.updateStaffProfile = onCall(async (request) => {
   if (!request.auth) {
@@ -127,86 +122,275 @@ exports.updateStaffProfile = onCall(async (request) => {
 
 function parseTaskDate(timestampValue, stringValue) {
   if (timestampValue && typeof timestampValue.toDate === "function") {
-    return timestampValue.toDate();
+    const date = timestampValue.toDate();
+    if (!Number.isNaN(date.getTime())) return date;
   }
-  if (timestampValue instanceof Date) return timestampValue;
+  if (timestampValue instanceof Date) {
+    if (!Number.isNaN(timestampValue.getTime())) return timestampValue;
+  }
   if (typeof stringValue === "string") {
-    const parsed = new Date(stringValue);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
+    const date = new Date(stringValue);
+    return Number.isNaN(date.getTime()) ? null : date;
   }
   return null;
 }
 
+function taskDate(task, field) {
+  return parseTaskDate(task[`${field}At`], task[field]);
+}
+
+function dueTaskNotifications(task, now) {
+  if (task.isDone === true) return [];
+  const due = [];
+  const reminderAt = taskDate(task, "reminder");
+  if (!task.reminderSent && reminderAt && reminderAt <= now) {
+    due.push({
+      type: "task_reminder",
+      sentField: "reminderSent",
+      scheduledAt: reminderAt,
+      title: "Task reminder",
+      body: `Reminder for task: "${task.title || ""}"`,
+    });
+  }
+
+  const deadlineAt = taskDate(task, "deadline");
+  const deadlineDistance = deadlineAt ? deadlineAt.getTime() - now.getTime() : 0;
+  if (!task.deadlineReminderSent &&
+      deadlineAt &&
+      deadlineDistance > 0 &&
+      deadlineDistance <= 3 * 60 * 60 * 1000) {
+    due.push({
+      type: "task_deadline",
+      sentField: "deadlineReminderSent",
+      scheduledAt: deadlineAt,
+      title: "Deadline approaching",
+      body: `Your task "${task.title || ""}" is due within 3 hours.`,
+    });
+  }
+  return due;
+}
+
+async function taskNotificationRecipients(task) {
+  const rawNames = Array.isArray(task.assigneeNames) &&
+      task.assigneeNames.length > 0 ?
+    task.assigneeNames :
+    (task.assignee || "").toString().split(",");
+  const names = [...new Set(rawNames
+      .map((name) => name?.toString().trim())
+      .filter(Boolean))];
+  const uids = new Set((Array.isArray(task.assigneeUids) ?
+    task.assigneeUids : []
+  ).map((uid) => uid?.toString().trim()).filter(Boolean));
+  if (names.length === 0 && task.assigneeUid) {
+    uids.add(task.assigneeUid.toString().trim());
+  }
+  if (names.length === 0 && uids.size === 0 && task.createdBy?.uid) {
+    uids.add(task.createdBy.uid.toString().trim());
+  }
+
+  const profiles = new Map();
+  const addProfile = (profile) => {
+    if (profile.exists) profiles.set(profile.ref.path, profile);
+  };
+  let incomplete = false;
+  for (const uid of uids) {
+    let profile;
+    if (!uid.includes("/")) {
+      profile = await db.collection("users").doc(uid).get();
+    }
+    if (!profile?.exists) {
+      const matches = await db.collection("users")
+          .where("uid", "==", uid)
+          .limit(1)
+          .get();
+      profile = matches.docs[0];
+    }
+    if (!profile?.exists) {
+      incomplete = true;
+      continue;
+    }
+    addProfile(profile);
+  }
+  for (const name of names) {
+    let profile;
+    for (const field of ["name", "fullName", "email"]) {
+      const matches = await db.collection("users")
+          .where(field, "==", name)
+          .limit(1)
+          .get();
+      if (!matches.empty) {
+        profile = matches.docs[0];
+        break;
+      }
+    }
+    if (!profile?.exists) {
+      const matches = await db.collection("cps")
+          .where("cpName", "==", name)
+          .limit(1)
+          .get();
+      profile = matches.docs[0];
+    }
+    if (!profile?.exists) {
+      incomplete = true;
+      continue;
+    }
+    addProfile(profile);
+  }
+
+  const recipients = new Map();
+  for (const profile of profiles.values()) {
+    const data = profile.data();
+    const tokens = new Set();
+    if (typeof data.fcmToken === "string" && data.fcmToken.trim()) {
+      tokens.add(data.fcmToken.trim());
+    }
+    if (Array.isArray(data.fcmTokens)) {
+      for (const token of data.fcmTokens) {
+        if (typeof token === "string" && token.trim()) tokens.add(token.trim());
+      }
+    }
+    if (tokens.size === 0) {
+      incomplete = true;
+      continue;
+    }
+    const uid = data.uid?.toString().trim() ||
+      (profile.ref.parent.id === "users" ? profile.id : "");
+    const key = uid || profile.ref.path;
+    const recipient = recipients.get(key) || {
+      uid,
+      name: data.name?.toString().trim() ||
+        data.fullName?.toString().trim() ||
+        data.cpName?.toString().trim() ||
+        names.find((name) => name.toLowerCase() ===
+          (data.email || "").toString().trim().toLowerCase()) ||
+        "",
+      tokens: new Set(),
+    };
+    for (const token of tokens) recipient.tokens.add(token);
+    recipients.set(key, recipient);
+  }
+
+  return {
+    recipients: [...recipients.values()],
+    complete: !incomplete && recipients.size > 0,
+  };
+}
+
+function taskAssigneeSignature(task) {
+  return JSON.stringify([
+    task.assignee,
+    task.assigneeNames,
+    task.assigneeUid,
+    task.assigneeUids,
+    task.createdBy?.uid,
+  ]);
+}
+
+function taskNotificationId(taskId, notification, recipient) {
+  const recipientKey = recipient.uid || recipient.name || "assignee";
+  const recipientHash = createHash("sha256")
+      .update(recipientKey)
+      .digest("hex")
+      .slice(0, 16);
+  return `${taskId}_${notification.type}_${notification.scheduledAt.getTime()}_${recipientHash}`;
+}
+
+async function queueTaskNotification(
+    taskSnapshot,
+    originalTask,
+    notification,
+    recipients,
+) {
+  const taskRef = taskSnapshot.ref;
+  const notificationRefs = recipients.map((recipient) =>
+    db.collection("notifications").doc(
+        taskNotificationId(taskSnapshot.id, notification, recipient),
+    ),
+  );
+  return db.runTransaction(async (transaction) => {
+    const currentSnapshot = await transaction.get(taskRef);
+    if (!currentSnapshot.exists) return false;
+    const currentTask = currentSnapshot.data();
+    if (currentTask[notification.sentField] === true ||
+        taskAssigneeSignature(currentTask) !==
+          taskAssigneeSignature(originalTask)) {
+      return false;
+    }
+    const currentDueNotification = dueTaskNotifications(
+        currentTask,
+        new Date(),
+    ).find((item) =>
+      item.sentField === notification.sentField &&
+      item.scheduledAt.getTime() === notification.scheduledAt.getTime(),
+    );
+    if (!currentDueNotification) return false;
+
+    const existingNotifications = await Promise.all(
+        notificationRefs.map((ref) => transaction.get(ref)),
+    );
+    for (let index = 0; index < recipients.length; index++) {
+      if (existingNotifications[index].exists) continue;
+      const recipient = recipients[index];
+      transaction.create(notificationRefs[index], {
+        recipientName: recipient.name,
+        recipientUid: recipient.uid || null,
+        recipientFcmToken: [...recipient.tokens][0],
+        title: notification.title,
+        body: notification.body,
+        timestamp: FieldValue.serverTimestamp(),
+        isRead: false,
+        type: notification.type,
+        taskId: taskSnapshot.id,
+      });
+    }
+    transaction.update(taskRef, {[notification.sentField]: true});
+    return true;
+  });
+}
+
 exports.dispatchScheduledTaskNotifications = onSchedule(
-    {schedule: "every 1 minutes", timeZone: "UTC"},
+    {
+      schedule: "every 1 minutes",
+      timeZone: "UTC",
+      maxInstances: 1,
+      concurrency: 1,
+      timeoutSeconds: 120,
+    },
     async () => {
       const snapshot = await db.collection("map").get();
       const now = new Date();
-
       for (const taskSnapshot of snapshot.docs) {
+        const task = taskSnapshot.data();
+        const dueNotifications = dueTaskNotifications(task, now);
+        if (dueNotifications.length === 0) continue;
+
         try {
-          const taskRef = taskSnapshot.ref;
-          await db.runTransaction(async (transaction) => {
-            const current = await transaction.get(taskRef);
-            if (!current.exists) return;
-
-            const task = current.data();
-            const assignee = task.assignee?.toString().trim();
-            if (!assignee) return;
-
-            const reminderAt = parseTaskDate(task.reminderAt, task.reminder);
-            const deadlineAt = parseTaskDate(task.deadlineAt, task.deadline);
-            const dueNotifications = [];
-
-            if (!task.reminderSent && reminderAt && reminderAt <= now) {
-              dueNotifications.push({
-                id: `${taskRef.id}_reminder`,
-                sentField: "reminderSent",
-                title: "Reminder",
-                body: `Reminder for task: "${task.title || ""}"`,
-                type: "task_reminder",
+          const {recipients, complete} =
+            await taskNotificationRecipients(task);
+          if (!complete) {
+            logger.warn("Task reminder recipients have no complete token set", {
+              taskId: taskSnapshot.id,
+              types: dueNotifications.map((item) => item.type),
+            });
+            continue;
+          }
+          for (const notification of dueNotifications) {
+            const queued = await queueTaskNotification(
+                taskSnapshot,
+                task,
+                notification,
+                recipients,
+            );
+            if (queued) {
+              logger.info("Queued scheduled task notification", {
+                taskId: taskSnapshot.id,
+                type: notification.type,
+                recipientCount: recipients.length,
               });
             }
-
-            if (!task.deadlineReminderSent &&
-                deadlineAt &&
-                deadlineAt > now &&
-                deadlineAt.getTime() - now.getTime() <= deadlineWindowMs) {
-              dueNotifications.push({
-                id: `${taskRef.id}_deadline`,
-                sentField: "deadlineReminderSent",
-                title: "Deadline approaching",
-                body: `Your task "${task.title || ""}" is nearing its deadline at ${deadlineAt.toLocaleString()}.`,
-                type: "task_deadline",
-              });
-            }
-
-            if (dueNotifications.length === 0) return;
-
-            const pending = [];
-            for (const item of dueNotifications) {
-              const notificationRef = db.collection("notifications").doc(item.id);
-              const notificationSnapshot = await transaction.get(notificationRef);
-              pending.push({item, notificationRef, notificationSnapshot});
-            }
-
-            const taskUpdates = {};
-            for (const entry of pending) {
-              taskUpdates[entry.item.sentField] = true;
-              if (entry.notificationSnapshot.exists) continue;
-              transaction.create(entry.notificationRef, {
-                recipientName: assignee,
-                title: entry.item.title,
-                body: entry.item.body,
-                timestamp: FieldValue.serverTimestamp(),
-                isRead: false,
-                type: entry.item.type,
-              });
-            }
-            transaction.update(taskRef, taskUpdates);
-          });
+          }
         } catch (error) {
-          logger.error("Failed to schedule task notification", {
+          logger.error("Failed to queue scheduled task notification", {
             taskId: taskSnapshot.id,
             error,
           });
@@ -215,91 +399,60 @@ exports.dispatchScheduledTaskNotifications = onSchedule(
     },
 );
 
-exports.deliverTaskNotification = onDocumentCreated(
+exports.onNotificationCreated = onDocumentCreated(
     {
       document: "notifications/{notificationId}",
-      retry: true,
     },
     async (event) => {
-      const notificationRef = event.data.ref;
-      const notification = event.data.data();
-      const now = Date.now();
-      const claimed = await db.runTransaction(async (transaction) => {
-        const current = await transaction.get(notificationRef);
-        const data = current.data() || {};
-        if (data.pushStatus === "sent" || data.pushStatus === "no_token") {
-          return false;
-        }
-        if (data.pushStatus === "sending" &&
-            data.pushLeaseUntil?.toMillis() > now) {
-          return false;
-        }
-        transaction.update(notificationRef, {
-          pushStatus: "sending",
-          pushLeaseUntil: new Date(now + leaseDurationMs),
-        });
-        return true;
-      });
-      if (!claimed) return;
+      const snapshot = event.data;
+      if (!snapshot) return;
+      const data = snapshot.data();
+      if (![
+        "task_assigned",
+        "task_reminder",
+        "task_deadline",
+      ].includes(data.type)) {
+        return;
+      }
 
       const tokens = new Set();
-      const sourceProfiles = [];
-      if (typeof notification.recipientFcmToken === "string" &&
-          notification.recipientFcmToken.trim()) {
-        tokens.add(notification.recipientFcmToken.trim());
-      }
-
-      const recipientUid = notification.recipientUid?.toString().trim();
-      const recipientNames = notification.recipientName
-          ?.toString()
-          .split(",")
-          .map((name) => name.trim())
-          .filter(Boolean) || [];
-      let profileQuery;
-      if (recipientUid) {
-        const usersByUid = await db.collection("users")
-            .where("uid", "==", recipientUid)
-            .get();
-        profileQuery = {
-          docs: usersByUid.docs,
-        };
-      } else if (recipientNames.length > 0) {
-        const profilesByName = await Promise.all(recipientNames.map(
-            async (name) => Promise.all([
-              db.collection("users").where("name", "==", name).get(),
-              db.collection("users").where("fullName", "==", name).get(),
-              db.collection("users").where("email", "==", name).get(),
-              db.collection("cps").where("cpName", "==", name).get(),
-            ]),
-        ));
-        profileQuery = {
-          docs: profilesByName.flatMap((snapshots) =>
-            snapshots.flatMap((snapshot) => snapshot.docs),
-          ),
-        };
-      }
-
-      for (const profile of profileQuery?.docs || []) {
-        sourceProfiles.push(profile);
-        const data = profile.data();
-        if (typeof data.fcmToken === "string" && data.fcmToken.trim()) {
-          tokens.add(data.fcmToken.trim());
+      const addToken = (token) => {
+        if (typeof token === "string" && token.trim()) {
+          tokens.add(token.trim());
         }
-        for (const token of data.fcmTokens || []) {
-          if (typeof token === "string" && token.trim()) {
-            tokens.add(token.trim());
+      };
+      addToken(data.recipientFcmToken);
+
+      const recipientUid = data.recipientUid?.toString().trim();
+      if (recipientUid) {
+        const [profile, profilesByUid] = await Promise.all([
+          db.collection("users").doc(recipientUid).get(),
+          db.collection("users").where("uid", "==", recipientUid).get(),
+        ]);
+        const profiles = new Map();
+        if (profile.exists) profiles.set(profile.ref.path, profile);
+        for (const match of profilesByUid.docs) {
+          profiles.set(match.ref.path, match);
+        }
+        for (const userProfile of profiles.values()) {
+          const userData = userProfile.data();
+          addToken(userData.fcmToken);
+          for (const token of userData.fcmTokens || []) {
+            addToken(token);
           }
         }
       }
 
       const tokenList = [...tokens];
       if (tokenList.length === 0) {
-        await notificationRef.update({
+        await snapshot.ref.update({
           pushStatus: "no_token",
-          pushLeaseUntil: FieldValue.delete(),
-          pushError: "No registered FCM token found for recipient.",
+          pushError: "No FCM token found for the task assignee.",
         });
-        logger.warn("No FCM token found", {notificationId: event.params.notificationId});
+        logger.warn("No FCM token found for task assignment", {
+          notificationId: event.params.notificationId,
+          recipientUid: recipientUid || null,
+        });
         return;
       }
 
@@ -307,12 +460,12 @@ exports.deliverTaskNotification = onDocumentCreated(
         const result = await getMessaging().sendEachForMulticast({
           tokens: tokenList,
           notification: {
-            title: notification.title?.toString() || "Task Manager",
-            body: notification.body?.toString() || "",
+            title: data.title?.toString() || "Task Manager",
+            body: data.body?.toString() || "",
           },
           data: {
             notificationId: event.params.notificationId,
-            type: notification.type?.toString() || "task_notification",
+            type: data.type,
           },
           android: {
             priority: "high",
@@ -323,50 +476,45 @@ exports.deliverTaskNotification = onDocumentCreated(
           },
         });
 
-        const invalidTokens = [];
-        result.responses.forEach((response, index) => {
-          if (!response.success &&
-              ["messaging/invalid-registration-token",
-                "messaging/registration-token-not-registered"].includes(
-                  response.error?.code)) {
-            invalidTokens.push(tokenList[index]);
-          }
-        });
-
-        if (invalidTokens.length > 0) {
-          const batch = db.batch();
-          for (const profile of sourceProfiles) {
-            const data = profile.data();
-            const patch = {
-              fcmTokens: FieldValue.arrayRemove(...invalidTokens),
-            };
-            if (invalidTokens.includes(data.fcmToken)) {
-              patch.fcmToken = FieldValue.delete();
-            }
-            batch.set(profile.ref, patch, {merge: true});
-          }
-          await batch.commit();
-        }
-
-        if (result.failureCount > 0 && result.successCount === 0) {
-          throw new Error("FCM rejected all recipient device tokens.");
-        }
-
-        await notificationRef.update({
-          pushStatus: "sent",
+        const failures = result.responses
+            .map((response, index) => {
+              if (response.success) return null;
+              return {
+                tokenIndex: index,
+                code: response.error?.code || "messaging/unknown-error",
+                message: response.error?.message || "Unknown FCM error",
+              };
+            })
+            .filter(Boolean);
+        const failureDetails = failures
+            .map((failure) => `${failure.code}: ${failure.message}`)
+            .join("; ");
+        await snapshot.ref.update({
+          pushStatus: result.successCount > 0 ? "sent" : "failed",
           pushSuccessCount: result.successCount,
           pushFailureCount: result.failureCount,
           pushSentAt: FieldValue.serverTimestamp(),
-          pushLeaseUntil: FieldValue.delete(),
-          pushError: FieldValue.delete(),
+          pushError: failureDetails || FieldValue.delete(),
+        });
+        if (result.successCount === 0) {
+          logger.error("FCM rejected all task-assignment tokens", {
+            notificationId: event.params.notificationId,
+            failures,
+          });
+          return;
+        }
+        logger.info("Task notification push sent", {
+          notificationId: event.params.notificationId,
+          successCount: result.successCount,
+          failureCount: result.failureCount,
+          failures,
         });
       } catch (error) {
-        await notificationRef.update({
+        await snapshot.ref.update({
           pushStatus: "failed",
-          pushLeaseUntil: FieldValue.delete(),
-          pushError: error.message || String(error),
+          pushError: String(error.code || error.message),
         });
-        logger.error("Unable to deliver task notification", {
+        logger.error("Could not send task notification push", {
           notificationId: event.params.notificationId,
           error,
         });
@@ -375,69 +523,156 @@ exports.deliverTaskNotification = onDocumentCreated(
     },
 );
 
-exports.flashScheduler = onSchedule("every 1 minutes", async () => {
-  try {
-    const now = Timestamp.now();
-    const snapshot = await db.collection("flashMessages")
-        .where("status", "==", "scheduled")
-        .where("sendAt", "<=", now)
-        .get();
-
-    for (let offset = 0; offset < snapshot.docs.length; offset += 500) {
-      const batch = db.batch();
-      for (const document of snapshot.docs.slice(offset, offset + 500)) {
-        batch.update(document.ref, {status: "delivered"});
-      }
-      await batch.commit();
-    }
-  } catch (error) {
-    logger.error("Failed to deliver scheduled flash messages", {error});
-    throw error;
-  }
-});
-
-exports.flashPush = onDocumentWritten(
-    "flashMessages/{id}",
+exports.onFlashMessageDelivered = onDocumentWritten(
+    {
+      document: "flashMessages/{flashId}",
+    },
     async (event) => {
-      const before = event.data?.before?.data();
-      const after = event.data?.after?.data();
-      if (!after ||
-          after.status !== "delivered" ||
-          before?.status === "delivered") {
+      const after = event.data?.after;
+      if (!after?.exists) return;
+      const before = event.data.before?.data();
+      const flash = after.data();
+      if (flash.status !== "delivered" || before?.status === "delivered") {
         return;
       }
 
-      const recipientUid = after.recipientUid?.toString().trim();
-      if (!recipientUid) return;
+      const claim = await db.runTransaction(async (transaction) => {
+        const currentSnapshot = await transaction.get(after.ref);
+        if (!currentSnapshot.exists) return false;
+        const current = currentSnapshot.data();
+        if (current.status !== "delivered" || current.pushStatus === "sent") {
+          return false;
+        }
+        const leaseUntil = current.pushLeaseUntil?.toMillis?.() || 0;
+        if (current.pushStatus === "sending" && leaseUntil > Date.now()) {
+          return false;
+        }
+        transaction.update(after.ref, {
+          pushStatus: "sending",
+          pushLeaseUntil: new Date(Date.now() + 5 * 60 * 1000),
+        });
+        return true;
+      });
+      if (!claim) return;
+
+      const recipientUid = flash.recipientUid?.toString().trim();
+      if (!recipientUid) {
+        await after.ref.update({
+          pushStatus: "no_recipient",
+          pushLeaseUntil: FieldValue.delete(),
+          pushError: "No recipient UID on the flash message.",
+        });
+        logger.warn("Flash message has no recipient UID", {
+          flashId: event.params.flashId,
+        });
+        return;
+      }
 
       try {
-        const profile = await db.collection("users")
-            .doc(recipientUid)
-            .get();
-        const token = profile.data()?.fcmToken?.toString().trim();
-        if (!token) return;
+        const [profile, profilesByUid] = await Promise.all([
+          db.collection("users").doc(recipientUid).get(),
+          db.collection("users").where("uid", "==", recipientUid).get(),
+        ]);
+        const profiles = new Map();
+        if (profile.exists) profiles.set(profile.ref.path, profile);
+        for (const match of profilesByUid.docs) {
+          profiles.set(match.ref.path, match);
+        }
+        const tokens = new Set();
+        for (const userProfile of profiles.values()) {
+          const userData = userProfile.data();
+          if (typeof userData.fcmToken === "string" &&
+              userData.fcmToken.trim()) {
+            tokens.add(userData.fcmToken.trim());
+          }
+          if (Array.isArray(userData.fcmTokens)) {
+            for (const token of userData.fcmTokens) {
+              if (typeof token === "string" && token.trim()) {
+                tokens.add(token.trim());
+              }
+            }
+          }
+        }
 
-        await getMessaging().send({
-          token,
-          notification: {
-            title: `⚡ ${after.senderName || "Staff"}`,
-            body: after.text?.toString() || "",
-          },
-          data: {
-            type: "flash",
-            flashId: event.params.id,
-          },
+        const tokenList = [...tokens];
+        if (tokenList.length === 0) {
+          await after.ref.update({
+            pushStatus: "no_token",
+            pushLeaseUntil: FieldValue.delete(),
+            pushError: "No FCM token found for the Flash message recipient.",
+          });
+          logger.warn("No FCM token found for Flash message recipient", {
+            flashId: event.params.flashId,
+            recipientUid,
+          });
+          return;
+        }
+
+        const title = `⚡ ${flash.senderName?.toString() || "Staff"}`;
+        const body = flash.text?.toString() || "";
+        const data = {
+          type: "flash",
+          flashId: event.params.flashId,
+          title,
+          body,
+        };
+        if (typeof flash.taskId === "string" && flash.taskId) {
+          data.taskId = flash.taskId;
+        }
+        const result = await getMessaging().sendEachForMulticast({
+          tokens: tokenList,
+          data,
           android: {
             priority: "high",
-            notification: {channelId: "task_notifications"},
           },
           apns: {
-            payload: {aps: {sound: "default"}},
+            headers: {
+              "apns-priority": "10",
+              "apns-push-type": "alert",
+            },
+            payload: {
+              aps: {
+                alert: {title, body},
+                sound: "default",
+              },
+            },
           },
         });
+        const failures = result.responses
+            .map((response) => response.success ? null : {
+              code: response.error?.code || "messaging/unknown-error",
+              message: response.error?.message || "Unknown FCM error",
+            })
+            .filter(Boolean);
+        const failureDetails = failures
+            .map((failure) => `${failure.code}: ${failure.message}`)
+            .join("; ");
+        await after.ref.update({
+          pushStatus: result.successCount > 0 ? "sent" : "failed",
+          pushSuccessCount: result.successCount,
+          pushFailureCount: result.failureCount,
+          pushSentAt: FieldValue.serverTimestamp(),
+          pushLeaseUntil: FieldValue.delete(),
+          pushError: failureDetails || FieldValue.delete(),
+        });
+        if (result.successCount === 0) {
+          throw new Error(failureDetails || "FCM rejected all Flash tokens.");
+        }
+        logger.info("Flash message push sent", {
+          flashId: event.params.flashId,
+          recipientUid,
+          successCount: result.successCount,
+          failureCount: result.failureCount,
+        });
       } catch (error) {
-        logger.error("Unable to deliver flash message push", {
-          flashId: event.params.id,
+        await after.ref.update({
+          pushStatus: "failed",
+          pushLeaseUntil: FieldValue.delete(),
+          pushError: String(error.code || error.message),
+        });
+        logger.error("Could not send Flash message push", {
+          flashId: event.params.flashId,
+          recipientUid,
           error,
         });
         throw error;
@@ -445,82 +680,168 @@ exports.flashPush = onDocumentWritten(
     },
 );
 
-exports.flashReplyPush = onDocumentWritten(
-    "flashMessages/{id}",
+exports.onFlashMessageResponded = onDocumentWritten(
+    {
+      document: "flashMessages/{flashId}",
+    },
     async (event) => {
       const before = event.data?.before?.data();
-      const after = event.data?.after?.data();
-      if (!after ||
-          !after.response ||
-          before?.response ||
-          after.status !== "seen") {
+      const after = event.data?.after;
+      if (!after?.exists) return;
+      const flash = after.data();
+      const response = flash.response?.toString().trim();
+      if (!response || flash.status !== "seen") return;
+      if (before?.response === flash.response &&
+          before?.responseText === flash.responseText) {
         return;
       }
 
-      const senderUid = after.senderUid?.toString().trim();
-      if (!senderUid) return;
+      const claimed = await db.runTransaction(async (transaction) => {
+        const currentSnapshot = await transaction.get(after.ref);
+        if (!currentSnapshot.exists) return false;
+        const current = currentSnapshot.data();
+        if (current.status !== "seen" ||
+            current.response !== flash.response ||
+            current.responseText !== flash.responseText ||
+            current.responsePushStatus === "sent" ||
+            current.responsePushStatus === "no_sender" ||
+            current.responsePushStatus === "no_token") {
+          return false;
+        }
+        const leaseUntil =
+          current.responsePushLeaseUntil?.toMillis?.() || 0;
+        if (current.responsePushStatus === "sending" &&
+            leaseUntil > Date.now()) {
+          return false;
+        }
+        transaction.update(after.ref, {
+          responsePushStatus: "sending",
+          responsePushLeaseUntil: new Date(Date.now() + 5 * 60 * 1000),
+        });
+        return true;
+      });
+      if (!claimed) return;
+
+      const senderUid = flash.senderUid?.toString().trim();
+      if (!senderUid) {
+        await after.ref.update({
+          responsePushStatus: "no_sender",
+          responsePushLeaseUntil: FieldValue.delete(),
+          responsePushError: "No sender UID on the Flash message.",
+        });
+        logger.warn("Flash response has no sender UID", {
+          flashId: event.params.flashId,
+        });
+        return;
+      }
 
       try {
-        const [profile, legacyProfiles] = await Promise.all([
+        const [profile, profilesByUid] = await Promise.all([
           db.collection("users").doc(senderUid).get(),
           db.collection("users").where("uid", "==", senderUid).get(),
         ]);
-        const profiles = [
-          ...(profile.exists ? [profile] : []),
-          ...legacyProfiles.docs,
-        ];
+        const profiles = new Map();
+        if (profile.exists) profiles.set(profile.ref.path, profile);
+        for (const match of profilesByUid.docs) {
+          profiles.set(match.ref.path, match);
+        }
         const tokens = new Set();
-        for (const userProfile of profiles) {
-          const data = userProfile.data();
-          if (typeof data.fcmToken === "string" && data.fcmToken.trim()) {
-            tokens.add(data.fcmToken.trim());
+        for (const userProfile of profiles.values()) {
+          const userData = userProfile.data();
+          if (typeof userData.fcmToken === "string" &&
+              userData.fcmToken.trim()) {
+            tokens.add(userData.fcmToken.trim());
           }
-          for (const token of data.fcmTokens || []) {
-            if (typeof token === "string" && token.trim()) {
-              tokens.add(token.trim());
+          if (Array.isArray(userData.fcmTokens)) {
+            for (const token of userData.fcmTokens) {
+              if (typeof token === "string" && token.trim()) {
+                tokens.add(token.trim());
+              }
             }
           }
         }
 
         const tokenList = [...tokens];
         if (tokenList.length === 0) {
-          logger.warn("No FCM token found for flash reply sender", {
-            flashId: event.params.id,
+          await after.ref.update({
+            responsePushStatus: "no_token",
+            responsePushLeaseUntil: FieldValue.delete(),
+            responsePushError: "No FCM token found for the Flash sender.",
+          });
+          logger.warn("No FCM token found for Flash response sender", {
+            flashId: event.params.flashId,
             senderUid,
           });
           return;
         }
 
-        const responseText = after.response === "Others"
-          ? after.responseText?.toString().trim()
-          : after.response.toString();
+        const responderName = flash.recipientName?.toString().trim() ||
+          "A staff member";
+        const answer = response === "Others" ?
+          flash.responseText?.toString().trim() || "Others" :
+          response;
+        const title = "⚡ Flash message reply";
+        const body = `${responderName} replied: ${answer}`;
         const result = await getMessaging().sendEachForMulticast({
           tokens: tokenList,
-          notification: {
-            title: `${after.recipientName || "Staff"} replied to your flash`,
-            body: responseText || "Replied to your flash message.",
-          },
+          notification: {title, body},
           data: {
-            type: "flash_reply",
-            flashId: event.params.id,
-            response: after.response.toString(),
-            responseText: responseText || "",
+            type: "flash_response",
+            flashId: event.params.flashId,
+            response,
+            responseText: flash.responseText?.toString() || "",
           },
           android: {
             priority: "high",
             notification: {channelId: "task_notifications"},
           },
           apns: {
-            payload: {aps: {sound: "default"}},
+            headers: {
+              "apns-priority": "10",
+              "apns-push-type": "alert",
+            },
+            payload: {
+              aps: {
+                alert: {title, body},
+                sound: "default",
+              },
+            },
           },
         });
-
-        if (result.failureCount > 0 && result.successCount === 0) {
-          throw new Error("FCM rejected all flash-reply recipient tokens.");
+        const failures = result.responses
+            .map((item) => item.success ? null : {
+              code: item.error?.code || "messaging/unknown-error",
+              message: item.error?.message || "Unknown error",
+            })
+            .filter(Boolean);
+        const failureDetails = failures
+            .map((failure) => `${failure.code}: ${failure.message}`)
+            .join("; ");
+        await after.ref.update({
+          responsePushStatus: result.successCount > 0 ? "sent" : "failed",
+          responsePushSuccessCount: result.successCount,
+          responsePushFailureCount: result.failureCount,
+          responsePushSentAt: FieldValue.serverTimestamp(),
+          responsePushLeaseUntil: FieldValue.delete(),
+          responsePushError: failureDetails || FieldValue.delete(),
+        });
+        if (result.successCount === 0) {
+          throw new Error(failureDetails || "FCM rejected all sender tokens.");
         }
+        logger.info("Flash response push sent", {
+          flashId: event.params.flashId,
+          senderUid,
+          successCount: result.successCount,
+          failureCount: result.failureCount,
+        });
       } catch (error) {
-        logger.error("Unable to deliver flash reply", {
-          flashId: event.params.id,
+        await after.ref.update({
+          responsePushStatus: "failed",
+          responsePushLeaseUntil: FieldValue.delete(),
+          responsePushError: String(error.code || error.message),
+        });
+        logger.error("Could not send Flash response push", {
+          flashId: event.params.flashId,
           senderUid,
           error,
         });

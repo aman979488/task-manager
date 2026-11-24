@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'firebase_options.dart';
+import 'features/flash/flash_alert_service.dart';
 import 'routes/app_router.dart';
 import 'services/notification_service.dart';
 import 'viewmodels/auth_viewmodel.dart';
@@ -23,7 +24,9 @@ void main() async {
       defaultTargetPlatform == TargetPlatform.iOS) {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
-  final notificationService = NotificationService();
+  final notificationService = NotificationService(
+    onFlashNotificationOpened: FlashAlertService.openFlashNotification,
+  );
   await notificationService.initialize();
   final authViewModel = AuthViewModel(notificationService: notificationService);
   runApp(

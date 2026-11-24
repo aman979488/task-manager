@@ -5,5 +5,5 @@ class AppRoutes {
   static const String taskDetail = '/task';
   static const String assigneeTasks = '/assignee-tasks';
   static const String callHistory = '/call-history';
-  static const String dailyReport = '/daily-report';
+  static const String flashMessages = '/flash-messages';
 }

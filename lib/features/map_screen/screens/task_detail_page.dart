@@ -147,7 +147,6 @@ class _TaskDetailPageState extends State<TaskDetailPage>
         senderName: authVM.userName,
         senderUid: authVM.userUid,
         senderEmail: authVM.userEmail,
-        notificationsEnabled: authVM.allowNotifications,
       );
     } catch (e) {
       debugPrint('Error sending notification: $e');
@@ -197,9 +196,13 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     final iso = dt.toIso8601String();
     setState(() {
       if (key == 'reminder') {
-        task.reminder = iso;
+        task
+          ..reminder = iso
+          ..reminderSent = false;
       } else {
-        task.deadline = iso;
+        task
+          ..deadline = iso
+          ..deadlineReminderSent = false;
       }
     });
     widget.onChanged();
@@ -231,10 +234,14 @@ class _TaskDetailPageState extends State<TaskDetailPage>
           task.weekKey = null;
           break;
         case 'reminder':
-          task.reminder = null;
+          task
+            ..reminder = null
+            ..reminderSent = false;
           break;
         case 'deadline':
-          task.deadline = null;
+          task
+            ..deadline = null
+            ..deadlineReminderSent = false;
           break;
       }
     });

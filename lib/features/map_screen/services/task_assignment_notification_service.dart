@@ -12,10 +12,9 @@ class TaskAssignmentNotificationService {
     required String senderName,
     required String senderUid,
     required String senderEmail,
-    required bool notificationsEnabled,
   }) async {
     final recipient = assignee.trim();
-    if (recipient.isEmpty || !notificationsEnabled) return;
+    if (recipient.isEmpty) return;
     final normalizedAssignee = recipient.toLowerCase();
     if (normalizedAssignee == senderName.trim().toLowerCase() ||
         normalizedAssignee == senderUid.trim().toLowerCase() ||
@@ -23,6 +22,7 @@ class TaskAssignmentNotificationService {
       return;
     }
 
+    String? recipientUid;
     String? targetFcmToken;
     final userQuery = await _firestore
         .collection('users')
@@ -30,7 +30,13 @@ class TaskAssignmentNotificationService {
         .limit(1)
         .get();
     if (userQuery.docs.isNotEmpty) {
-      targetFcmToken = userQuery.docs.first.data()['fcmToken']?.toString();
+      final profile = userQuery.docs.first;
+      final data = profile.data();
+      recipientUid = data['uid']?.toString().trim();
+      if (recipientUid == null || recipientUid.isEmpty) {
+        recipientUid = profile.id;
+      }
+      targetFcmToken = data['fcmToken']?.toString();
     } else {
       final cpQuery = await _firestore
           .collection('cps')
@@ -44,6 +50,7 @@ class TaskAssignmentNotificationService {
 
     await _firestore.collection('notifications').add({
       'recipientName': recipient,
+      'recipientUid': recipientUid,
       'recipientFcmToken': targetFcmToken,
       'title': 'New Task Assigned',
       'body': '$senderName assigned you a task: "$taskTitle"',

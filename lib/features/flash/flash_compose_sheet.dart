@@ -7,6 +7,7 @@ Future<FlashDraft?> showFlashComposeSheet(
   BuildContext context, {
   DateTime? reminderAt,
   String? senderUid,
+  String? senderEmail,
   Future<DateTime?> Function()? pickTime,
 }) {
   return showDialog<FlashDraft>(
@@ -28,6 +29,7 @@ Future<FlashDraft?> showFlashComposeSheet(
           child: _ComposeSheet(
             reminderAt: reminderAt,
             senderUid: senderUid,
+            senderEmail: senderEmail,
             pickTime: pickTime,
           ),
         ),
@@ -37,10 +39,16 @@ Future<FlashDraft?> showFlashComposeSheet(
 }
 
 class _ComposeSheet extends StatefulWidget {
-  const _ComposeSheet({this.reminderAt, this.senderUid, this.pickTime});
+  const _ComposeSheet({
+    this.reminderAt,
+    this.senderUid,
+    this.senderEmail,
+    this.pickTime,
+  });
 
   final DateTime? reminderAt;
   final String? senderUid;
+  final String? senderEmail;
   final Future<DateTime?> Function()? pickTime;
 
   @override
@@ -84,6 +92,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
     try {
       final staff = await FlashAlertService.loadStaff(
         excludingUid: widget.senderUid,
+        excludingEmail: widget.senderEmail,
       );
       final templates = await FlashAlertService.loadTemplates();
       if (!mounted) return;

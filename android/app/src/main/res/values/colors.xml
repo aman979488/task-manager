@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="flash_bg">#14110A</color>
+    <color name="flash_yellow">#FBE64E</color>
+    <color name="flash_yellow_dark">#6B5800</color>
+    <color name="flash_yellow_translucent">#26FBE64E</color>
+    <color name="flash_text_white">#FFFFFF</color>
+    <color name="flash_text_muted">#B3FFFFFF</color>
+    <color name="flash_card_bg">#1E1B13</color>
+    <color name="flash_border">#40FBE64E</color>
+</resources>

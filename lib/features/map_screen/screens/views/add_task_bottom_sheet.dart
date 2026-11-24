@@ -384,6 +384,7 @@ class _AddTaskBottomSheetState extends State<AddTaskBottomSheet> {
       context,
       reminderAt: DateTime.tryParse(reminder ?? ''),
       senderUid: authViewModel.userUid,
+      senderEmail: authViewModel.userEmail,
       pickTime: () => showDateTimePickerWithTabs(
         context,
         initial: DateTime.tryParse(reminder ?? ''),

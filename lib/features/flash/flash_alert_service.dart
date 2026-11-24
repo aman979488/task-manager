@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../routes/app_router.dart';
 import 'flash_alert_screen.dart';
+import 'flash_native_bridge.dart';
 
 const kFlashOption = '⚡ Flash message';
 
@@ -94,35 +95,53 @@ class FlashAlertService {
   static StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
   _scheduledSubscription;
   static final List<_IncomingFlash> _queue = [];
+  static final Set<String> _pendingNotificationIds = {};
   static final Map<String, Timer> _scheduledTimers = {};
   static final Map<String, int> _scheduledTimes = {};
   static bool _showing = false;
   static String? _currentId;
   static OverlayEntry? _currentEntry;
+  static Timer? _overlayRetryTimer;
   static String? _activeUid;
   static const Duration _maxTimerDelay = Duration(days: 20);
 
-  static Future<List<Staff>> loadStaff({String? excludingUid}) async {
+  static Future<List<Staff>> loadStaff({
+    String? excludingUid,
+    String? excludingEmail,
+  }) async {
     final snapshot = await _db.collection('users').get();
-    final byUid = <String, Staff>{};
+    final byIdentity = <String, Staff>{};
+    final canonicalIdentity = <String, bool>{};
+    final excludedEmail = excludingEmail?.trim().toLowerCase();
     for (final document in snapshot.docs) {
       final data = document.data();
       if (!data.containsKey('role')) continue;
-      final uid = (data['uid'] ?? document.id).toString().trim();
+      final profileUid = data['uid']?.toString().trim();
+      final uid = profileUid == null || profileUid.isEmpty
+          ? document.id
+          : profileUid;
+      final email = (data['email'] ?? '').toString().trim();
+      final normalizedEmail = email.toLowerCase();
       final name = (data['name'] ?? data['fullName'] ?? data['email'] ?? '')
           .toString()
           .trim();
       if (uid.isEmpty ||
           name.isEmpty ||
-          (excludingUid != null && uid == excludingUid)) {
+          (excludingUid != null && uid == excludingUid) ||
+          (excludedEmail != null &&
+              excludedEmail.isNotEmpty &&
+              normalizedEmail == excludedEmail)) {
         continue;
       }
-      byUid.putIfAbsent(
-        uid,
-        () => Staff(uid, name, (data['email'] ?? '').toString().trim()),
-      );
+      final identity = normalizedEmail.isEmpty ? 'uid:$uid' : normalizedEmail;
+      final isCanonical = document.id == uid;
+      if (!byIdentity.containsKey(identity) ||
+          (isCanonical && canonicalIdentity[identity] != true)) {
+        byIdentity[identity] = Staff(uid, name, email);
+        canonicalIdentity[identity] = isCanonical;
+      }
     }
-    final staff = byUid.values.toList()
+    final staff = byIdentity.values.toList()
       ..sort(
         (first, second) =>
             first.name.toLowerCase().compareTo(second.name.toLowerCase()),
@@ -187,9 +206,12 @@ class FlashAlertService {
   }
 
   static void start(String uid) {
-    stop();
+    stop(clearPendingNotificationIds: false);
     if (uid.trim().isEmpty) return;
     _activeUid = uid;
+    for (final flashId in _pendingNotificationIds.toList()) {
+      unawaited(_enqueueFlashFromNotification(flashId, uid));
+    }
 
     _deliveredSubscription = _db
         .collection('flashMessages')
@@ -202,11 +224,7 @@ class FlashAlertService {
               if (change.type == DocumentChangeType.removed) continue;
               final data = change.doc.data();
               if (data == null) continue;
-              if (change.doc.id == _currentId ||
-                  _queue.any((item) => item.id == change.doc.id)) {
-                continue;
-              }
-              _queue.add(
+              _enqueueIncoming(
                 _IncomingFlash(
                   change.doc.id,
                   (data['senderName'] ?? 'Someone').toString(),
@@ -214,7 +232,6 @@ class FlashAlertService {
                 ),
               );
             }
-            _showNext();
           },
           onError: (Object error) {
             debugPrint('Delivered flash listener failed for $uid: $error');
@@ -251,7 +268,7 @@ class FlashAlertService {
         );
   }
 
-  static void stop() {
+  static void stop({bool clearPendingNotificationIds = true}) {
     unawaited(_deliveredSubscription?.cancel());
     unawaited(_scheduledSubscription?.cancel());
     _deliveredSubscription = null;
@@ -261,6 +278,9 @@ class FlashAlertService {
     }
     _scheduledTimers.clear();
     _scheduledTimes.clear();
+    _overlayRetryTimer?.cancel();
+    _overlayRetryTimer = null;
+    if (clearPendingNotificationIds) _pendingNotificationIds.clear();
     _activeUid = null;
     _currentEntry?.remove();
     _currentEntry = null;
@@ -358,10 +378,69 @@ class FlashAlertService {
     _scheduledTimes.remove(id);
   }
 
+  static Future<void> openFlashNotification(String flashId) async {
+    final id = flashId.trim();
+    if (id.isEmpty) return;
+    final activeUid = _activeUid;
+    if (activeUid == null) {
+      _pendingNotificationIds.add(id);
+      return;
+    }
+    await _enqueueFlashFromNotification(id, activeUid);
+  }
+
+  static Future<void> _enqueueFlashFromNotification(
+    String flashId,
+    String activeUid,
+  ) async {
+    _pendingNotificationIds.remove(flashId);
+    final document = await _db.collection('flashMessages').doc(flashId).get();
+    if (_activeUid != activeUid || !document.exists) return;
+    final data = document.data();
+    if (data == null ||
+        data['recipientUid'] != activeUid ||
+        data['status'] != 'delivered') {
+      return;
+    }
+    _enqueueIncoming(
+      _IncomingFlash(
+        document.id,
+        (data['senderName'] ?? 'Someone').toString(),
+        (data['text'] ?? '').toString(),
+      ),
+    );
+  }
+
+  static void _enqueueIncoming(_IncomingFlash message) async {
+    if (message.id == _currentId ||
+        _queue.any((item) => item.id == message.id)) {
+      return;
+    }
+
+    final isLocked = await FlashNativeBridge.isDeviceLocked();
+    if (isLocked) {
+      await FlashNativeBridge.showNativeFlashAlert(
+        flashId: message.id,
+        senderName: message.senderName,
+        text: message.text,
+      );
+      return;
+    }
+
+    _queue.add(message);
+    _showNext();
+  }
+
   static void _showNext() {
     if (_showing || _queue.isEmpty) return;
     final overlay = AppRouter.rootNavigatorKey.currentState?.overlay;
-    if (overlay == null) return;
+    if (overlay == null) {
+      _overlayRetryTimer ??= Timer(const Duration(milliseconds: 250), () {
+        _overlayRetryTimer = null;
+        _showNext();
+      });
+      return;
+    }
 
     final message = _queue.removeAt(0);
     _showing = true;

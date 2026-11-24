@@ -77,6 +77,7 @@ service cloud.firestore {
       return signedIn() && (
         resource.data.get('assigneeUids', []).hasAny([request.auth.uid]) ||
         resource.data.get('assigneeUid', '') == request.auth.uid ||
+        resource.data.get('lastUndoneByUid', '') == request.auth.uid ||
         resource.data.get('assignee', '') == myName() ||
         resource.data.get('assigneeNames', []).hasAny([myName()]) ||
         resource.data.get('monitorNames', []).hasAny([myName()]) ||

@@ -32,6 +32,56 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            FLASH_ALERT_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "showNativeFlashAlert" -> {
+                    val flashId = call.argument<String>("flashId") ?: System.currentTimeMillis().toString()
+                    val senderName = call.argument<String>("senderName") ?: "Staff"
+                    val text = call.argument<String>("text") ?: ""
+                    FlashAlertManager.showFlashAlert(
+                        this,
+                        mapOf(
+                            "flashId" to flashId,
+                            "title" to senderName,
+                            "body" to text,
+                        )
+                    )
+                    result.success(true)
+                }
+                "checkOverlayPermission" -> {
+                    val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        Settings.canDrawOverlays(this)
+                    } else {
+                        true
+                    }
+                    result.success(canDraw)
+                }
+                "requestOverlayPermission" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        try {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:$packageName")
+                            )
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("ERROR", e.message, null)
+                        }
+                    } else {
+                        result.success(true)
+                    }
+                }
+                "isDeviceLocked" -> {
+                    result.success(FlashAlertManager.isDeviceLocked(this))
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     private fun getRecentCalls(result: MethodChannel.Result) {
@@ -160,6 +210,7 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val CALL_HISTORY_CHANNEL = "task_manager/call_history"
+        private const val FLASH_ALERT_CHANNEL = "task_manager/flash_alert"
         private const val CALL_LOG_PERMISSION_REQUEST = 4821
         private const val MAX_CALLS = 500
     }

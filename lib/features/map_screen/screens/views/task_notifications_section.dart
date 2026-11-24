@@ -134,6 +134,7 @@ class _TaskNotificationsSectionState extends State<TaskNotificationsSection> {
     final draft = await showFlashComposeSheet(
       context,
       senderUid: authViewModel.userUid,
+      senderEmail: authViewModel.userEmail,
       pickTime: () => widget.pickFlashScheduleTime != null
           ? widget.pickFlashScheduleTime!()
           : showDateTimePickerWithTabs(

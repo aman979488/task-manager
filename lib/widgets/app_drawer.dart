@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../features/staff/screens/staff_directory_screen.dart';
@@ -74,6 +75,14 @@ class AppDrawer extends StatelessWidget {
             leading: const Icon(Icons.check_circle_outline),
             title: const Text('My Tasks'),
             onTap: () => Navigator.pop(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.bolt_outlined),
+            title: const Text('Flash messages'),
+            onTap: () {
+              Navigator.pop(context);
+              context.push('/flash-messages');
+            },
           ),
           if (canManageStaff)
             ListTile(

@@ -706,7 +706,6 @@ class MapScreenViewModel extends ChangeNotifier {
         senderName: authViewModel.userName,
         senderUid: authViewModel.userUid,
         senderEmail: authViewModel.userEmail,
-        notificationsEnabled: authViewModel.allowNotifications,
       );
     } catch (error) {
       debugPrint('Error sending notification: $error');

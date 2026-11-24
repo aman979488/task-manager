@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../features/auth/login_page.dart';
 import '../features/call_history/screens/all_calls_view.dart';
 import '../features/call_history/viewmodels/call_log_controller.dart';
+import '../features/flash/flash_sent_messages_screen.dart';
 import '../features/map_screen/models/task.dart';
 import '../features/map_screen/screens/map_screen.dart';
 import '../features/map_screen/screens/task_detail_page.dart';
@@ -12,7 +13,6 @@ import '../features/map_screen/screens/assignee_tasks_view.dart';
 import '../features/map_screen/viewmodels/map_screen_viewmodel.dart';
 import '../features/map_screen/viewmodels/add_task_viewmodel.dart';
 import '../features/map_screen/viewmodels/weekly_goals_viewmodel.dart';
-import '../features/reports/screens/daily_report_screen.dart';
 import '../viewmodels/auth_viewmodel.dart';
 import 'app_routes.dart';
 
@@ -51,11 +51,8 @@ class AppRouter {
         ),
       ),
       GoRoute(
-        path: AppRoutes.dailyReport,
-        builder: (_, state) => ChangeNotifierProvider<CallLogController>(
-          create: (_) => CallLogController(),
-          child: DailyReportScreen(tasks: state.extra as List<Task>),
-        ),
+        path: AppRoutes.flashMessages,
+        builder: (_, _) => const FlashSentMessagesScreen(),
       ),
       GoRoute(
         path: AppRoutes.home,

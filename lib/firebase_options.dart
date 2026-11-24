@@ -46,15 +46,17 @@ class DefaultFirebaseOptions {
     messagingSenderId: '279055630253',
     projectId: 'task-14733',
     authDomain: 'task-14733.firebaseapp.com',
+    databaseURL: 'https://task-14733-default-rtdb.firebaseio.com',
     storageBucket: 'task-14733.firebasestorage.app',
     measurementId: 'G-D0XFK3Z2ZP',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyDQgacOpHXGS7-nLEN6Cn_EvBK1Rib7fKA',
-    appId: '1:279055630253:android:35b87c7c0fffc446ea2b24',
+    appId: '1:279055630253:android:b4e1d60e775977cfea2b24',
     messagingSenderId: '279055630253',
     projectId: 'task-14733',
+    databaseURL: 'https://task-14733-default-rtdb.firebaseio.com',
     storageBucket: 'task-14733.firebasestorage.app',
   );
   static const FirebaseOptions ios = FirebaseOptions(
@@ -62,6 +64,7 @@ class DefaultFirebaseOptions {
     appId: '1:279055630253:ios:d3abca32b1c4a680ea2b24',
     messagingSenderId: '279055630253',
     projectId: 'task-14733',
+    databaseURL: 'https://task-14733-default-rtdb.firebaseio.com',
     storageBucket: 'task-14733.firebasestorage.app',
     iosBundleId: 'com.example.taskManager',
   );
@@ -70,6 +73,7 @@ class DefaultFirebaseOptions {
     appId: '1:279055630253:ios:d3abca32b1c4a680ea2b24',
     messagingSenderId: '279055630253',
     projectId: 'task-14733',
+    databaseURL: 'https://task-14733-default-rtdb.firebaseio.com',
     storageBucket: 'task-14733.firebasestorage.app',
     iosBundleId: 'com.example.taskManager',
   );
@@ -80,6 +84,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '279055630253',
     projectId: 'task-14733',
     authDomain: 'task-14733.firebaseapp.com',
+    databaseURL: 'https://task-14733-default-rtdb.firebaseio.com',
     storageBucket: 'task-14733.firebasestorage.app',
     measurementId: 'G-S863BCDKN4',
   );
