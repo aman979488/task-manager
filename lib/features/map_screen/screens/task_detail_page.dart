@@ -506,6 +506,11 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     }
 
     task.note = _noteController.text;
+    final previousEditedBy = task.editedBy;
+    task.editedBy = Provider.of<AuthViewModel>(
+      context,
+      listen: false,
+    ).actorMetadata;
     try {
       await widget.onSave();
       if (!mounted) return true;
@@ -524,6 +529,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       }
       return true;
     } catch (error) {
+      task.editedBy = previousEditedBy;
       if (!mounted) return false;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -538,9 +544,13 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     if (_isSaving || isDone == task.isDone) return;
     final previousIsDone = task.isDone;
     final previousCompletedAt = task.completedAt;
+    final previousMarkedDoneBy = task.markedDoneBy;
     setState(() {
       task.isDone = isDone;
       task.completedAt = isDone ? DateTime.now().millisecondsSinceEpoch : null;
+      task.markedDoneBy = isDone
+          ? Provider.of<AuthViewModel>(context, listen: false).actorMetadata
+          : null;
     });
     widget.onChanged();
 
@@ -549,10 +559,12 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       setState(() {
         task.isDone = previousIsDone;
         task.completedAt = previousCompletedAt;
+        task.markedDoneBy = previousMarkedDoneBy;
       });
       widget.onChanged();
     }
   }
+
   Widget _buildExtraFieldTile({
     required String label,
     required String? value,
@@ -822,9 +834,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                                 child: Switch(
                                   key: const ValueKey('task-done-toggle'),
                                   value: task.isDone,
-                                  onChanged: _isSaving
-                                      ? null
-                                      : _setTaskDone,
+                                  onChanged: _isSaving ? null : _setTaskDone,
                                   activeTrackColor: secondaryColor,
                                 ),
                               ),
@@ -985,21 +995,6 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                             type: FloatingSheetType.goal,
                             valueBelowLabel: true,
                           ),
-                          SwitchListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                            ),
-                            dense: true,
-                            title: const Text(
-                              'Monthly Goal',
-                              style: TextStyle(fontSize: 14),
-                            ),
-                            value: task.isMonthlyGoal,
-                            onChanged: (value) {
-                              setState(() => task.isMonthlyGoal = value);
-                              widget.onChanged();
-                            },
-                          ),
                           _buildExtraFieldTile(
                             label: 'Start Time',
                             value: task.startTime,
@@ -1049,6 +1044,78 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                             fieldKey: 'folder',
                           ),
                           const SizedBox(height: 15),
+
+                          if (task.createdBy != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: FutureBuilder<String?>(
+                                future: _createdByNameFuture ??= _dataService
+                                    .loadCreatorName(task.createdBy),
+                                builder: (context, snapshot) {
+                                  if (snapshot.hasError) {
+                                    debugPrint(
+                                      'Could not load task creator name: ${snapshot.error}',
+                                    );
+                                  }
+                                  final metadataName = _dataService
+                                      .metadataCreatorName(task.createdBy);
+                                  final emailName = _dataService
+                                      .creatorEmailName(task.createdBy);
+                                  final name =
+                                      snapshot.data ??
+                                      metadataName ??
+                                      emailName ??
+                                      'Unknown';
+                                  return Text(
+                                    'Created By: $name',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          if (task.editedBy != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                'Last Edited By: ${task.editedBy!['name'] ?? task.editedBy!['email'] ?? 'Unknown'}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                          if (task.isDone && task.markedDoneBy != null)
+                            Builder(
+                              builder: (context) {
+                                final doneAt = task.completedAt == null
+                                    ? null
+                                    : DateTime.fromMillisecondsSinceEpoch(
+                                        task.completedAt!,
+                                      );
+                                final name =
+                                    task.markedDoneBy!['name']?.toString() ??
+                                    task.markedDoneBy!['email']?.toString() ??
+                                    'Unknown';
+                                final dateTime = doneAt == null
+                                    ? ''
+                                    : '  •  ${doneAt.day.toString().padLeft(2, '0')}/${doneAt.month.toString().padLeft(2, '0')}/${doneAt.year}  '
+                                          '${doneAt.hour.toString().padLeft(2, '0')}:${doneAt.minute.toString().padLeft(2, '0')}';
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Text(
+                                    'Marked Done By: $name$dateTime',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+
                           const Text(
                             'Remark',
                             style: TextStyle(
@@ -1082,52 +1149,6 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                         ),
 
                         const SizedBox(height: 15),
-
-                        // ── Creator & Editor ───────────────────────────────
-                        if (task.createdBy != null)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: FutureBuilder<String?>(
-                              future: _createdByNameFuture ??= _dataService
-                                  .loadCreatorName(task.createdBy),
-                              builder: (context, snapshot) {
-                                if (snapshot.hasError) {
-                                  debugPrint(
-                                    'Could not load task creator name: ${snapshot.error}',
-                                  );
-                                }
-                                final metadataName = _dataService
-                                    .metadataCreatorName(task.createdBy);
-                                final emailName = _dataService.creatorEmailName(
-                                  task.createdBy,
-                                );
-                                final name =
-                                    snapshot.data ??
-                                    metadataName ??
-                                    emailName ??
-                                    'Unknown';
-                                return Text(
-                                  "Created By: $name",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        if (task.editedBy != null)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Text(
-                              "Last Edited By: ${task.editedBy!['name'] ?? task.editedBy!['email'] ?? 'Unknown'}",
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ),
-
                         const SizedBox(height: 15),
                       ],
                     ), // ListView

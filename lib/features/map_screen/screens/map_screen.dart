@@ -222,7 +222,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final vm = Provider.of<MapScreenViewModel>(context, listen: false);
     final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
     if (keepInMyDay) task.isInMyDay = true;
-    await vm.toggleTaskDone(task, actorUid: authViewModel.userUid);
+    await vm.toggleTaskDone(
+      task,
+      actorUid: authViewModel.userUid,
+      actorMetadata: authViewModel.actorMetadata,
+    );
   }
 
   void _onEditPriority(BuildContext badgeContext, Task task) {

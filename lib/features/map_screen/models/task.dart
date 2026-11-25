@@ -111,6 +111,7 @@ class Task {
 
   Map<String, dynamic>? createdBy;
   Map<String, dynamic>? editedBy;
+  Map<String, dynamic>? markedDoneBy;
   String? assigneeUid;
 
   int? priorityUpdatedAt;
@@ -161,6 +162,7 @@ class Task {
     this.remark,
     this.createdBy,
     this.editedBy,
+    this.markedDoneBy,
     this.assigneeUid,
     this.priorityUpdatedAt,
     this.priorityUpdatedByUid,
@@ -204,6 +206,7 @@ class Task {
       'remark': remark,
       'createdBy': createdBy,
       'editedBy': editedBy,
+      'markedDoneBy': markedDoneBy,
       'assigneeUid': assigneeUid,
       'priorityUpdatedAt': priorityUpdatedAt,
       'priorityUpdatedByUid': priorityUpdatedByUid,
@@ -324,6 +327,9 @@ class Task {
           : null,
       editedBy: data['editedBy'] is Map
           ? Map<String, dynamic>.from(data['editedBy'] as Map)
+          : null,
+      markedDoneBy: data['markedDoneBy'] is Map
+          ? Map<String, dynamic>.from(data['markedDoneBy'] as Map)
           : null,
       assigneeUid: data['assigneeUid']?.toString(),
       priorityUpdatedAt: parsedPriorityUpdatedAt,

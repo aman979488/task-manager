@@ -382,15 +382,23 @@ class MapScreenViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> toggleTaskDone(Task task, {String? actorUid}) async {
+  Future<void> toggleTaskDone(
+    Task task, {
+    String? actorUid,
+    Map<String, dynamic>? actorMetadata,
+  }) async {
     final wasDone = task.isDone;
     final previousCompletedAt = task.completedAt;
     final previousLastUndoneByUid = task.lastUndoneByUid;
+    final previousMarkedDoneBy = task.markedDoneBy;
     task.isDone = !task.isDone;
     task.completedAt = task.isDone
         ? DateTime.now().millisecondsSinceEpoch
         : null;
     task.lastUndoneByUid = wasDone ? actorUid : null;
+    task.markedDoneBy = task.isDone
+        ? actorMetadata ?? (actorUid == null ? null : {'uid': actorUid})
+        : null;
     sortTasks();
     try {
       await updateTask(task);
@@ -398,7 +406,8 @@ class MapScreenViewModel extends ChangeNotifier {
       task
         ..isDone = wasDone
         ..completedAt = previousCompletedAt
-        ..lastUndoneByUid = previousLastUndoneByUid;
+        ..lastUndoneByUid = previousLastUndoneByUid
+        ..markedDoneBy = previousMarkedDoneBy;
       _lastErrorMessage = 'Could not update "${task.title}". Please try again.';
       debugPrint('Error updating task completion for "${task.title}": $error');
       sortTasks();

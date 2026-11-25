@@ -40,8 +40,8 @@ class DoneTasksView extends StatefulWidget {
 class _DoneTasksViewState extends State<DoneTasksView>
     with AutomaticKeepAliveClientMixin<DoneTasksView> {
   final Set<String> _expandedDates = {};
-    Timer? _blankTapTimer;
-    int _blankTapCount = 0;
+  Timer? _blankTapTimer;
+  int _blankTapCount = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -440,7 +440,7 @@ class _DoneTasksViewState extends State<DoneTasksView>
                 SliverPersistentHeader(
                   pinned: true,
                   delegate: _DoneWorkDateHeaderDelegate(
-                    height: row.date == null ? 48 : 78,
+                    height: 48,
                     child: _dateHeader(
                       context,
                       row,
@@ -510,12 +510,8 @@ class _DoneTasksViewState extends State<DoneTasksView>
           child: Row(
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (date == null)
-                      const Text(
+                child: date == null
+                    ? const Text(
                         'Date not set',
                         style: TextStyle(
                           fontSize: 14,
@@ -523,87 +519,94 @@ class _DoneTasksViewState extends State<DoneTasksView>
                           color: Color(0xFF265492),
                         ),
                       )
-                    else ...[
-                      Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text: _dateText(date),
+                    : Row(
+                        children: [
+                          Flexible(
+                            child: Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: _dateText(date),
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF265492),
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text:
+                                        '  ${_weekday(date)} (${row.tasks.length})',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          SizedBox(
+                            width: 48,
+                            child: Text(
+                              '${_formatDuration(row.totalHours)} Hr',
+                              textAlign: TextAlign.end,
                               style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
                                 color: Color(0xFF265492),
                               ),
                             ),
-                            TextSpan(
-                              text: '  ${_weekday(date)}',
+                          ),
+                          const SizedBox(width: 6),
+                          SizedBox(
+                            width: 70,
+                            child: Text(
+                              'Score ${_formatScore(row.totalScore)}',
+                              textAlign: TextAlign.end,
                               style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.black54,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF265492),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: [
-                                _MetaChip(
-                                  icon: Icons.timer_outlined,
-                                  text: '${_formatDuration(row.totalHours)} Hr',
-                                ),
-                                _MetaChip(
-                                  icon: Icons.star_outline_rounded,
-                                  text: 'Score ${_formatScore(row.totalScore)}',
-                                ),
-                              ],
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          FilledButton.icon(
-                            key: ValueKey(
-                              'done-work-daily-report-${date.toIso8601String()}',
-                            ),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFFFBE64E),
-                              foregroundColor: const Color(0xFF6B5800),
-                              minimumSize: const Size(0, 34),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
+                          const SizedBox(width: 6),
+                          SizedBox(
+                            width: 66,
+                            child: FilledButton(
+                              key: ValueKey(
+                                'done-work-daily-report-${date.toIso8601String()}',
                               ),
-                              visualDensity: VisualDensity.compact,
-                              shape: const StadiumBorder(),
-                            ),
-                            onPressed: () => DailyReportSheet.show(
-                              context,
-                              date: date,
-                              entries: row.tasks
-                                  .map(DailyReportEntry.fromTask)
-                                  .toList(),
-                            ),
-                            icon: const Icon(
-                              Icons.assignment_outlined,
-                              size: 16,
-                            ),
-                            label: const Text(
-                              'Daily Report',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFFBE64E),
+                                foregroundColor: const Color(0xFF6B5800),
+                                minimumSize: const Size(66, 34),
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                                shape: const StadiumBorder(),
+                              ),
+                              onPressed: () => DailyReportSheet.show(
+                                context,
+                                date: date,
+                                entries: row.tasks
+                                    .map(DailyReportEntry.fromTask)
+                                    .toList(),
+                              ),
+                              child: const Text(
+                                'Report',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ),
                         ],
                       ),
-                    ],
-                  ],
-                ),
               ),
               const SizedBox(width: 8),
               Icon(
@@ -643,37 +646,4 @@ class _DoneWorkDateHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(_DoneWorkDateHeaderDelegate oldDelegate) =>
       height != oldDelegate.height || child != oldDelegate.child;
-}
-
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: const Color(0xFF265492)),
-          const SizedBox(width: 4),
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF265492),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

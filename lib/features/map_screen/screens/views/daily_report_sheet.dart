@@ -134,6 +134,8 @@ class DailyReportSheet extends StatefulWidget {
 
 class _DailyReportSheetState extends State<DailyReportSheet> {
   DailyReportType? _filter;
+  double? _pointerStartDy;
+  double _pointerDragDy = 0;
 
   int _count(DailyReportType type) =>
       widget.entries.where((entry) => entry.type == type).length;
@@ -144,94 +146,58 @@ class _DailyReportSheetState extends State<DailyReportSheet> {
         ? widget.entries
         : widget.entries.where((entry) => entry.type == _filter).toList();
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 12, 0),
-          child: Row(
-            children: [
-              IconButton(
-                tooltip: 'Back',
-                icon: const Icon(Icons.arrow_back),
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints.tightFor(
-                  width: 40,
-                  height: 40,
-                ),
-                padding: EdgeInsets.zero,
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Daily Report',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      widget.dateLabel,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (widget.onAddEntry != null)
-                FilledButton.icon(
-                  onPressed: widget.onAddEntry,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _yellow,
-                    foregroundColor: _brown,
-                    shape: const StadiumBorder(),
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        _pointerStartDy = event.position.dy;
+        _pointerDragDy = 0;
+      },
+      onPointerMove: (event) {
+        if (_pointerStartDy == null) return;
+        _pointerDragDy = event.position.dy - _pointerStartDy!;
+      },
+      onPointerUp: (event) {
+        final shouldClose = _pointerDragDy >= 64;
+        _pointerStartDy = null;
+        _pointerDragDy = 0;
+        if (shouldClose && mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      onPointerCancel: (_) {
+        _pointerStartDy = null;
+        _pointerDragDy = 0;
+      },
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 12, 0),
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: 'Back',
+                  icon: const Icon(Icons.arrow_back),
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 40,
+                    height: 40,
                   ),
-                  icon: const Icon(Icons.add_circle_outline, size: 16),
-                  label: const Text(
-                    'Add Entry',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
+                  padding: EdgeInsets.zero,
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
-            ],
-          ),
-        ),
-        _FilterTabs(
-          selected: _filter,
-          onSelected: (type) => setState(() => _filter = type),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-            children: [
-              _SummaryCard(
-                total: widget.entries.length,
-                calls: _count(DailyReportType.call),
-                messages: _count(DailyReportType.message),
-                meets: _count(DailyReportType.meet),
-                others: _count(DailyReportType.other),
-                dateLabel: widget.dateLabel,
-              ),
-              const SizedBox(height: 12),
-              if (visible.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
+                Expanded(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.inbox_outlined,
-                        size: 32,
-                        color: Colors.grey.shade400,
+                      const Text(
+                        'Report',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                      const SizedBox(height: 8),
                       Text(
-                        'No work done on this day.',
+                        widget.dateLabel,
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey.shade600,
@@ -239,17 +205,79 @@ class _DailyReportSheetState extends State<DailyReportSheet> {
                       ),
                     ],
                   ),
-                )
-              else
-                for (var i = 0; i < visible.length; i++)
-                  _TimelineItem(
-                    entry: visible[i],
-                    isLast: i == visible.length - 1,
+                ),
+                if (widget.onAddEntry != null)
+                  FilledButton.icon(
+                    onPressed: widget.onAddEntry,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _yellow,
+                      foregroundColor: _brown,
+                      shape: const StadiumBorder(),
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    icon: const Icon(Icons.add_circle_outline, size: 16),
+                    label: const Text(
+                      'Add Entry',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
+          _FilterTabs(
+            selected: _filter,
+            onSelected: (type) => setState(() => _filter = type),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+              children: [
+                _SummaryCard(
+                  total: widget.entries.length,
+                  calls: _count(DailyReportType.call),
+                  messages: _count(DailyReportType.message),
+                  meets: _count(DailyReportType.meet),
+                  others: _count(DailyReportType.other),
+                  dateLabel: widget.dateLabel,
+                ),
+                const SizedBox(height: 12),
+                if (visible.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.inbox_outlined,
+                          size: 32,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'No work done on this day.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  for (var i = 0; i < visible.length; i++)
+                    _TimelineItem(
+                      entry: visible[i],
+                      isLast: i == visible.length - 1,
+                    ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
