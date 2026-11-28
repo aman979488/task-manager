@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show TextInputFormatter;
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:provider/provider.dart';
 
+import '../../flash/flash_alert_service.dart';
 import '../../../viewmodels/auth_viewmodel.dart';
 import '../models/floating_sheet_type.dart';
 import '../models/task.dart';
@@ -16,12 +18,16 @@ import 'views/task_detail_overlay.dart';
 import 'views/date_time_picker_dialog.dart';
 import 'views/task_files_section.dart';
 import 'views/task_step_list_widget.dart';
+import 'views/task_notifications_section.dart';
 
 class TaskDetailPage extends StatefulWidget {
   final Task task;
   final VoidCallback onChanged;
   final Future<void> Function() onSave;
   final bool isNewTask;
+  final Future<List<FlashTemplate>> Function()? loadNotificationTemplates;
+  final Future<bool> Function(TaskNotification notification, Task task)?
+  onScheduleFlashNotification;
 
   const TaskDetailPage({
     super.key,
@@ -29,6 +35,8 @@ class TaskDetailPage extends StatefulWidget {
     required this.onSave,
     VoidCallback? onChanged,
     this.isNewTask = false,
+    this.loadNotificationTemplates,
+    this.onScheduleFlashNotification,
   }) : onChanged = onChanged ?? _defaultCallback;
 
   static void _defaultCallback() {}
@@ -48,6 +56,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
   late TextEditingController _noteController;
   bool _showAdditionalDetails = false;
+  bool _showTaskNotifications = false;
   Future<String?>? _createdByNameFuture;
 
   // for editing main title
@@ -362,26 +371,45 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     required FloatingSheetType type,
     String? fieldKey,
     Widget? trailingAction,
+    VoidCallback? onTap,
     bool valueBelowLabel = false,
+    bool compactInline = false,
   }) {
     return _animatedBorderedTile(
       isSelected: _isSelected(value),
       child: SizedBox(
         key: anchorKey,
         child: ListTile(
+          contentPadding: compactInline
+              ? const EdgeInsets.symmetric(horizontal: 8)
+              : null,
           leading: Icon(icon, color: secondaryColor),
-          title: Text(label),
+          title: Text(
+            label,
+            maxLines: compactInline ? 1 : null,
+            overflow: compactInline ? TextOverflow.ellipsis : null,
+          ),
           subtitle: valueBelowLabel ? _infoTrailing(value) : null,
           trailing: valueBelowLabel
               ? null
               : trailingAction == null
-              ? _infoTrailing(value)
+              ? _infoTrailing(value, compact: compactInline)
               : Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: [_infoTrailing(value), trailingAction],
+                  children: [
+                    if (compactInline)
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 112),
+                        child: _infoTrailing(value, compact: true),
+                      )
+                    else
+                      _infoTrailing(value),
+                    trailingAction,
+                  ],
                 ),
-          onTap: () =>
-              _showOverlayFromAnchor(anchorKey, type, fieldKey: fieldKey),
+          onTap:
+              onTap ??
+              () => _showOverlayFromAnchor(anchorKey, type, fieldKey: fieldKey),
         ),
       ),
     );
@@ -416,11 +444,154 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     _showOverlay(anchorContext, type, fieldKey: fieldKey);
   }
 
-  Widget _infoTrailing(String? value) {
+  void _expandTaskNotifications() {
+    if (!_showTaskNotifications) {
+      setState(() => _showTaskNotifications = true);
+    }
+  }
+
+  Future<Staff?> _resolveAssignedFlashRecipient(
+    AuthViewModel authViewModel,
+  ) async {
+    final assigneeName = task.assignee?.trim() ?? '';
+    final assigneeUid = task.assigneeUid?.trim() ?? '';
+    if (assigneeName.isEmpty && assigneeUid.isEmpty) return null;
+
+    final assignedIdentities = {
+      assigneeName.toLowerCase(),
+      assigneeUid.toLowerCase(),
+    }..remove('');
+    if (assignedIdentities.contains('assign to me') ||
+        assignedIdentities.contains(authViewModel.userUid.toLowerCase()) ||
+        assignedIdentities.contains(authViewModel.userEmail.toLowerCase()) ||
+        assignedIdentities.contains(authViewModel.userName.toLowerCase())) {
+      return Staff(
+        authViewModel.userUid,
+        authViewModel.userName,
+        authViewModel.userEmail,
+      );
+    }
+
+    final staff = await FlashAlertService.loadStaff();
+    for (final person in staff) {
+      if (assignedIdentities.contains(person.uid.toLowerCase()) ||
+          assignedIdentities.contains(person.name.toLowerCase()) ||
+          assignedIdentities.contains(person.email.toLowerCase())) {
+        return person;
+      }
+    }
+    return null;
+  }
+
+  Future<bool> _scheduleFlashNotification(TaskNotification notification) async {
+    final onScheduleFlashNotification = widget.onScheduleFlashNotification;
+    if (onScheduleFlashNotification != null) {
+      return onScheduleFlashNotification(notification, task);
+    }
+
+    final scheduledAt = DateTime.tryParse(notification.scheduledAt);
+    if (scheduledAt == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Set a Remind Me time first, or choose Custom or Now.'),
+        ),
+      );
+      return false;
+    }
+    final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+    if (!authViewModel.loggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to send a flash message.')),
+      );
+      return false;
+    }
+    if ((task.assignee?.trim().isEmpty ?? true) &&
+        (task.assigneeUid?.trim().isEmpty ?? true)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Assign this task before sending a flash message.'),
+        ),
+      );
+      return false;
+    }
+
+    try {
+      final recipient = await _resolveAssignedFlashRecipient(authViewModel);
+      if (!mounted) return false;
+      if (recipient == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'The assigned person could not be found. Please update Assign.',
+            ),
+          ),
+        );
+        return false;
+      }
+
+      await FlashAlertService.send(
+        FlashDraft(
+          recipient: recipient,
+          text: notification.message,
+          sendAt: scheduledAt,
+          taskId: task.id,
+          templateLabel: notification.templateLabel,
+          notificationTiming: notification.timing,
+        ),
+        senderUid: authViewModel.userUid,
+        senderName: authViewModel.userName,
+      );
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            scheduledAt.isAfter(DateTime.now())
+                ? 'Flash message scheduled for ${recipient.name}.'
+                : 'Flash message sent to ${recipient.name}.',
+          ),
+        ),
+      );
+      return true;
+    } on FirebaseException catch (error) {
+      debugPrint('Could not send flash message: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not send the flash message. Please try again.',
+            ),
+          ),
+        );
+      }
+      return false;
+    } catch (error) {
+      debugPrint('Unexpected error sending flash message: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not send the flash message. Please try again.',
+            ),
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
+  Widget _infoTrailing(String? value, {bool compact = false}) {
+    Widget buildText(String text, TextStyle style) => Text(
+      text,
+      maxLines: compact ? 1 : null,
+      softWrap: !compact,
+      overflow: compact ? TextOverflow.ellipsis : null,
+      style: style,
+    );
+
     if (value == null || value.isEmpty) {
-      return Text(
+      return buildText(
         "None",
-        style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+        TextStyle(color: Colors.grey.shade500, fontSize: 13),
       );
     }
 
@@ -433,20 +604,24 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       final timeStr =
           '${hour.toString().padLeft(2, '0')}:$minute '
           '${dt.hour >= 12 ? 'PM' : 'AM'}';
-      final display = '$month/$day/${dt.year}, $timeStr';
+      final compactTime = '$hour:$minute${dt.hour >= 12 ? 'PM' : 'AM'}';
+      final display = compact
+          ? '$month/$day/${(dt.year % 100).toString().padLeft(2, '0')} '
+                '$compactTime'
+          : '$month/$day/${dt.year}, $timeStr';
 
-      return Text(
+      return buildText(
         display,
-        style: const TextStyle(
+        const TextStyle(
           color: secondaryColor,
           fontWeight: FontWeight.w600,
           fontSize: 13,
         ),
       );
     } catch (_) {
-      return Text(
+      return buildText(
         value,
-        style: const TextStyle(
+        const TextStyle(
           color: secondaryColor,
           fontWeight: FontWeight.w600,
           fontSize: 13,
@@ -544,10 +719,15 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     if (_isSaving || isDone == task.isDone) return;
     final previousIsDone = task.isDone;
     final previousCompletedAt = task.completedAt;
+    final previousEndTime = task.endTime;
     final previousMarkedDoneBy = task.markedDoneBy;
+    final completedAt = isDone ? DateTime.now() : null;
     setState(() {
       task.isDone = isDone;
-      task.completedAt = isDone ? DateTime.now().millisecondsSinceEpoch : null;
+      task.completedAt = completedAt?.millisecondsSinceEpoch;
+      task.endTime = completedAt == null
+          ? null
+          : Task.formatClockTime(completedAt);
       task.markedDoneBy = isDone
           ? Provider.of<AuthViewModel>(context, listen: false).actorMetadata
           : null;
@@ -559,6 +739,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       setState(() {
         task.isDone = previousIsDone;
         task.completedAt = previousCompletedAt;
+        task.endTime = previousEndTime;
         task.markedDoneBy = previousMarkedDoneBy;
       });
       widget.onChanged();
@@ -908,7 +1089,37 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           icon: Icons.notifications_active,
                           label: 'Remind Me',
                           type: FloatingSheetType.remind,
+                          compactInline: true,
+                          onTap: () {
+                            if (!_showTaskNotifications) {
+                              setState(() => _showTaskNotifications = true);
+                            }
+                            _showOverlayFromAnchor(
+                              _reminderAnchorKey,
+                              FloatingSheetType.remind,
+                            );
+                          },
+                          trailingAction: IconButton(
+                            tooltip: 'Show notification templates',
+                            onPressed: _expandTaskNotifications,
+                            icon: const Icon(Icons.bolt),
+                            color: secondaryColor,
+                          ),
                         ),
+                        if (_showTaskNotifications)
+                          TaskNotificationsSection(
+                            task: task,
+                            isExpanded: true,
+                            onChanged: widget.onChanged,
+                            secondaryColor: secondaryColor,
+                            loadTemplates: widget.loadNotificationTemplates,
+                            onNotificationScheduled: _scheduleFlashNotification,
+                            pickCustomTime: ({DateTime? initial}) =>
+                                showDateTimePickerWithTabs(
+                                  context,
+                                  initial: initial,
+                                ),
+                          ),
                         _buildOverlayTile(
                           anchorKey: _assigneeAnchorKey,
                           value: task.assignee,
@@ -930,6 +1141,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           icon: Icons.alarm,
                           label: 'Deadline',
                           type: FloatingSheetType.deadline,
+                          compactInline: true,
                           trailingAction: IconButton(
                             tooltip: 'Extend deadline',
                             onPressed: _extendDeadline,
@@ -1045,48 +1257,6 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           ),
                           const SizedBox(height: 15),
 
-                          if (task.createdBy != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: FutureBuilder<String?>(
-                                future: _createdByNameFuture ??= _dataService
-                                    .loadCreatorName(task.createdBy),
-                                builder: (context, snapshot) {
-                                  if (snapshot.hasError) {
-                                    debugPrint(
-                                      'Could not load task creator name: ${snapshot.error}',
-                                    );
-                                  }
-                                  final metadataName = _dataService
-                                      .metadataCreatorName(task.createdBy);
-                                  final emailName = _dataService
-                                      .creatorEmailName(task.createdBy);
-                                  final name =
-                                      snapshot.data ??
-                                      metadataName ??
-                                      emailName ??
-                                      'Unknown';
-                                  return Text(
-                                    'Created By: $name',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          if (task.editedBy != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: Text(
-                                'Last Edited By: ${task.editedBy!['name'] ?? task.editedBy!['email'] ?? 'Unknown'}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                            ),
                           if (task.isDone && task.markedDoneBy != null)
                             Builder(
                               builder: (context) {
@@ -1137,6 +1307,48 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                               border: OutlineInputBorder(),
                             ),
                           ),
+                          if (task.createdBy != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8, bottom: 4),
+                              child: FutureBuilder<String?>(
+                                future: _createdByNameFuture ??= _dataService
+                                    .loadCreatorName(task.createdBy),
+                                builder: (context, snapshot) {
+                                  if (snapshot.hasError) {
+                                    debugPrint(
+                                      'Could not load task creator name: ${snapshot.error}',
+                                    );
+                                  }
+                                  final metadataName = _dataService
+                                      .metadataCreatorName(task.createdBy);
+                                  final emailName = _dataService
+                                      .creatorEmailName(task.createdBy);
+                                  final name =
+                                      snapshot.data ??
+                                      metadataName ??
+                                      emailName ??
+                                      'Unknown';
+                                  return Text(
+                                    'Created By: $name',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          if (task.editedBy != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                'Last Edited By: ${task.editedBy!['name'] ?? task.editedBy!['email'] ?? 'Unknown'}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
                         ],
 
                         const SizedBox(height: 12),

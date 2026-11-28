@@ -523,6 +523,56 @@ exports.onNotificationCreated = onDocumentCreated(
     },
 );
 
+exports.dispatchScheduledFlashMessages = onSchedule(
+    {
+      schedule: "every 1 minutes",
+      timeZone: "UTC",
+      maxInstances: 1,
+      concurrency: 1,
+      timeoutSeconds: 120,
+    },
+    async () => {
+      const now = new Date();
+      const snapshot = await db.collection("flashMessages")
+          .where("status", "==", "scheduled")
+          .get();
+
+      for (const scheduledMessage of snapshot.docs) {
+        const scheduledAt = scheduledMessage.data().sendAt?.toDate?.();
+        if (!(scheduledAt instanceof Date)) {
+          logger.warn("Scheduled Flash has no valid sendAt timestamp", {
+            flashId: scheduledMessage.id,
+          });
+          continue;
+        }
+        if (scheduledAt > now) continue;
+
+        try {
+          await db.runTransaction(async (transaction) => {
+            const currentSnapshot =
+              await transaction.get(scheduledMessage.ref);
+            if (!currentSnapshot.exists) return;
+            const current = currentSnapshot.data();
+            const currentSendAt = current.sendAt?.toDate?.();
+            if (current.status !== "scheduled" ||
+                !(currentSendAt instanceof Date) ||
+                currentSendAt > now) {
+              return;
+            }
+            transaction.update(scheduledMessage.ref, {
+              status: "delivered",
+            });
+          });
+        } catch (error) {
+          logger.error("Could not dispatch scheduled Flash message", {
+            flashId: scheduledMessage.id,
+            error,
+          });
+        }
+      }
+    },
+);
+
 exports.onFlashMessageDelivered = onDocumentWritten(
     {
       document: "flashMessages/{flashId}",

@@ -9,7 +9,6 @@ import '../../utils/task_constants.dart';
 import '../../utils/task_mention_parser.dart';
 import '../../utils/task_week_helpers.dart';
 
-import '../../../flash/flash_alert_service.dart';
 import 'date_time_picker_dialog.dart';
 
 class FloatingMetadataSheet {
@@ -44,7 +43,6 @@ class FloatingMetadataSheet {
     Future<List<String>> Function()? loadAssignees,
     void Function(String)? onSelected,
     void Function(String)? onDeselected,
-    Future<void> Function()? onFlashMessage,
     VoidCallback? onDone,
     bool Function()? shouldShow,
     String Function()? searchQuery,
@@ -98,10 +96,7 @@ class FloatingMetadataSheet {
         case FloatingSheetType.priority:
           return TaskConstants.priorityOptions;
         case FloatingSheetType.remind:
-          return [
-            ...QuickDateTimeOptions.labels(),
-            if (onFlashMessage != null) kFlashOption,
-          ];
+          return QuickDateTimeOptions.labels();
         case FloatingSheetType.deadline:
           return QuickDateTimeOptions.labels();
         case FloatingSheetType.assign:
@@ -228,13 +223,6 @@ class FloatingMetadataSheet {
                 )
               : null,
           onTap: () async {
-            if (type == FloatingSheetType.remind &&
-                opt == kFlashOption &&
-                onFlashMessage != null) {
-              hide();
-              await onFlashMessage();
-              return;
-            }
             if (isSelected) {
               if (multiSelect) {
                 activeSelectedValues.remove(opt);
@@ -414,107 +402,108 @@ class FloatingMetadataSheet {
 
                         return ConstrainedBox(
                           constraints: BoxConstraints(maxHeight: menuMaxHeight),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (showSearch)
-                                SizedBox(
-                                  height: searchAreaHeight,
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(10),
-                                    child: TextField(
-                                      controller: _searchController,
-                                      autofocus: false,
-                                      decoration: InputDecoration(
-                                        hintText: 'Search...',
-                                        hintStyle: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.grey.shade400,
-                                        ),
-                                        prefixIcon: Icon(
-                                          Icons.search,
-                                          size: 18,
-                                          color: Colors.grey.shade400,
-                                        ),
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 8,
-                                            ),
-                                        isDense: true,
-                                        filled: true,
-                                        fillColor: Colors.grey.shade100,
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
+                          child: SingleChildScrollView(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (showSearch)
+                                  SizedBox(
+                                    height: searchAreaHeight,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(10),
+                                      child: TextField(
+                                        controller: _searchController,
+                                        autofocus: false,
+                                        decoration: InputDecoration(
+                                          hintText: 'Search...',
+                                          hintStyle: TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.grey.shade400,
                                           ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                      ),
-                                      onChanged: (val) {
-                                        _searchQuery = val;
-                                        setOverlayState(() {});
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              SizedBox(
-                                height: optionListHeight,
-                                child: filteredOptions.isEmpty
-                                    ? const Padding(
-                                        padding: EdgeInsets.all(16),
-                                        child: Center(
-                                          child: Text(
-                                            'No results',
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: Colors.grey,
-                                            ),
+                                          prefixIcon: Icon(
+                                            Icons.search,
+                                            size: 18,
+                                            color: Colors.grey.shade400,
                                           ),
-                                        ),
-                                      )
-                                    : ListView(
-                                        primary: false,
-                                        physics:
-                                            const AlwaysScrollableScrollPhysics(),
-                                        padding: EdgeInsets.zero,
-                                        shrinkWrap: true,
-                                        children: filteredOptions,
-                                      ),
-                              ),
-                              if (multiSelect)
-                                SizedBox(
-                                  height: doneAreaHeight,
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              TaskConstants.secondaryColor,
-                                          foregroundColor: Colors.white,
-                                          shape: RoundedRectangleBorder(
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 8,
+                                              ),
+                                          isDense: true,
+                                          filled: true,
+                                          fillColor: Colors.grey.shade100,
+                                          border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(
                                               8,
                                             ),
+                                            borderSide: BorderSide.none,
                                           ),
                                         ),
-                                        onPressed: () {
-                                          hide();
-                                          onDone?.call();
+                                        onChanged: (val) {
+                                          _searchQuery = val;
+                                          setOverlayState(() {});
                                         },
-                                        child: const Text(
-                                          'Done',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                SizedBox(
+                                  height: optionListHeight,
+                                  child: filteredOptions.isEmpty
+                                      ? const Padding(
+                                          padding: EdgeInsets.all(16),
+                                          child: Center(
+                                            child: Text(
+                                              'No results',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      : ListView(
+                                          primary: false,
+                                          physics:
+                                              const AlwaysScrollableScrollPhysics(),
+                                          padding: EdgeInsets.zero,
+                                          shrinkWrap: true,
+                                          children: filteredOptions,
+                                        ),
+                                ),
+                                if (multiSelect)
+                                  SizedBox(
+                                    height: doneAreaHeight,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8.0),
+                                      child: SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                TaskConstants.secondaryColor,
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          onPressed: () {
+                                            hide();
+                                            onDone?.call();
+                                          },
+                                          child: const Text(
+                                            'Done',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
                         );
                       },

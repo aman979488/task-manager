@@ -24,6 +24,42 @@ void main() {
     expect(TaskConstants.priorityOptions, isNot(contains('Monitor')));
   });
 
+  test(
+    'creating a task records its start time and preserves a chosen time',
+    () async {
+      final repository = _TaskRepositoryStub();
+      final viewModel = MapScreenViewModel(
+        repository: repository,
+        assignmentNotificationService: _AssignmentNotificationServiceStub(),
+      );
+      final newTask = Task('New task');
+      final taskWithChosenStartTime = Task('Chosen time', startTime: '9:15 AM');
+
+      expect(
+        await viewModel.addTask(
+          title: newTask.title,
+          authViewModel: _AuthViewModelStub(),
+          taskDraft: newTask,
+          waitForPersistence: true,
+        ),
+        isTrue,
+      );
+      expect(newTask.startTime, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
+
+      expect(
+        await viewModel.addTask(
+          title: taskWithChosenStartTime.title,
+          authViewModel: _AuthViewModelStub(),
+          taskDraft: taskWithChosenStartTime,
+          waitForPersistence: true,
+        ),
+        isTrue,
+      );
+      expect(taskWithChosenStartTime.startTime, '9:15 AM');
+      viewModel.dispose();
+    },
+  );
+
   test('metadata options are sorted by usage with stable ties', () async {
     final repository = _TaskRepositoryStub()
       ..tasksToFetch = [
@@ -86,6 +122,12 @@ void main() {
 
       expect(task.isDone, isTrue);
       expect(task.completedAt, isNotNull);
+      expect(
+        task.endTime,
+        Task.formatClockTime(
+          DateTime.fromMillisecondsSinceEpoch(task.completedAt!),
+        ),
+      );
       final completionDate = DateTime.fromMillisecondsSinceEpoch(
         task.completedAt!,
       );
@@ -110,7 +152,7 @@ void main() {
         repository: repository,
         assignmentNotificationService: _AssignmentNotificationServiceStub(),
       );
-      final task = Task('Assigned task', id: 'task-1');
+      final task = Task('Assigned task', id: 'task-1', endTime: '9:15 AM');
 
       final save = viewModel.toggleTaskDone(task);
       repository.updateCompleter.completeError(StateError('permission denied'));
@@ -118,6 +160,7 @@ void main() {
 
       expect(task.isDone, isFalse);
       expect(task.completedAt, isNull);
+      expect(task.endTime, '9:15 AM');
       expect(viewModel.takeErrorMessage(), contains('Could not update'));
       viewModel.dispose();
     },
@@ -136,10 +179,12 @@ void main() {
         id: 'task-1',
         isDone: true,
         assignee: 'Someone else',
+        endTime: '10:30 AM',
       );
 
       final undo = viewModel.toggleTaskDone(task, actorUid: 'user-1');
       expect(task.isDone, isFalse);
+      expect(task.endTime, isNull);
       expect(task.lastUndoneByUid, 'user-1');
       expect(
         MapScreenViewModel.myTasksForUser(
@@ -1139,6 +1184,13 @@ class _AuthViewModelStub implements AuthViewModel {
 
   @override
   String get userUid => 'user-1';
+
+  @override
+  Map<String, dynamic> get actorMetadata => {
+    'uid': userUid,
+    'email': userEmail,
+    'name': userName,
+  };
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

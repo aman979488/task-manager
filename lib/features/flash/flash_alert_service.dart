@@ -197,6 +197,8 @@ class FlashAlertService {
       'recipientEmail': draft.recipient.email,
       'text': text,
       'taskId': draft.taskId,
+      'templateLabel': draft.templateLabel,
+      'notificationTiming': draft.notificationTiming,
       'sendAt': scheduled
           ? Timestamp.fromDate(sendAt)
           : FieldValue.serverTimestamp(),

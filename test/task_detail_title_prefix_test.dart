@@ -1,10 +1,128 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:task_manager/features/flash/flash_alert_service.dart';
 import 'package:task_manager/features/map_screen/models/task.dart';
 import 'package:task_manager/features/map_screen/screens/task_detail_page.dart';
 import 'package:task_manager/features/map_screen/screens/views/task_step_list_widget.dart';
 
 void main() {
+  testWidgets('Add notification schedules the selected template', (
+    tester,
+  ) async {
+    TaskNotification? scheduledNotification;
+    final reminderAt = DateTime(2026, 11, 28, 17);
+    final task = Task(
+      'Help',
+      assignee: 'Nirmal',
+      assigneeUid: 'Nirmal',
+      reminder: reminderAt.toIso8601String(),
+      followUp: DateTime.now().toIso8601String(),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(
+          task: task,
+          onChanged: () {},
+          onSave: () async {},
+          loadNotificationTemplates: () async => const [
+            FlashTemplate(label: 'Work update', text: 'Work update message'),
+          ],
+          onScheduleFlashNotification: (notification, task) async {
+            scheduledNotification = notification;
+            expect(task.assignee, 'Nirmal');
+            return true;
+          },
+        ),
+      ),
+    );
+
+    final flashButton = find.byTooltip('Show notification templates');
+    expect(flashButton, findsOneWidget);
+    await tester.tap(flashButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Template'), findsOneWidget);
+    expect(find.text('Choose a template'), findsNothing);
+    await tester.tap(find.text('Template'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose a template'), findsOneWidget);
+    expect(find.text('Send to'), findsNothing);
+    await tester.tap(find.text('Work update'));
+    await tester.pumpAndSettle();
+    expect(find.text('Add notification'), findsOneWidget);
+
+    final templateCard = find
+        .ancestor(
+          of: find.text('Template'),
+          matching: find.byType(AnimatedContainer),
+        )
+        .first;
+    final addNotificationCard = find
+        .ancestor(
+          of: find.text('Add notification'),
+          matching: find.byType(AnimatedContainer),
+        )
+        .first;
+    final reminderCard = find
+        .ancestor(
+          of: find.text('Remind Me'),
+          matching: find.byType(AnimatedContainer),
+        )
+        .first;
+    expect(
+      tester.getSize(templateCard).width,
+      tester.getSize(reminderCard).width,
+    );
+    expect(
+      tester.getSize(addNotificationCard).width,
+      tester.getSize(reminderCard).width,
+    );
+    final templateDecoration =
+        tester.widget<AnimatedContainer>(templateCard).decoration
+            as BoxDecoration;
+    final colorValue = templateDecoration.color!.toARGB32();
+    expect((colorValue >> 16) & 0xff, greaterThan(colorValue & 0xff));
+    expect((colorValue >> 8) & 0xff, greaterThan(colorValue & 0xff));
+    await tester.tap(find.text('Add notification'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('10 minutes before'));
+    await tester.pumpAndSettle();
+    expect(scheduledNotification?.templateLabel, 'Work update');
+    expect(scheduledNotification?.message, 'Work update message');
+    expect(scheduledNotification?.timing, '10 minutes before');
+    expect(
+      scheduledNotification?.scheduledAt,
+      reminderAt.subtract(const Duration(minutes: 10)).toIso8601String(),
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('reminder and deadline timing stay on one line', (tester) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.physicalSize = const Size(360, 900);
+    tester.view.devicePixelRatio = 1;
+    final task = Task(
+      'Help',
+      reminder: DateTime(2026, 11, 28, 14, 30).toIso8601String(),
+      deadline: DateTime(2026, 11, 28, 16).toIso8601String(),
+      followUp: DateTime.now().toIso8601String(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskDetailPage(task: task, onChanged: () {}, onSave: () async {}),
+      ),
+    );
+
+    for (final label in ['Remind Me', 'Deadline']) {
+      final labelText = tester.widget<Text>(find.text(label));
+      expect(labelText.maxLines, 1);
+    }
+    expect(find.text('11/28/26 2:30PM'), findsOneWidget);
+    expect(find.text('11/28/26 4:00PM'), findsOneWidget);
+  });
+
   testWidgets('work name label stays visible and title text is editable', (
     tester,
   ) async {

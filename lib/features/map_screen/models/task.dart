@@ -82,6 +82,13 @@ class TaskNotification {
 }
 
 class Task {
+  static String formatClockTime(DateTime value) {
+    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final minute = value.minute.toString().padLeft(2, '0');
+    final meridiem = value.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $meridiem';
+  }
+
   String? id; // Firestore document ID
   String title;
   bool isDone;

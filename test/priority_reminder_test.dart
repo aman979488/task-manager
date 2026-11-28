@@ -6,18 +6,33 @@ import 'package:task_manager/features/map_screen/viewmodels/add_task_viewmodel.d
 void main() {
   final now = DateTime(2026, 10, 29, 16, 5);
 
-  test('date-based priorities map to 9 AM reminders', () {
-    expect(reminderForPriority('Today', now: now), DateTime(2026, 10, 29, 9));
+  test('date-based priorities map to 9 PM reminders', () {
+    expect(reminderForPriority('Today', now: now), DateTime(2026, 10, 29, 21));
     expect(
       reminderForPriority('Tomorrow', now: now),
-      DateTime(2026, 10, 30, 9),
+      DateTime(2026, 10, 30, 21),
     );
     expect(
       reminderForPriority('Day Later', now: now),
-      DateTime(2026, 10, 31, 9),
+      DateTime(2026, 10, 31, 21),
     );
-    expect(reminderForPriority('Later', now: now), DateTime(2026, 11, 1, 9));
+    expect(reminderForPriority('Later', now: now), DateTime(2026, 11, 1, 21));
     expect(reminderForPriority('IMP', now: now), isNull);
+  });
+
+  test('today priority uses tomorrow at 9 PM after 9 PM has passed', () {
+    expect(
+      reminderForPriority('Today', now: DateTime(2026, 10, 29, 20, 59)),
+      DateTime(2026, 10, 29, 21),
+    );
+    expect(
+      reminderForPriority('Today', now: DateTime(2026, 10, 29, 21)),
+      DateTime(2026, 10, 30, 21),
+    );
+    expect(
+      reminderForPriority('Today', now: DateTime(2026, 10, 29, 23, 59)),
+      DateTime(2026, 10, 30, 21),
+    );
   });
 
   test('selecting a date-based add-task priority sets its reminder', () {
@@ -30,7 +45,7 @@ void main() {
     expect(reminder.year, tomorrow.year);
     expect(reminder.month, tomorrow.month);
     expect(reminder.day, tomorrow.day);
-    expect(reminder.hour, 9);
+    expect(reminder.hour, 21);
     expect(reminder.minute, 0);
     viewModel.dispose();
   });

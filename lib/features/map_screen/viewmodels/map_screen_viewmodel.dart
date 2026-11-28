@@ -321,6 +321,9 @@ class MapScreenViewModel extends ChangeNotifier {
       ..title = cleanTitle
       ..createdBy = authViewModel.actorMetadata
       ..assigneeUid = task.assignee
+      ..startTime = task.startTime?.trim().isNotEmpty == true
+          ? task.startTime
+          : Task.formatClockTime(DateTime.now())
       ..isInMyDay =
           task.isInMyDay ||
           const {
@@ -389,12 +392,17 @@ class MapScreenViewModel extends ChangeNotifier {
   }) async {
     final wasDone = task.isDone;
     final previousCompletedAt = task.completedAt;
+    final previousEndTime = task.endTime;
     final previousLastUndoneByUid = task.lastUndoneByUid;
     final previousMarkedDoneBy = task.markedDoneBy;
+    final completedAt = task.isDone ? null : DateTime.now();
     task.isDone = !task.isDone;
     task.completedAt = task.isDone
-        ? DateTime.now().millisecondsSinceEpoch
+        ? completedAt!.millisecondsSinceEpoch
         : null;
+    task.endTime = completedAt == null
+        ? null
+        : Task.formatClockTime(completedAt);
     task.lastUndoneByUid = wasDone ? actorUid : null;
     task.markedDoneBy = task.isDone
         ? actorMetadata ?? (actorUid == null ? null : {'uid': actorUid})
@@ -406,6 +414,7 @@ class MapScreenViewModel extends ChangeNotifier {
       task
         ..isDone = wasDone
         ..completedAt = previousCompletedAt
+        ..endTime = previousEndTime
         ..lastUndoneByUid = previousLastUndoneByUid
         ..markedDoneBy = previousMarkedDoneBy;
       _lastErrorMessage = 'Could not update "${task.title}". Please try again.';

@@ -10,5 +10,14 @@ DateTime? reminderForPriority(String? priority, {DateTime? now}) {
 
   final today = now ?? DateTime.now();
   final reminderDate = DateTime(today.year, today.month, today.day + dayOffset);
-  return DateTime(reminderDate.year, reminderDate.month, reminderDate.day, 9);
+  final reminderAt = DateTime(
+    reminderDate.year,
+    reminderDate.month,
+    reminderDate.day,
+    21,
+  );
+  if (dayOffset == 0 && !reminderAt.isAfter(today)) {
+    return DateTime(today.year, today.month, today.day + 1, 21);
+  }
+  return reminderAt;
 }
