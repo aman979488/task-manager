@@ -268,19 +268,12 @@ class MapScreenTabViews extends StatelessWidget {
       onDateChanged: viewModel.setCalendarDate,
       scheduledDate: (task) =>
           TaskDateFormatter.scheduledDate(task.deadline, task.reminder),
-      taskBuilder: (task, index) => _buildTaskItem(
+      taskBuilder: (task, index) => _buildMyWorkTaskItem(
         task,
         index,
-        dense: true,
-        showMetadata: includeScheduleMetadata,
         includeScheduleMetadata: includeScheduleMetadata,
-        assigneeLabel: showAssignerName
-            ? (_myWorkAssignmentLabel(task) ?? '')
-            : null,
-        highlightedTitlePrefix: showWorkTypeInTitle ? task.workType : null,
-        hideTaskMetadata: !includeScheduleMetadata,
-        confirmCompletion: true,
-        taskNameMaxLines: 1,
+        showAssignerName: showAssignerName,
+        showWorkTypeInTitle: showWorkTypeInTitle,
       ),
       detailedTaskBuilder: (task) => Column(
         children: [
@@ -305,6 +298,29 @@ class MapScreenTabViews extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMyWorkTaskItem(
+    Task task,
+    int index, {
+    bool includeScheduleMetadata = false,
+    bool showAssignerName = false,
+    bool showWorkTypeInTitle = false,
+  }) {
+    return _buildTaskItem(
+      task,
+      index,
+      dense: true,
+      showMetadata: includeScheduleMetadata,
+      includeScheduleMetadata: includeScheduleMetadata,
+      assigneeLabel: showAssignerName
+          ? (_myWorkAssignmentLabel(task) ?? '')
+          : null,
+      highlightedTitlePrefix: showWorkTypeInTitle ? task.workType : null,
+      hideTaskMetadata: !includeScheduleMetadata,
+      confirmCompletion: true,
+      taskNameMaxLines: 1,
     );
   }
 
@@ -362,6 +378,42 @@ class MapScreenTabViews extends StatelessWidget {
           showAssignerName: true,
           showWorkTypeInTitle: true,
         ),
+        expandedTasksSliverBuilder:
+            viewModel.viewType == 'Grid' || viewModel.viewType == 'Calendar'
+            ? null
+            : (sectionTasks) {
+                final tasks = viewModel.getVisibleTasks(source: sectionTasks);
+                if (tasks.isEmpty) {
+                  return const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(24, 8, 24, 20),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'No tasks in this section.',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                return SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _buildMyWorkTaskItem(
+                        tasks[index],
+                        index,
+                        includeScheduleMetadata: true,
+                        showAssignerName: true,
+                        showWorkTypeInTitle: true,
+                      ),
+                      childCount: tasks.length,
+                      addAutomaticKeepAlives: false,
+                    ),
+                  ),
+                );
+              },
       ),
     );
   }
@@ -475,6 +527,7 @@ class MapScreenTabViews extends StatelessWidget {
             builder: (_) => GoalsTabView(
               viewModel: viewModel,
               authViewModel: authViewModel,
+              hasAdminAccess: hasAdminAccess,
               taskResultsBuilder: _buildMyWorkTaskResults,
             ),
           ),

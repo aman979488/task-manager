@@ -40,6 +40,45 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('expanded section builds task rows lazily', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var builtTaskRows = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MyWorkView(
+            sections: {
+              'Urgent Works': [Task('Urgent task')],
+              'Overdue Works': List.generate(
+                300,
+                (index) => Task('Overdue task $index'),
+              ),
+            },
+            taskResultsBuilder: (_) => const SizedBox.shrink(),
+            expandedTasksSliverBuilder: (tasks) => SliverList(
+              delegate: SliverChildBuilderDelegate((context, index) {
+                builtTaskRows++;
+                return Text(tasks[index].title);
+              }, childCount: tasks.length),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final header = find.ancestor(
+      of: find.text('OVERDUE'),
+      matching: find.byType(InkWell),
+    );
+    tester.widget<InkWell>(header.first).onTap!();
+    await tester.pump();
+
+    expect(find.text('Overdue task 0'), findsOneWidget);
+    expect(find.text('Urgent task'), findsNothing);
+    expect(builtTaskRows, lessThan(300));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('restores expanded work sections after app restart', (
     tester,
   ) async {

@@ -15,12 +15,11 @@ class WeeklyGoalRepository {
     return _weeklyGoals
         .where('userUid', isEqualTo: userUid)
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => WeeklyGoal.fromMap(doc.data()))
-              .toList(),
-        );
+        .map(_goalsFromSnapshot);
   }
+
+  Stream<List<WeeklyGoal>> watchAllGoals() =>
+      _weeklyGoals.snapshots().map(_goalsFromSnapshot);
 
   Future<void> saveGoal(WeeklyGoal goal) async {
     await _weeklyGoals.doc('${goal.userUid}_${goal.weekKey}').set({
@@ -33,4 +32,8 @@ class WeeklyGoalRepository {
           : Timestamp.fromDate(goal.createdAt!),
     }, SetOptions(merge: true));
   }
+
+  List<WeeklyGoal> _goalsFromSnapshot(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) => snapshot.docs.map((doc) => WeeklyGoal.fromMap(doc.data())).toList();
 }

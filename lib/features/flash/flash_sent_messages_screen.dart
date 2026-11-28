@@ -41,7 +41,8 @@ class FlashSentMessagesScreen extends StatelessWidget {
               final responseText = data['responseText']?.toString();
               final status = data['status']?.toString() ?? 'sent';
               final hasResponse = response != null && response.isNotEmpty;
-              final answer = response == 'Others' &&
+              final answer =
+                  response == 'Others' &&
                       responseText != null &&
                       responseText.isNotEmpty
                   ? responseText

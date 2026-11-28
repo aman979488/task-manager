@@ -182,7 +182,7 @@ class FloatingMetadataSheet {
         orElse: () => matchingOptions.isEmpty ? '' : matchingOptions.first,
       );
 
-      return options.map((opt) {
+      final tiles = options.map((opt) {
         final bool isSelected = activeSelectedValues.contains(opt);
         final bool isHighlighted =
             highlightedOption.isNotEmpty && opt == highlightedOption;
@@ -286,6 +286,29 @@ class FloatingMetadataSheet {
           },
         );
       }).toList();
+      if (type == FloatingSheetType.goal) {
+        tiles.insert(
+          0,
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.calendar_month, size: 18),
+            title: const Text(goalWeekPickerOptionLabel),
+            onTap: () async {
+              hide();
+              final weekKey = await showGoalWeekPicker(
+                rootContext,
+                selectedWeekKey: activeSelectedValues.isEmpty
+                    ? null
+                    : activeSelectedValues.first,
+              );
+              if (weekKey == null || !buttonContext.mounted) return;
+              await FrequentOptionUsage.recordSelection(type.name, weekKey);
+              onSelected?.call(weekKey);
+            },
+          ),
+        );
+      }
+      return tiles;
     }
 
     const double padding = 8;

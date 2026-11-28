@@ -15,17 +15,20 @@ import 'task_suggestions_sheet.dart';
 const Color _brand = Color(0xFF6B5800);
 const Color _brandSoft = Color(0xFF8A7320);
 const Color _currentTint = Color(0xFFFFF8DC);
+const Color _cardBorder = Color(0xFFEAE6D8);
 
 class GoalsTabView extends StatelessWidget {
   const GoalsTabView({
     super.key,
     required this.viewModel,
     required this.authViewModel,
+    required this.hasAdminAccess,
     required this.taskResultsBuilder,
   });
 
   final MapScreenViewModel viewModel;
   final AuthViewModel authViewModel;
+  final bool hasAdminAccess;
   final Widget Function(List<Task> tasks) taskResultsBuilder;
 
   @override
@@ -33,6 +36,7 @@ class GoalsTabView extends StatelessWidget {
     return _WeeklyGoalsView(
       viewModel: viewModel,
       authViewModel: authViewModel,
+      hasAdminAccess: hasAdminAccess,
       taskResultsBuilder: taskResultsBuilder,
     );
   }
@@ -42,11 +46,13 @@ class _WeeklyGoalsView extends StatefulWidget {
   const _WeeklyGoalsView({
     required this.viewModel,
     required this.authViewModel,
+    required this.hasAdminAccess,
     required this.taskResultsBuilder,
   });
 
   final MapScreenViewModel viewModel;
   final AuthViewModel authViewModel;
+  final bool hasAdminAccess;
   final Widget Function(List<Task> tasks) taskResultsBuilder;
 
   @override
@@ -71,7 +77,10 @@ class _WeeklyGoalsViewState extends State<_WeeklyGoalsView> {
     final userUid = widget.authViewModel.userUid;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<WeeklyGoalsViewModel>().watchGoals(userUid);
+      context.read<WeeklyGoalsViewModel>().watchGoals(
+        userUid,
+        includeAllUsers: widget.hasAdminAccess,
+      );
     });
   }
 
@@ -82,11 +91,15 @@ class _WeeklyGoalsViewState extends State<_WeeklyGoalsView> {
   List<DateTime> _monthsToDisplay(WeeklyGoalsViewModel goals) {
     final now = DateTime.now();
     var oldest = DateTime(now.year, now.month - 11);
+    var newest = DateTime(now.year, now.month);
 
     void includeMonth(int year, int month) {
       final date = DateTime(year, month);
       if (date.isBefore(oldest)) {
         oldest = date;
+      }
+      if (date.isAfter(newest)) {
+        newest = date;
       }
     }
 
@@ -95,18 +108,31 @@ class _WeeklyGoalsViewState extends State<_WeeklyGoalsView> {
       final week = weekKey == null ? null : dateRangeForWeek(weekKey);
       if (week != null) includeMonth(week.year, week.month);
     }
-    for (final goal in goals.goalsByWeek.values) {
+    for (final goal in goals.goals) {
       final week = dateRangeForWeek(goal.weekKey);
       if (week != null) includeMonth(week.year, week.month);
     }
 
     final months = <DateTime>[];
-    var month = DateTime(now.year, now.month);
+    var month = newest;
     while (!month.isBefore(oldest)) {
       months.add(month);
       month = DateTime(month.year, month.month - 1);
     }
     return months;
+  }
+
+  Map<String, String> _goalOwnerLabels() {
+    final labels = <String, String>{};
+    for (final task in widget.viewModel.tasks) {
+      final creator = task.createdBy;
+      final userUid = creator?['uid']?.toString().trim() ?? '';
+      final name = creator?['name']?.toString().trim();
+      if (userUid.isNotEmpty && name != null && name.isNotEmpty) {
+        labels.putIfAbsent(userUid, () => name);
+      }
+    }
+    return labels;
   }
 
   Future<void> _createNewTaskForWeek(TaskWeek week) async {
@@ -155,6 +181,7 @@ class _WeeklyGoalsViewState extends State<_WeeklyGoalsView> {
     final goals = context.watch<WeeklyGoalsViewModel>();
     final currentWeek = weekKeyFor(DateTime.now());
     final months = _monthsToDisplay(goals);
+    final goalOwnerLabels = _goalOwnerLabels();
     if (months.isNotEmpty) {
       final topMonth = months.first;
       final topMonthKey = _monthKey(topMonth.year, topMonth.month);
@@ -184,16 +211,54 @@ class _WeeklyGoalsViewState extends State<_WeeklyGoalsView> {
                   ),
                 ),
                 TextButton(
-                  onPressed: () =>
-                      goals.retryGoals(widget.authViewModel.userUid),
+                  onPressed: () => goals.retryGoals(
+                    widget.authViewModel.userUid,
+                    includeAllUsers: widget.hasAdminAccess,
+                  ),
                   child: const Text('Retry'),
                 ),
               ],
             ),
           ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: _currentTint,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.flag_rounded, color: _brand),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Weekly goals',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Plan your week and track your progress',
+                      style: TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
             itemCount: months.length,
             itemBuilder: (context, index) {
               final month = months[index];
@@ -204,60 +269,145 @@ class _WeeklyGoalsViewState extends State<_WeeklyGoalsView> {
                 0,
                 (count, week) => count + _tasksForWeek(week.key).length,
               );
-              return Card(
-                margin: const EdgeInsets.only(bottom: 10),
-                color: Colors.grey.shade50,
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: _cardBorder),
+                ),
                 child: Column(
                   children: [
-                    ListTile(
-                      title: Text(
-                        '${_monthName(month.month)} ${month.year}',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                    Material(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(18),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: () => setState(() {
+                          if (monthExpanded) {
+                            _expandedMonths.remove(monthKey);
+                          } else {
+                            _expandedMonths.add(monthKey);
+                          }
+                        }),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 13,
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: _currentTint,
+                                  borderRadius: BorderRadius.circular(13),
+                                ),
+                                child: const Icon(
+                                  Icons.calendar_month_rounded,
+                                  color: _brand,
+                                  size: 21,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${_monthName(month.month)} ${month.year}',
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${weeks.length} weeks',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF5F3EC),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  '$monthTaskCount tasks',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: _brand,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                monthExpanded
+                                    ? Icons.keyboard_arrow_up_rounded
+                                    : Icons.keyboard_arrow_down_rounded,
+                                color: Colors.black54,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      subtitle: Text('$monthTaskCount tasks'),
-                      trailing: Icon(
-                        monthExpanded ? Icons.expand_less : Icons.expand_more,
-                      ),
-                      onTap: () => setState(() {
-                        if (monthExpanded) {
-                          _expandedMonths.remove(monthKey);
-                        } else {
-                          _expandedMonths.add(monthKey);
-                        }
-                      }),
                     ),
                     if (monthExpanded)
-                      ...weeks.map((week) {
-                        final tasks = _tasksForWeek(week.key);
-                        final doneCount = tasks
-                            .where((task) => task.isDone)
-                            .length;
-                        final goal = goals.goalsByWeek[week.key];
-                        final weekExpanded = _expanded.contains(week.key);
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: _WeekTile(
-                            week: week,
-                            goal: goal,
-                            tasks: tasks,
-                            taskResultsBuilder: widget.taskResultsBuilder,
-                            isCurrent: week.key == currentWeek,
-                            expanded: weekExpanded,
-                            onExpand: () => setState(() {
-                              if (weekExpanded) {
-                                _expanded.remove(week.key);
-                              } else {
-                                _expanded.add(week.key);
-                              }
-                            }),
-                            onOpen: () => _openWeekPage(week),
-                            onAddTask: () => _showTaskSuggestionsForWeek(week),
-                            onNewTask: () => _createNewTaskForWeek(week),
-                            doneCount: doneCount,
-                            score: weeklyGoalScore(tasks),
+                      Column(
+                        children: [
+                          const Divider(height: 1, color: _cardBorder),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 10, 8, 0),
+                            child: Column(
+                              children: weeks.map((week) {
+                                final tasks = _tasksForWeek(week.key);
+                                final doneCount = tasks
+                                    .where((task) => task.isDone)
+                                    .length;
+                                final weekGoals = goals.goalsForWeek(week.key);
+                                final weekExpanded = _expanded.contains(
+                                  week.key,
+                                );
+                                return _WeekTile(
+                                  week: week,
+                                  goals: weekGoals,
+                                  goalOwnerLabel: (userUid) =>
+                                      goalOwnerLabels[userUid] ?? userUid,
+                                  showGoalOwner: widget.hasAdminAccess,
+                                  tasks: tasks,
+                                  taskResultsBuilder: widget.taskResultsBuilder,
+                                  isCurrent: week.key == currentWeek,
+                                  expanded: weekExpanded,
+                                  onExpand: () => setState(() {
+                                    if (weekExpanded) {
+                                      _expanded.remove(week.key);
+                                    } else {
+                                      _expanded.add(week.key);
+                                    }
+                                  }),
+                                  onOpen: () => _openWeekPage(week),
+                                  onAddTask: () =>
+                                      _showTaskSuggestionsForWeek(week),
+                                  onNewTask: () => _createNewTaskForWeek(week),
+                                  doneCount: doneCount,
+                                  score: weeklyGoalScore(tasks),
+                                );
+                              }).toList(),
+                            ),
                           ),
-                        );
-                      }),
+                        ],
+                      ),
                   ],
                 ),
               );
@@ -339,7 +489,9 @@ class _InfoChip extends StatelessWidget {
 class _WeekTile extends StatelessWidget {
   const _WeekTile({
     required this.week,
-    required this.goal,
+    required this.goals,
+    required this.goalOwnerLabel,
+    required this.showGoalOwner,
     required this.tasks,
     required this.taskResultsBuilder,
     required this.isCurrent,
@@ -353,7 +505,9 @@ class _WeekTile extends StatelessWidget {
   });
 
   final TaskWeek week;
-  final WeeklyGoal? goal;
+  final List<WeeklyGoal> goals;
+  final String Function(String userUid) goalOwnerLabel;
+  final bool showGoalOwner;
   final List<Task> tasks;
   final Widget Function(List<Task> tasks) taskResultsBuilder;
   final bool isCurrent;
@@ -367,13 +521,10 @@ class _WeekTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final target = goal?.target ?? 0;
+    final target = goals.fold<int>(0, (total, goal) => total + goal.target);
     final progress = target > 0 ? (tasks.length / target).clamp(0.0, 1.0) : 0.0;
-    final hasGoal = goal?.title.isNotEmpty == true;
-    final stats =
-        '$doneCount/${tasks.length} done'
-        '${target > 0 ? ' · Target $target' : ''}'
-        ' · Score ${_scoreText(score)}';
+    final visibleGoals = goals.where((goal) => goal.title.isNotEmpty).toList();
+    final hasGoal = visibleGoals.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -381,13 +532,18 @@ class _WeekTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Material(
-            color: isCurrent ? _currentTint : Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(12),
+            color: isCurrent ? const Color(0xFFFFFCF2) : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                color: isCurrent ? const Color(0xFFE8D98D) : _cardBorder,
+              ),
+            ),
             child: InkWell(
               onTap: onOpen,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
+                padding: const EdgeInsets.fromLTRB(14, 14, 12, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -403,7 +559,7 @@ class _WeekTile extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
-                                    fontSize: 14,
+                                    fontSize: 15,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -413,7 +569,7 @@ class _WeekTile extends StatelessWidget {
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 8,
-                                    vertical: 2,
+                                    vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFF2E6A8),
@@ -422,7 +578,7 @@ class _WeekTile extends StatelessWidget {
                                   child: const Text(
                                     'Current',
                                     style: TextStyle(
-                                      fontSize: 12,
+                                      fontSize: 11,
                                       color: _brand,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -432,101 +588,215 @@ class _WeekTile extends StatelessWidget {
                             ],
                           ),
                         ),
-                        IconButton(
-                          tooltip: expanded ? 'Collapse week' : 'Expand week',
-                          visualDensity: VisualDensity.compact,
-                          constraints: const BoxConstraints.tightFor(
-                            width: 34,
-                            height: 34,
-                          ),
-                          onPressed: onExpand,
-                          icon: Icon(
-                            expanded ? Icons.expand_less : Icons.expand_more,
-                            size: 22,
-                            color: Colors.black54,
+                        Material(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          shape: const CircleBorder(),
+                          child: IconButton(
+                            tooltip: expanded ? 'Collapse week' : 'Expand week',
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints.tightFor(
+                              width: 34,
+                              height: 34,
+                            ),
+                            onPressed: onExpand,
+                            icon: Icon(
+                              expanded ? Icons.expand_less : Icons.expand_more,
+                              size: 22,
+                              color: Colors.black54,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    Text(
-                      '${_dateLabel(week.start)} - ${_dateLabel(week.end)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Text(
-                        hasGoal ? goal!.title : 'Set a weekly goal',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: hasGoal
-                              ? FontWeight.w500
-                              : FontWeight.normal,
-                          color: hasGoal
-                              ? Colors.black87
-                              : Colors.grey.shade600,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          minHeight: 6,
-                          color: _brandSoft,
-                          backgroundColor: Colors.grey.shade200,
-                        ),
-                      ),
-                    ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Expanded(
+                        Icon(
+                          Icons.calendar_today_rounded,
+                          size: 13,
+                          color: Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${_dateLabel(week.start)} - ${_dateLabel(week.end)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8F7F2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: hasGoal
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                for (
+                                  var index = 0;
+                                  index < visibleGoals.length;
+                                  index++
+                                ) ...[
+                                  if (index > 0) const SizedBox(height: 8),
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Icon(
+                                        Icons.flag_outlined,
+                                        size: 16,
+                                        color: _brand,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              visibleGoals[index].title,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.black87,
+                                              ),
+                                            ),
+                                            if (showGoalOwner)
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                  top: 2,
+                                                ),
+                                                child: Text(
+                                                  goalOwnerLabel(
+                                                    visibleGoals[index].userUid,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.grey.shade600,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            )
+                          : Row(
+                              children: [
+                                Icon(
+                                  Icons.add_task_rounded,
+                                  size: 16,
+                                  color: Colors.grey.shade600,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Set a weekly goal',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Expanded(
                           child: Text(
-                            stats,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            'Weekly target progress',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        TextButton(
+                        if (target > 0)
+                          Text(
+                            '${tasks.length} / $target tasks',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 7),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 7,
+                        color: _brandSoft,
+                        backgroundColor: const Color(0xFFECE9DF),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _InfoChip('$doneCount/${tasks.length} done'),
+                        if (target > 0) _InfoChip('Target $target'),
+                        _InfoChip('Score ${_scoreText(score)}'),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        OutlinedButton.icon(
                           onPressed: onAddTask,
-                          style: TextButton.styleFrom(
+                          icon: const Icon(
+                            Icons.playlist_add_rounded,
+                            size: 17,
+                          ),
+                          label: const Text('Add task'),
+                          style: OutlinedButton.styleFrom(
                             foregroundColor: _brand,
+                            side: const BorderSide(color: _cardBorder),
                             visualDensity: VisualDensity.compact,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                            minimumSize: const Size(0, 32),
-                          ),
-                          child: const Text(
-                            'Add task',
-                            style: TextStyle(fontSize: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                           ),
                         ),
-                        TextButton(
+                        FilledButton.icon(
                           onPressed: onNewTask,
-                          style: TextButton.styleFrom(
+                          icon: const Icon(Icons.add_rounded, size: 17),
+                          label: const Text('New task'),
+                          style: FilledButton.styleFrom(
                             foregroundColor: _brand,
+                            backgroundColor: const Color(0xFFF2E6A8),
                             visualDensity: VisualDensity.compact,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                            minimumSize: const Size(0, 32),
-                          ),
-                          child: const Text(
-                            'New task',
-                            style: TextStyle(fontSize: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                           ),
                         ),
                       ],

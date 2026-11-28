@@ -12,12 +12,14 @@ class MyWorkView extends StatefulWidget {
     super.key,
     required this.sections,
     required this.taskResultsBuilder,
+    this.expandedTasksSliverBuilder,
     this.sectionNames,
     this.emptyMessage = 'No tasks in My Work.',
   });
 
   final Map<String, List<Task>> sections;
   final Widget Function(List<Task> tasks) taskResultsBuilder;
+  final Widget Function(List<Task> tasks)? expandedTasksSliverBuilder;
   final List<String>? sectionNames;
   final String emptyMessage;
 
@@ -229,25 +231,19 @@ class _MyWorkViewState extends State<MyWorkView>
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            SliverList(
-              delegate: SliverChildListDelegate(
-                populatedNames.isEmpty
-                    ? [
-                        Padding(
-                          padding: EdgeInsets.fromLTRB(16, 20, 16, 20),
-                          child: Text(
-                            widget.emptyMessage,
-                            style: TextStyle(color: Colors.blueGrey),
-                          ),
-                        ),
-                      ]
-                    : [
-                        for (final name in populatedNames)
-                          _buildSection(name, populatedNames),
-                      ],
-                addAutomaticKeepAlives: false,
-              ),
-            ),
+            if (populatedNames.isEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+                  child: Text(
+                    widget.emptyMessage,
+                    style: const TextStyle(color: Colors.blueGrey),
+                  ),
+                ),
+              )
+            else
+              for (final name in populatedNames)
+                ..._buildSectionSlivers(name, populatedNames),
             if (populatedNames.isNotEmpty)
               SliverToBoxAdapter(child: blankArea(height: 100)),
             if (populatedNames.isNotEmpty)
@@ -274,25 +270,28 @@ class _MyWorkViewState extends State<MyWorkView>
     );
   }
 
-  Widget _buildSection(String name, List<String> populatedNames) {
+  List<Widget> _buildSectionSlivers(String name, List<String> populatedNames) {
     final tasks = widget.sections[name] ?? const <Task>[];
     final isExpanded = _expandedSections.contains(name);
-    return Column(
-      children: [
-        if (_sectionHeaderKeys.containsKey(name))
-          KeyedSubtree(
-            key: _sectionHeaderKeys[name],
-            child: _buildSectionHeader(name, populatedNames),
-          )
+    final expandedTasksSliverBuilder = widget.expandedTasksSliverBuilder;
+    final header = _buildSectionHeader(name, populatedNames);
+    return [
+      SliverToBoxAdapter(
+        child: _sectionHeaderKeys.containsKey(name)
+            ? KeyedSubtree(key: _sectionHeaderKeys[name], child: header)
+            : header,
+      ),
+      if (isExpanded)
+        if (expandedTasksSliverBuilder != null)
+          expandedTasksSliverBuilder(tasks)
         else
-          _buildSectionHeader(name, populatedNames),
-        if (isExpanded)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: widget.taskResultsBuilder(tasks),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: widget.taskResultsBuilder(tasks),
+            ),
           ),
-      ],
-    );
+    ];
   }
 
   Widget _buildSectionHeader(String name, List<String> populatedNames) {

@@ -1,5 +1,30 @@
 import 'package:flutter/material.dart';
 
+import '../../utils/task_week_helpers.dart';
+
+const String goalWeekPickerOptionLabel = 'Choose a week in any month';
+
+Future<String?> showGoalWeekPicker(
+  BuildContext context, {
+  String? selectedWeekKey,
+}) async {
+  final firstDate = DateTime(2000);
+  final lastDate = DateTime(2100, 12, 31);
+  final selectedWeek = dateRangeForWeek(selectedWeekKey ?? '');
+  var initialDate = selectedWeek?.start ?? DateTime.now();
+  if (initialDate.isBefore(firstDate)) initialDate = firstDate;
+  if (initialDate.isAfter(lastDate)) initialDate = lastDate;
+
+  final selectedDate = await showDatePicker(
+    context: context,
+    initialDate: initialDate,
+    firstDate: firstDate,
+    lastDate: lastDate,
+    helpText: 'Choose a date in your goal week',
+  );
+  return selectedDate == null ? null : weekKeyFor(selectedDate);
+}
+
 Future<DateTime?> showDateTimePickerWithTabs(
   BuildContext context, {
   DateTime? initial,

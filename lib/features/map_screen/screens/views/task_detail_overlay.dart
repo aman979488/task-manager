@@ -109,9 +109,15 @@ class TaskDetailOverlay {
     List<Widget> tilesFor(String key) {
       switch (key) {
         case 'goal':
-          return goalWeekKeys
-              .map((weekKey) => ListTile(title: Text(weekLabelForKey(weekKey))))
-              .toList();
+          return [
+            ...goalWeekKeys.map(
+              (weekKey) => ListTile(title: Text(weekLabelForKey(weekKey))),
+            ),
+            const ListTile(
+              leading: Icon(Icons.calendar_month),
+              title: Text(goalWeekPickerOptionLabel),
+            ),
+          ];
         case 'priority':
           return TaskConstants.priorityOptions
               .map((priority) => ListTile(title: Text(priority)))
@@ -219,6 +225,13 @@ class TaskDetailOverlay {
     };
     tileWidgets.sort((first, second) {
       if (first is! ListTile || second is! ListTile) return 0;
+      if (resolvedKey == 'goal') {
+        final firstIsPicker =
+            ((first.title as Text).data ?? '') == goalWeekPickerOptionLabel;
+        final secondIsPicker =
+            ((second.title as Text).data ?? '') == goalWeekPickerOptionLabel;
+        if (firstIsPicker != secondIsPicker) return firstIsPicker ? -1 : 1;
+      }
       final firstValue = optionValueForLabel((first.title as Text).data ?? '');
       final secondValue = optionValueForLabel(
         (second.title as Text).data ?? '',
@@ -408,6 +421,30 @@ class TaskDetailOverlay {
                                               final label =
                                                   (tile.title as Text).data ??
                                                   '';
+
+                                              if (resolvedKey == 'goal' &&
+                                                  label ==
+                                                      goalWeekPickerOptionLabel) {
+                                                hide();
+                                                final weekKey =
+                                                    await showGoalWeekPicker(
+                                                      buttonContext,
+                                                      selectedWeekKey:
+                                                          selectedValue,
+                                                    );
+                                                if (weekKey != null &&
+                                                    buttonContext.mounted) {
+                                                  await FrequentOptionUsage.recordSelection(
+                                                    usageListKey,
+                                                    weekKey,
+                                                  );
+                                                  onSelectOption(
+                                                    resolvedKey,
+                                                    weekKey,
+                                                  );
+                                                }
+                                                return;
+                                              }
 
                                               if (label ==
                                                   selectedOptionLabel) {

@@ -505,39 +505,61 @@ class _DoneTasksViewState extends State<DoneTasksView>
       child: Material(
         key: ValueKey('done-work-date-${_dateKey(date)}'),
         color: const Color(0xFFF1F2F4),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          child: Row(
-            children: [
-              Expanded(
-                child: date == null
-                    ? const Text(
-                        'Date not set',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF265492),
-                        ),
-                      )
-                    : Row(
-                        children: [
-                          Flexible(
-                            child: Text.rich(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 420;
+            final horizontalPadding = compact ? 10.0 : 14.0;
+            final metricFontSize = compact ? 11.0 : 12.0;
+            final durationWidth = compact ? 58.0 : 52.0;
+            final scoreWidth = compact ? 60.0 : 64.0;
+            final reportWidth = compact ? 56.0 : 66.0;
+            final dateStyle = TextStyle(
+              fontSize: compact ? 12 : 14,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF265492),
+            );
+            Widget metric(String text, double width) => SizedBox(
+              width: width,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(
+                  text,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TextStyle(
+                    fontSize: metricFontSize,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF265492),
+                  ),
+                ),
+              ),
+            );
+
+            return Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: 6,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: date == null
+                          ? Text('Date not set', style: dateStyle)
+                          : Text.rich(
                               TextSpan(
                                 children: [
                                   TextSpan(
                                     text: _dateText(date),
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF265492),
-                                    ),
+                                    style: dateStyle,
                                   ),
                                   TextSpan(
                                     text:
                                         '  ${_weekday(date)} (${row.tasks.length})',
-                                    style: const TextStyle(
-                                      fontSize: 14,
+                                    style: dateStyle.copyWith(
                                       fontWeight: FontWeight.w500,
                                       color: Colors.black54,
                                     ),
@@ -545,76 +567,64 @@ class _DoneTasksViewState extends State<DoneTasksView>
                                 ],
                               ),
                               maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
                             ),
+                    ),
+                  ),
+                  if (date != null) ...[
+                    SizedBox(width: compact ? 4 : 6),
+                    metric(
+                      '${_formatDuration(row.totalHours)} Hr',
+                      durationWidth,
+                    ),
+                    SizedBox(width: compact ? 4 : 6),
+                    metric('Score ${_formatScore(row.totalScore)}', scoreWidth),
+                    SizedBox(width: compact ? 4 : 6),
+                    SizedBox(
+                      width: reportWidth,
+                      child: FilledButton(
+                        key: ValueKey(
+                          'done-work-daily-report-${date.toIso8601String()}',
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFFBE64E),
+                          foregroundColor: const Color(0xFF6B5800),
+                          minimumSize: Size(reportWidth, 34),
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          shape: const StadiumBorder(),
+                        ),
+                        onPressed: () => DailyReportSheet.show(
+                          context,
+                          date: date,
+                          entries: row.tasks
+                              .map(DailyReportEntry.fromTask)
+                              .toList(),
+                        ),
+                        child: Text(
+                          'Report',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(
+                            fontSize: compact ? 11 : 12,
+                            fontWeight: FontWeight.w700,
                           ),
-                          const SizedBox(width: 6),
-                          SizedBox(
-                            width: 48,
-                            child: Text(
-                              '${_formatDuration(row.totalHours)} Hr',
-                              textAlign: TextAlign.end,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF265492),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          SizedBox(
-                            width: 70,
-                            child: Text(
-                              'Score ${_formatScore(row.totalScore)}',
-                              textAlign: TextAlign.end,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF265492),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          SizedBox(
-                            width: 66,
-                            child: FilledButton(
-                              key: ValueKey(
-                                'done-work-daily-report-${date.toIso8601String()}',
-                              ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFFFBE64E),
-                                foregroundColor: const Color(0xFF6B5800),
-                                minimumSize: const Size(66, 34),
-                                padding: EdgeInsets.zero,
-                                visualDensity: VisualDensity.compact,
-                                shape: const StadiumBorder(),
-                              ),
-                              onPressed: () => DailyReportSheet.show(
-                                context,
-                                date: date,
-                                entries: row.tasks
-                                    .map(DailyReportEntry.fromTask)
-                                    .toList(),
-                              ),
-                              child: const Text(
-                                'Report',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
+                    ),
+                  ],
+                  SizedBox(width: compact ? 2 : 8),
+                  Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: compact ? 22 : 24,
+                    color: const Color(0xFF265492),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Icon(
-                expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                color: const Color(0xFF265492),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
